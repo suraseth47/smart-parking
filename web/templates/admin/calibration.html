@@ -1,0 +1,86 @@
+{% extends "admin/base.html" %}
+{% block title %}กึ่งออโต้{% endblock %}
+{% block head %}
+<script src="/static/js/vendor/konva.min.js"></script>
+{% endblock %}
+{% block content %}
+<div class="card" style="margin-bottom:0.75rem;">
+  <h3 style="margin-top:0;">เริ่ม job สังเกตรถจอดจริงใหม่ (โหมด A)</h3>
+  <div class="toolbar">
+    <label class="muted" style="margin:0;">กล้อง</label>
+    <select id="camera-select"></select>
+    <label class="muted" style="margin:0;">ระยะเวลา (ชม. 24-72)</label>
+    <input type="number" id="duration-hours" value="48" min="24" max="72" style="width:70px;">
+    <label class="muted" style="margin:0;">ความถี่ (นาที)</label>
+    <input type="number" id="interval-minutes" value="5" min="1" style="width:60px;">
+    <label class="muted" style="margin:0;">ช่วงเวลาที่สนใจ</label>
+    <input type="number" id="hour-start" value="0" min="0" max="23" style="width:50px;" title="ชั่วโมงเริ่ม">
+    <span class="muted">-</span>
+    <input type="number" id="hour-end" value="24" min="1" max="24" style="width:50px;" title="ชั่วโมงจบ">
+    <button id="btn-start-job">เริ่ม job</button>
+  </div>
+  <p class="muted" id="start-status"></p>
+</div>
+
+<div class="editor-layout">
+  <div class="editor-side" style="flex:0 0 260px;">
+    <div class="card">
+      <h3 style="margin-top:0;">Job ทั้งหมด</h3>
+      <ul class="slot-list" id="job-list"></ul>
+    </div>
+  </div>
+
+  <div class="editor-canvas-wrap" style="flex:1 1 500px;">
+    <div id="job-detail" style="display:none;">
+      <div class="toolbar">
+        <span class="muted">สถานะ: <b id="job-status-text">-</b></span>
+        <button id="btn-cancel-job" class="btn-danger">ยกเลิก job</button>
+        <span style="flex:1 1 auto;"></span>
+        <label class="muted" style="margin:0;">Accept ทั้งหมดที่ confidence ≥</label>
+        <input type="number" id="bulk-min-confidence" value="0.5" min="0" max="1" step="0.05" style="width:60px;">
+        <select id="bulk-zone-select"></select>
+        <input type="text" id="bulk-code-prefix" placeholder="รหัสขึ้นต้น เช่น A-" style="width:100px;">
+        <button id="btn-bulk-accept">Accept ทั้งหมด</button>
+      </div>
+      <div id="stage-container"></div>
+      <p class="muted" id="no-background-msg" style="display:none;">ยังไม่มีภาพพื้นหลัง (รอ job เก็บข้อมูลก่อน)</p>
+      <p class="muted" id="no-proposals-msg" style="display:none;">ยังไม่มี proposal (job ยังไม่จบ หรือไม่พบรถจอดนิ่งที่ซ้ำกันพอ)</p>
+    </div>
+    <p class="muted" id="no-job-msg">เลือก job จากรายการด้านซ้าย หรือเริ่ม job ใหม่ด้านบน</p>
+  </div>
+
+  <div class="editor-side">
+    <div class="card" id="proposal-card" style="display:none;">
+      <h3 style="margin-top:0;">Proposal ที่เลือก</h3>
+      <p class="muted">confidence: <b id="prop-confidence"></b> · สถานะ: <b id="prop-status"></b></p>
+
+      <div id="prop-decide-form">
+        <label class="muted">รหัสช่อง</label>
+        <input type="text" id="prop-code" style="width:100%; margin-bottom:0.5rem;">
+        <label class="muted">โซน</label>
+        <select id="prop-zone" style="width:100%; margin-bottom:0.5rem;"></select>
+        <label class="muted">ประเภทช่อง</label>
+        <select id="prop-type" style="width:100%; margin-bottom:0.5rem;">
+          <option value="normal">ปกติ</option>
+          <option value="disabled">ผู้พิการ</option>
+          <option value="ev">EV</option>
+          <option value="reserved">จอง</option>
+        </select>
+        <label class="muted">threshold</label>
+        <input type="number" id="prop-threshold" value="0.30" min="0" max="1" step="0.05" style="width:100%; margin-bottom:0.5rem;">
+
+        <div style="display:flex; gap:0.5rem; margin-top:0.5rem;">
+          <button id="btn-save-corners" class="btn-secondary">บันทึกมุมที่แก้</button>
+        </div>
+        <div style="display:flex; gap:0.5rem; margin-top:0.5rem;">
+          <button id="btn-accept-proposal">Accept</button>
+          <button id="btn-reject-proposal" class="btn-danger">Reject</button>
+        </div>
+      </div>
+      <p class="muted" id="prop-decided-note" style="display:none;">ตัดสินใจไปแล้ว แก้ไขไม่ได้</p>
+    </div>
+  </div>
+</div>
+
+<script src="/static/js/calibration.js"></script>
+{% endblock %}

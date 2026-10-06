@@ -50,3 +50,8 @@ def audit_page(request: Request):
 @router.get("/validation")
 def validation_page(request: Request):
     return templates.TemplateResponse(request, "admin/validation.html")
+
+
+@router.get("/calibration")
+def calibration_page(request: Request):
+    return templates.TemplateResponse(request, "admin/calibration.html")
