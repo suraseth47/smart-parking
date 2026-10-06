@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import pytest
 
 from worker.calibration.observation import (
@@ -5,9 +7,19 @@ from worker.calibration.observation import (
     build_proposals,
     cluster_boxes,
     compute_iou,
+    is_job_finished,
+    is_sample_due,
     median_box,
     non_max_suppression,
 )
+
+
+class _FakeJob:
+    """จำลองแค่ attribute ที่ is_sample_due/is_job_finished ต้องใช้ (ไม่แตะ DB จริง)"""
+
+    def __init__(self, params, ends_at=None):
+        self.params = params
+        self.ends_at = ends_at
 
 
 def test_compute_iou_identical_boxes():
@@ -120,3 +132,38 @@ def test_build_proposals_sorted_top_to_bottom_then_left_to_right():
     assert tops[0][1] == tops[1][1] == 0.1  # แถวบนสองอันมาก่อน
     assert tops[0][0] < tops[1][0]  # ในแถวบน ซ้ายมาก่อนขวา
     assert tops[2][1] == 0.6  # แถวล่างมาสุดท้าย
+
+
+def test_is_sample_due_outside_hour_window_returns_false():
+    job = _FakeJob(params={"hour_start": 8, "hour_end": 18})
+    now = datetime(2026, 10, 6, 20, 0)  # 20:00 อยู่นอกช่วง 08:00-18:00
+    assert is_sample_due(job, None, now) is False
+
+
+def test_is_sample_due_first_sample_inside_window_returns_true():
+    job = _FakeJob(params={"hour_start": 8, "hour_end": 18})
+    now = datetime(2026, 10, 6, 9, 0)
+    assert is_sample_due(job, None, now) is True
+
+
+def test_is_sample_due_respects_interval_minutes():
+    job = _FakeJob(params={"interval_minutes": 5})
+    now = datetime(2026, 10, 6, 12, 10)
+    last_sample = datetime(2026, 10, 6, 12, 7)  # ผ่านมาแค่ 3 นาที ยังไม่ครบ 5
+    assert is_sample_due(job, last_sample, now) is False
+
+    last_sample_long_ago = datetime(2026, 10, 6, 12, 4)  # ผ่านมา 6 นาที ครบแล้ว
+    assert is_sample_due(job, last_sample_long_ago, now) is True
+
+
+def test_is_sample_due_default_window_is_whole_day():
+    job = _FakeJob(params={})
+    now = datetime(2026, 10, 6, 2, 0)  # ตีสอง แต่ไม่ได้ตั้ง hour_start/hour_end ไว้
+    assert is_sample_due(job, None, now) is True
+
+
+def test_is_job_finished():
+    job = _FakeJob(params={}, ends_at=datetime(2026, 10, 6, 12, 0))
+    assert is_job_finished(job, datetime(2026, 10, 6, 11, 59)) is False
+    assert is_job_finished(job, datetime(2026, 10, 6, 12, 0)) is True
+    assert is_job_finished(job, datetime(2026, 10, 6, 12, 1)) is True

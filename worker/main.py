@@ -13,6 +13,10 @@ from core.config import PROJECT_ROOT
 from core.db import SessionLocal
 from core.models import (
     AlertLevel,
+    CalibJob,
+    CalibJobStatus,
+    CalibMethod,
+    CalibSample,
     Camera,
     CameraStatus,
     LayoutStatus,
@@ -20,6 +24,13 @@ from core.models import (
     Slot,
     SlotEvent,
     SlotState,
+)
+from worker.calibration.observation import (
+    finalize_calib_job,
+    is_job_finished,
+    is_sample_due,
+    maybe_prune_old_calib_jobs,
+    record_calib_sample,
 )
 from worker.capture import grab_frame
 from worker.detector import OnnxYoloxDetector
@@ -60,6 +71,8 @@ def run_cycle(detector: OnnxYoloxDetector) -> None:
         now = datetime.utcnow()
         maybe_record_minute_stats(db, now)  # FR-36, FR-37
         maybe_prune_old_stats(db, now)  # FR-39, FR-10
+        _process_calib_jobs(db, detector, now)  # FR-28
+        maybe_prune_old_calib_jobs(db, now)  # FR-29f
         db.commit()
     finally:
         db.close()
@@ -138,6 +151,41 @@ def process_camera(db: Session, camera: Camera, detector: OnnxYoloxDetector) -> 
         _update_slot_state(db, slot, footprints, now)
 
     db.commit()
+
+
+def _process_calib_jobs(db: Session, detector: OnnxYoloxDetector, now: datetime) -> None:
+    """เก็บ footprint สำหรับ calibration job โหมด Observation ที่กำลังรัน แล้วสร้าง
+    proposals เมื่อครบเวลา (FR-28) — ดึงภาพ+ตรวจจับแยกจากรอบตรวจจับปกติของกล้อง
+    เพราะความถี่ของ job (ค่าเริ่ม 5 นาที) มักห่างกว่า detect_interval_s ของกล้องมาก
+    """
+    jobs = db.scalars(select(CalibJob).where(CalibJob.status == CalibJobStatus.RUNNING)).all()
+    for job in jobs:
+        if is_job_finished(job, now):
+            finalize_calib_job(db, job, now)
+            continue
+
+        if job.method != CalibMethod.OBSERVATION:
+            continue  # โหมด B (เส้นช่องจอด) ไม่ได้เก็บตัวอย่างต่อเนื่องแบบนี้
+
+        camera = db.get(Camera, job.camera_id)
+        if camera is None:
+            continue
+
+        last_sample_ts = db.scalars(
+            select(CalibSample.ts).where(CalibSample.job_id == job.id).order_by(CalibSample.ts.desc())
+        ).first()
+        if not is_sample_due(job, last_sample_ts, now):
+            continue
+
+        try:
+            frame = grab_frame(build_camera_url(camera))
+        except RuntimeError:
+            continue  # ดึงภาพไม่ได้รอบนี้ ข้ามไปก่อน ไม่ถือเป็นความล้มเหลวของ job
+
+        frame_h, frame_w = frame.shape[:2]
+        detections = detector.detect(frame)
+        boxes = [compute_footprint(normalize_box(d.box, frame_w, frame_h)) for d in detections]
+        record_calib_sample(db, job, boxes, frame, now)
 
 
 def _check_camera_moved(camera: Camera, frame) -> bool:
