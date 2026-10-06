@@ -1,9 +1,9 @@
 """ตารางฐานข้อมูลตาม SPEC ข้อ 6
 
-หมายเหตุ: มีเฉพาะตารางที่ใช้ในเฟส P1 (users, zones, cameras, slots,
-slot_state, slot_events, settings, audit_log) ส่วน calib_jobs,
-calib_samples, slot_proposals (P3) และ zone_stats_*, alerts (P2)
-จะเพิ่มตอนถึงเฟสนั้นตามกฎห้ามข้ามเฟสใน CLAUDE.md
+หมายเหตุ: มีตารางของ P1 (users, zones, cameras, slots, slot_state,
+slot_events, settings, audit_log) และ P2 (zone_stats_minute,
+zone_stats_hour, alerts) ส่วน calib_jobs, calib_samples,
+slot_proposals (P3) จะเพิ่มตอนถึงเฟสนั้นตามกฎห้ามข้ามเฟสใน CLAUDE.md
 """
 from __future__ import annotations
 
@@ -196,3 +196,47 @@ class AuditLog(Base):
     target: Mapped[str | None] = mapped_column(String(100), nullable=True)
     detail: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     ts: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+
+
+class ZoneStatMinute(Base):
+    """สรุปสถานะช่องรายนาทีต่อโซน (FR-36); เก็บ 30 วันแล้วลบทิ้ง (FR-39)"""
+
+    __tablename__ = "zone_stats_minute"
+
+    ts: Mapped[datetime] = mapped_column(DateTime, primary_key=True)
+    zone_id: Mapped[int] = mapped_column(ForeignKey("zones.id"), primary_key=True)
+    total: Mapped[int] = mapped_column(Integer)
+    occupied: Mapped[int] = mapped_column(Integer)
+    free: Mapped[int] = mapped_column(Integer)
+    unknown: Mapped[int] = mapped_column(Integer)
+
+
+class ZoneStatHour(Base):
+    """สรุปรายชั่วโมงต่อโซน (FR-37); เก็บ 2 ปีแล้วลบทิ้ง (FR-39)"""
+
+    __tablename__ = "zone_stats_hour"
+
+    hour_ts: Mapped[datetime] = mapped_column(DateTime, primary_key=True)
+    zone_id: Mapped[int] = mapped_column(ForeignKey("zones.id"), primary_key=True)
+    avg_occ_pct: Mapped[float] = mapped_column(Float)
+    max_occ_pct: Mapped[float] = mapped_column(Float)
+    samples: Mapped[int] = mapped_column(Integer)
+
+
+class AlertLevel(str, enum.Enum):
+    INFO = "info"
+    WARNING = "warning"
+    ERROR = "error"
+
+
+class Alert(Base):
+    """แจ้งเตือนในหลังบ้าน (FR-32) เช่น กล้องหลุด/ถูกขยับ"""
+
+    __tablename__ = "alerts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    level: Mapped[AlertLevel] = mapped_column(SAEnum(AlertLevel, native_enum=False, length=20))
+    source: Mapped[str] = mapped_column(String(100))
+    message: Mapped[str] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
