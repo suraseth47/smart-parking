@@ -1,0 +1,56 @@
+{% extends "admin/base.html" %}
+{% block title %}Validation{% endblock %}
+{% block head %}
+<script src="/static/js/vendor/konva.min.js"></script>
+{% endblock %}
+{% block content %}
+<div class="card" style="margin-bottom:0.75rem;">
+  <h3 style="margin-top:0;">เริ่ม Validation job ใหม่</h3>
+  <div class="toolbar">
+    <label class="muted" style="margin:0;">กล้อง</label>
+    <select id="camera-select"></select>
+    <label class="muted" style="margin:0;">จำนวนภาพ</label>
+    <input type="number" id="sample-count" value="20" min="1" max="50" style="width:70px;">
+    <button id="btn-start-job">เริ่ม (จะใช้เวลาสักพัก)</button>
+  </div>
+  <p class="muted" id="start-status"></p>
+</div>
+
+<div class="editor-layout">
+  <div class="editor-side" style="flex:0 0 260px;">
+    <div class="card">
+      <h3 style="margin-top:0;">Job ทั้งหมด</h3>
+      <ul class="slot-list" id="job-list"></ul>
+    </div>
+  </div>
+
+  <div class="editor-canvas-wrap" style="flex:1 1 500px;">
+    <div id="job-detail" style="display:none;">
+      <div class="toolbar">
+        <button id="btn-prev-sample" class="btn-secondary">‹ ก่อนหน้า</button>
+        <span class="muted">ภาพที่ <span id="sample-index">1</span>/<span id="sample-total">1</span></span>
+        <button id="btn-next-sample" class="btn-secondary">ถัดไป ›</button>
+        <span class="muted" style="margin-left:1rem;">ความแม่นยำ: <b id="accuracy-text">-</b></span>
+      </div>
+      <div id="stage-container"></div>
+      <p class="muted" id="no-image-msg" style="display:none;">ไม่มีภาพ</p>
+    </div>
+    <p class="muted" id="no-job-msg">เลือก job จากรายการด้านซ้าย หรือเริ่ม job ใหม่ด้านบน</p>
+  </div>
+
+  <div class="editor-side">
+    <div class="card" id="confirm-card" style="display:none;">
+      <h3 style="margin-top:0;">ช่องที่เลือก</h3>
+      <p id="confirm-code" style="font-weight:600;"></p>
+      <p class="muted">ระบบตรวจพบ: <span id="confirm-detected"></span> (score <span id="confirm-score"></span>)</p>
+      <p class="muted">คนยืนยัน: <span id="confirm-confirmed">ยังไม่ยืนยัน</span></p>
+      <div style="display:flex; gap:0.5rem; margin-top:0.5rem;">
+        <button id="btn-confirm-free">ยืนยัน: ว่าง</button>
+        <button id="btn-confirm-occupied" class="btn-danger">ยืนยัน: มีรถ</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/static/js/validation.js"></script>
+{% endblock %}

@@ -49,7 +49,10 @@ class LayoutEditor {
   }
 
   async _loadSnapshotAndSetupStage() {
-    const maxWidth = Math.min(900, window.innerWidth - 40);
+    // ใช้ความกว้างจริงของ container (ไม่ใช่ window.innerWidth) ไม่งั้น CSS จะย่อ canvas
+    // ให้เล็กกว่าที่ Konva คิดไว้ ทำให้พิกัดคลิกกับพิกัดภายใน Konva ไม่ตรงกัน
+    const wrapEl = document.querySelector(".editor-canvas-wrap");
+    const maxWidth = Math.min(900, wrapEl.clientWidth - 2);
     const snapshotUrl = `/api/admin/cameras/${this.cameraId}/snapshot?t=${Date.now()}`;
 
     const img = new Image();
@@ -199,6 +202,7 @@ class LayoutEditor {
       fontSize: 13,
       fill: "#fff",
       fontStyle: "bold",
+      listening: false, // ไม่ให้ป้ายชื่อบังคลิกที่เส้นขอบด้านล่าง
     });
     group.add(label);
 

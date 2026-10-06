@@ -45,3 +45,8 @@ def reports_page(request: Request):
 @router.get("/audit")
 def audit_page(request: Request):
     return templates.TemplateResponse(request, "admin/audit.html")
+
+
+@router.get("/validation")
+def validation_page(request: Request):
+    return templates.TemplateResponse(request, "admin/validation.html")
