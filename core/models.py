@@ -2,8 +2,10 @@
 
 หมายเหตุ: มีตารางของ P1 (users, zones, cameras, slots, slot_state,
 slot_events, settings, audit_log) และ P2 (zone_stats_minute,
-zone_stats_hour, alerts) ส่วน calib_jobs, calib_samples,
-slot_proposals (P3) จะเพิ่มตอนถึงเฟสนั้นตามกฎห้ามข้ามเฟสใน CLAUDE.md
+zone_stats_hour, alerts, validation_jobs, validation_samples —
+สองตัวหลังไม่มีใน SPEC ข้อ 6 ออกแบบเพิ่มเองเพื่อรองรับ NFR-4
+Validation tool) ส่วน calib_jobs, calib_samples, slot_proposals (P3)
+จะเพิ่มตอนถึงเฟสนั้นตามกฎห้ามข้ามเฟสใน CLAUDE.md
 """
 from __future__ import annotations
 
@@ -241,3 +243,39 @@ class Alert(Base):
     message: Mapped[str] = mapped_column(String(500))
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class ValidationJobStatus(str, enum.Enum):
+    RUNNING = "running"
+    DONE = "done"
+    CANCELLED = "cancelled"
+
+
+class ValidationJob(Base):
+    """สุ่มถ่ายภาพ+ตรวจจับ แล้วให้ Admin ยืนยันสถานะจริงเพื่อวัดความแม่นยำ (NFR-4)"""
+
+    __tablename__ = "validation_jobs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    camera_id: Mapped[int] = mapped_column(ForeignKey("cameras.id"))
+    status: Mapped[ValidationJobStatus] = mapped_column(
+        SAEnum(ValidationJobStatus, native_enum=False, length=20), default=ValidationJobStatus.RUNNING
+    )
+    target_sample_count: Mapped[int] = mapped_column(Integer, default=20)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class ValidationSample(Base):
+    """ภาพตัวอย่าง 1 ภาพของ validation job พร้อมผลตรวจจับ+ผลยืนยันจากคนต่อช่อง"""
+
+    __tablename__ = "validation_samples"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("validation_jobs.id"), index=True)
+    image_path: Mapped[str] = mapped_column(String(255))
+    captured_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    # slot_results: [{"slot_id", "code", "polygon", "detected_state", "score", "confirmed_state"}, ...]
+    # confirmed_state เป็น null จนกว่า Admin จะกดยืนยัน
+    slot_results: Mapped[list] = mapped_column(JSON)
