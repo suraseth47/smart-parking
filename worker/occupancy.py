@@ -39,3 +39,9 @@ def compute_slot_score(slot_polygon: list[list[float]], footprints: list[BoxXYXY
 def is_occupied(score: float, threshold: float) -> bool:
     """FR-7: ผลดิบถือว่า occupied ถ้า score >= threshold ของช่องนั้น"""
     return score >= threshold
+
+
+def normalize_box(detection_box: BoxXYXY, frame_width: int, frame_height: int) -> BoxXYXY:
+    """แปลงกล่องพิกเซลจริงจากตัวตรวจจับเป็น normalized 0-1 ให้หน่วยเดียวกับ slot polygon"""
+    x1, y1, x2, y2 = detection_box
+    return (x1 / frame_width, y1 / frame_height, x2 / frame_width, y2 / frame_height)

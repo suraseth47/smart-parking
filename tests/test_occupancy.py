@@ -1,4 +1,4 @@
-from worker.occupancy import compute_footprint, compute_slot_score, is_occupied
+from worker.occupancy import compute_footprint, compute_slot_score, is_occupied, normalize_box
 
 
 def test_compute_footprint_returns_bottom_half():
@@ -46,3 +46,8 @@ def test_is_occupied_threshold_boundary():
     assert is_occupied(0.30, 0.30) is True
     assert is_occupied(0.29, 0.30) is False
     assert is_occupied(0.31, 0.30) is True
+
+
+def test_normalize_box():
+    box = normalize_box((100.0, 200.0, 300.0, 400.0), frame_width=1000, frame_height=500)
+    assert box == (0.1, 0.4, 0.3, 0.8)

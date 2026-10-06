@@ -1,20 +1,34 @@
-"""Layout editor: ดู/บันทึก draft, publish ช่องจอด (FR-24, FR-26)"""
+"""Layout editor: ดู/บันทึก draft, publish, preview ช่องจอด (FR-24..26)"""
 from __future__ import annotations
 
+import cv2
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from core.config import get_settings
+from core.config import PROJECT_ROOT, get_settings
 from core.db import get_db
 from core.models import AuditLog, Camera, LayoutStatus, Slot, SlotType, Zone
-from web.camera_utils import build_camera_url
+from web.camera_utils import build_camera_url, snapshot_path
 from web.deps import CurrentUser, require_admin, verify_csrf
 from worker.camera_connection import check_camera_connection
+from worker.capture import grab_frame
+from worker.detector import OnnxYoloxDetector
+from worker.occupancy import compute_footprint, compute_slot_score, is_occupied, normalize_box
 
 router = APIRouter(prefix="/api/admin", tags=["layout"])
+
+_detector: OnnxYoloxDetector | None = None
+
+
+def _get_detector() -> OnnxYoloxDetector:
+    """โหลดโมเดล YOLOX ครั้งแรกที่ใช้แล้วเก็บไว้ใช้ซ้ำ (โหลดโมเดลช้า ไม่อยากโหลดทุก request)"""
+    global _detector
+    if _detector is None:
+        _detector = OnnxYoloxDetector(PROJECT_ROOT / "models" / "yolox_s.onnx")
+    return _detector
 
 
 class SlotIn(BaseModel):
@@ -43,6 +57,22 @@ class SlotOut(BaseModel):
 
 class SlotsSaveRequest(BaseModel):
     slots: list[SlotIn]
+
+
+class SlotPreviewIn(BaseModel):
+    code: str
+    polygon: list[list[float]]
+    threshold: float = 0.30
+
+
+class SlotPreviewRequest(BaseModel):
+    slots: list[SlotPreviewIn]
+
+
+class SlotPreviewResult(BaseModel):
+    code: str
+    score: float
+    state: str  # "free" | "occupied"
 
 
 @router.get("/cameras/{camera_id}/slots", response_model=list[SlotOut])
@@ -119,6 +149,48 @@ def save_draft_slots(
     for slot in saved:
         db.refresh(slot)
     return saved
+
+
+@router.post("/cameras/{camera_id}/slots/preview")
+def preview_slots(
+    camera_id: int,
+    data: SlotPreviewRequest,
+    db: Session = Depends(get_db),
+    _admin: CurrentUser = Depends(require_admin),
+):
+    """ดึงภาพปัจจุบันจริง ตรวจจับรถ แล้วคำนวณ score ซ้อนทับกรอบที่กำลังแก้ (FR-25)
+
+    ไม่บันทึกอะไรลง DB — ใช้ดูก่อน publish เท่านั้น
+    """
+    camera = _get_camera_or_404(db, camera_id)
+
+    try:
+        frame = grab_frame(build_camera_url(camera))
+    except RuntimeError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"ดึงภาพจากกล้องไม่สำเร็จ: {exc}")
+
+    detector = _get_detector()
+    detections = detector.detect(frame)
+    frame_h, frame_w = frame.shape[:2]
+    footprints = [
+        compute_footprint(normalize_box(d.box, frame_w, frame_h)) for d in detections
+    ]
+
+    results = []
+    for slot in data.slots:
+        score = compute_slot_score(slot.polygon, footprints)
+        state = "occupied" if is_occupied(score, slot.threshold) else "free"
+        results.append(SlotPreviewResult(code=slot.code, score=round(score, 3), state=state))
+
+    path = snapshot_path(camera_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    cv2.imencode(".jpg", frame)[1].tofile(str(path))
+
+    return {
+        "snapshot_url": f"/api/admin/cameras/{camera_id}/snapshot",
+        "detected_vehicle_count": len(detections),
+        "results": results,
+    }
 
 
 @router.post("/cameras/{camera_id}/slots/publish")

@@ -8,11 +8,10 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from core.config import get_settings
 from core.db import get_db
 from core.models import AuditLog, Camera, CameraBrand, CameraStream
 from core.security import encrypt_camera_password
-from web.camera_utils import build_camera_url
+from web.camera_utils import build_camera_url, snapshot_path as get_snapshot_path
 from web.deps import CurrentUser, get_current_user, require_admin, verify_csrf
 from worker.camera_connection import check_camera_connection
 
@@ -125,10 +124,10 @@ def test_camera_connection(
 ):
     camera = _get_camera_or_404(db, camera_id)
     url = build_camera_url(camera)
-    snapshot_path = _snapshot_path(camera_id)
-    snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+    path = get_snapshot_path(camera_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
 
-    result = check_camera_connection(url, snapshot_path)
+    result = check_camera_connection(url, path)
     if not result.ok:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, result.message)
     return {
@@ -143,10 +142,10 @@ def get_camera_snapshot(
     camera_id: int, db: Session = Depends(get_db), _user: CurrentUser = Depends(get_current_user)
 ):
     _get_camera_or_404(db, camera_id)
-    snapshot_path = _snapshot_path(camera_id)
-    if not snapshot_path.exists():
+    path = get_snapshot_path(camera_id)
+    if not path.exists():
         raise HTTPException(status.HTTP_404_NOT_FOUND, "ยังไม่มีภาพ snapshot กรุณากด Test connection ก่อน")
-    return FileResponse(snapshot_path)
+    return FileResponse(path)
 
 
 def _camera_fields(data: CameraIn) -> dict:
@@ -160,7 +159,3 @@ def _get_camera_or_404(db: Session, camera_id: int) -> Camera:
     if camera is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "ไม่พบกล้องนี้")
     return camera
-
-
-def _snapshot_path(camera_id: int):
-    return get_settings().data_dir / "snapshots" / f"camera_{camera_id}.jpg"

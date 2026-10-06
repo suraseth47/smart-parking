@@ -1,6 +1,9 @@
 """ฟังก์ชันช่วยเกี่ยวกับกล้องที่ web/routers ใช้ร่วมกัน"""
 from __future__ import annotations
 
+from pathlib import Path
+
+from core.config import get_settings
 from core.models import Camera
 from core.rtsp import build_rtsp_url
 from core.security import decrypt_camera_password
@@ -19,3 +22,8 @@ def build_camera_url(camera: Camera) -> str:
         password=password,
         rtsp_url_custom=camera.rtsp_url_custom,
     )
+
+
+def snapshot_path(camera_id: int) -> Path:
+    """path ไฟล์ snapshot ล่าสุดของกล้อง (ใช้ทั้ง test connection, preview, และหน้า Live)"""
+    return get_settings().data_dir / "snapshots" / f"camera_{camera_id}.jpg"
