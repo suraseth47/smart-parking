@@ -1,0 +1,55 @@
+{% extends "admin/base.html" %}
+{% block title %}Audit log{% endblock %}
+{% block content %}
+<div x-data="auditPage()" x-init="init()">
+  <div class="card" x-show="isOperator" style="margin-bottom:0.75rem;">
+    <p>หน้านี้ (Audit log) สำหรับ Admin เท่านั้น</p>
+  </div>
+
+  <template x-if="!isOperator">
+  <div>
+  <div class="card" style="margin-bottom:0.75rem;">
+    <div class="toolbar">
+      <label class="muted" style="margin:0;">กรองตาม action:</label>
+      <input type="text" x-model="actionFilter" placeholder="เช่น login, publish_layout" @change="reload()">
+      <button class="btn-secondary" @click="actionFilter=''; reload()">ล้างตัวกรอง</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <table style="width:100%; border-collapse:collapse; font-size:0.85rem;">
+      <thead>
+        <tr style="text-align:left; border-bottom:1px solid var(--color-border);">
+          <th style="padding:0.4rem;">เวลา</th>
+          <th style="padding:0.4rem;">ผู้ใช้</th>
+          <th style="padding:0.4rem;">การกระทำ</th>
+          <th style="padding:0.4rem;">เป้าหมาย</th>
+          <th style="padding:0.4rem;">รายละเอียด</th>
+        </tr>
+      </thead>
+      <tbody>
+        <template x-for="entry in entries" :key="entry.id">
+          <tr style="border-bottom:1px solid var(--color-border);">
+            <td style="padding:0.4rem; white-space:nowrap;" x-text="formatTime(entry.ts)"></td>
+            <td style="padding:0.4rem;" x-text="entry.username || '-'"></td>
+            <td style="padding:0.4rem;" x-text="entry.action"></td>
+            <td style="padding:0.4rem;" x-text="entry.target || '-'"></td>
+            <td style="padding:0.4rem; font-family:monospace; font-size:0.75rem;" x-text="entry.detail ? JSON.stringify(entry.detail) : ''"></td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+    <p class="muted" x-show="entries.length === 0">ไม่มีรายการ</p>
+
+    <div class="toolbar" style="margin-top:0.75rem;">
+      <button class="btn-secondary" @click="prevPage()" :disabled="offset === 0">ก่อนหน้า</button>
+      <button class="btn-secondary" @click="nextPage()" :disabled="entries.length < limit">ถัดไป</button>
+      <span class="muted">แสดง <span x-text="offset + 1"></span>-<span x-text="offset + entries.length"></span></span>
+    </div>
+  </div>
+  </div>
+  </template>
+</div>
+
+<script src="/static/js/audit.js"></script>
+{% endblock %}

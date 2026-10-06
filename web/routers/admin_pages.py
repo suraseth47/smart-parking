@@ -40,3 +40,8 @@ def override_page(request: Request):
 @router.get("/reports")
 def reports_page(request: Request):
     return templates.TemplateResponse(request, "admin/reports.html")
+
+
+@router.get("/audit")
+def audit_page(request: Request):
+    return templates.TemplateResponse(request, "admin/audit.html")

@@ -4,7 +4,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from web.routers import admin_pages, auth, cameras, health, live, override, public, reports, slots, zones
+from web.routers import admin_pages, audit, auth, cameras, health, live, override, public, reports, slots, zones
 
 app = FastAPI(title="Smart Parking")
 app.include_router(auth.router)
@@ -15,6 +15,7 @@ app.include_router(health.router)
 app.include_router(live.router)
 app.include_router(override.router)
 app.include_router(reports.router)
+app.include_router(audit.router)
 app.include_router(admin_pages.router)
 app.include_router(public.router)
 
