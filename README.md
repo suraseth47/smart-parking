@@ -166,9 +166,17 @@ docker compose exec web python scripts/benchmark.py   # วัดเวลาป
 ```
 
 ### Backup / Restore
-- ระบบสำรองฐานข้อมูลอัตโนมัติทุกวันที่ `data/backups/` (เก็บ 14 ชุด)
+- ตั้ง cron บนเครื่อง host ให้รัน `scripts/backup.sh` วันละครั้ง (สคริปต์เก็บให้อัตโนมัติแค่ 14 ชุดล่าสุด):
+  ```bash
+  sudo apt install sqlite3   # ถ้ายังไม่มี
+  chmod +x scripts/backup.sh
+  crontab -e
+  # เพิ่มบรรทัดนี้ (รันตี 3 ทุกวัน แก้ path ให้ตรงเครื่องจริง):
+  0 3 * * * /path/to/smart-parking/scripts/backup.sh >> /var/log/smart-parking-backup.log 2>&1
+  ```
+- ไฟล์ backup จะอยู่ที่ `data/backups/app_<วันที่เวลา>.db`
 - แนะนำคัดลอกโฟลเดอร์ `data/backups/` ออกนอกเครื่องเป็นระยะ
-- Restore: หยุดระบบ → คัดลอกไฟล์ backup ทับ `data/app.db` → `docker compose up -d`
+- Restore: หยุดระบบ (`docker compose down`) → คัดลอกไฟล์ backup ทับ `data/app.db` → `docker compose up -d`
 
 ### อัปเดตเวอร์ชัน
 ```bash
