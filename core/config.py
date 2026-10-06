@@ -29,7 +29,8 @@ class Settings:
 @lru_cache
 def get_settings() -> Settings:
     """โหลด .env (ครั้งแรกครั้งเดียว) แล้วคืนค่า Settings"""
-    load_dotenv(PROJECT_ROOT / ".env")
+    # ระบุ encoding="utf-8" ชัดเจน ไม่งั้น Windows ไทยจะอ่านด้วย cp874 แล้วค่าภาษาไทยเพี้ยน
+    load_dotenv(PROJECT_ROOT / ".env", encoding="utf-8")
     allow_ips_raw = os.environ.get("ADMIN_ALLOW_IPS", "")
 
     return Settings(

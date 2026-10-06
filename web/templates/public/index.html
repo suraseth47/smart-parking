@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ที่จอดรถว่าง - Smart Parking</title>
+  <link rel="stylesheet" href="/static/css/public.css">
+  <script defer src="/static/js/vendor/alpine.min.js"></script>
+</head>
+<body>
+  <div class="wrap" x-data="publicPage()" x-init="init()">
+    <div class="header">
+      <div class="site-name">
+        <span x-text="lang === 'th' ? site.name_th : site.name_en">Smart Parking</span>
+        <small x-text="t('subtitle')"></small>
+      </div>
+      <button class="lang-toggle" @click="toggleLang()" x-text="lang === 'th' ? 'EN' : 'ไทย'"></button>
+    </div>
+
+    <div class="stale-banner" x-show="stale" x-text="t('stale')"></div>
+
+    <div class="total-card">
+      <div class="total-number" x-text="total.free"></div>
+      <div class="total-label" x-text="t('totalFree')"></div>
+      <div class="total-capacity">
+        <span x-text="t('ofCapacity')"></span> <span x-text="total.capacity"></span>
+      </div>
+      <div class="extra-row">
+        <span><b x-text="total.free_disabled"></b> <span x-text="t('disabled')"></span></span>
+        <span><b x-text="total.free_ev"></b> <span x-text="t('ev')"></span></span>
+      </div>
+      <div class="excluded-note" x-show="total.excluded_zones.length > 0">
+        <span x-text="t('excludedNote')"></span>: <span x-text="total.excluded_zones.join(', ')"></span>
+      </div>
+    </div>
+
+    <div class="zones-grid">
+      <template x-for="zone in zones" :key="zone.code">
+        <div class="zone-card" :class="'status-' + zone.status" :style="zoneStyle(zone)">
+          <div class="zone-name" x-text="lang === 'th' ? zone.name_th : zone.name_en"></div>
+
+          <template x-if="zone.status === 'ok' || zone.status === 'partial'">
+            <div>
+              <div class="zone-free" x-text="zone.free"></div>
+              <div class="zone-capacity">
+                <span x-text="t('ofCapacity')"></span> <span x-text="zone.capacity"></span>
+              </div>
+              <div class="zone-extra" x-show="zone.free_disabled || zone.free_ev">
+                <span x-text="zone.free_disabled"></span> <span x-text="t('disabled')"></span> ·
+                <span x-text="zone.free_ev"></span> <span x-text="t('ev')"></span>
+              </div>
+              <div class="zone-status-label" x-show="zone.status === 'partial'" x-text="t('partialData')"></div>
+            </div>
+          </template>
+
+          <template x-if="zone.status === 'no_data'">
+            <div class="zone-status-label" x-text="t('noData')"></div>
+          </template>
+          <template x-if="zone.status === 'closed'">
+            <div class="zone-status-label" x-text="t('closed')"></div>
+          </template>
+        </div>
+      </template>
+    </div>
+
+    <div class="updated-at">
+      <span x-text="t('updatedAt')"></span>: <span x-text="formattedUpdatedAt"></span>
+    </div>
+  </div>
+
+  <script>
+    const STRINGS = {
+      th: {
+        subtitle: "ที่จอดรถว่างแบบเรียลไทม์",
+        totalFree: "ที่จอดว่างทั้งหมด",
+        ofCapacity: "จาก",
+        disabled: "คนพิการ",
+        ev: "EV",
+        excludedNote: "ไม่รวมโซน",
+        noData: "ไม่มีข้อมูล",
+        partialData: "ข้อมูลบางส่วน",
+        closed: "ปิดให้บริการ",
+        updatedAt: "อัปเดตล่าสุด",
+        stale: "ระบบขัดข้องชั่วคราว ตัวเลขอาจไม่เป็นปัจจุบัน",
+        never: "ยังไม่มีข้อมูล",
+      },
+      en: {
+        subtitle: "Real-time parking availability",
+        totalFree: "Total Available",
+        ofCapacity: "of",
+        disabled: "Disabled",
+        ev: "EV",
+        excludedNote: "Excluding zones",
+        noData: "No data",
+        partialData: "Partial data",
+        closed: "Closed",
+        updatedAt: "Last updated",
+        stale: "System temporarily unavailable, numbers may be outdated",
+        never: "No data yet",
+      },
+    };
+
+    function publicPage() {
+      return {
+        lang: "th",
+        site: { name_th: "", name_en: "" },
+        total: { free: 0, capacity: 0, free_disabled: 0, free_ev: 0, excluded_zones: [] },
+        zones: [],
+        updatedAt: null,
+        stale: false,
+        pollTimer: null,
+
+        init() {
+          this.lang = this._resolveLang();
+          this.fetchSummary();
+          this.pollTimer = setInterval(() => this.fetchSummary(), 30000);
+        },
+
+        t(key) {
+          return STRINGS[this.lang][key] || key;
+        },
+
+        _resolveLang() {
+          const params = new URLSearchParams(window.location.search);
+          const fromUrl = params.get("lang");
+          if (fromUrl === "th" || fromUrl === "en") {
+            document.cookie = `lang=${fromUrl}; path=/; max-age=31536000`;
+            return fromUrl;
+          }
+          const match = document.cookie.match(/(^| )lang=(th|en)( |$)/);
+          return match ? match[2] : "th";
+        },
+
+        toggleLang() {
+          this.lang = this.lang === "th" ? "en" : "th";
+          document.cookie = `lang=${this.lang}; path=/; max-age=31536000`;
+        },
+
+        async fetchSummary() {
+          try {
+            const resp = await fetch("/api/public/summary");
+            if (!resp.ok) return;
+            const data = await resp.json();
+            this.site = data.site;
+            this.total = data.total;
+            this.zones = data.zones;
+            this.updatedAt = data.updated_at;
+            this.stale = data.stale;
+          } catch (e) {
+            // เงียบไว้ รอบถัดไป poll ใหม่เอง
+          }
+        },
+
+        zoneStyle(zone) {
+          if (zone.status !== "ok" && zone.status !== "partial") return {};
+          const pct = zone.capacity > 0 ? (zone.free / zone.capacity) * 100 : 0;
+          let color = "#16a34a";
+          if (pct < 10) color = "#dc2626";
+          else if (pct < 30) color = "#ca8a04";
+          return `--zone-color: ${color}`;
+        },
+
+        get formattedUpdatedAt() {
+          if (!this.updatedAt) return this.t("never");
+          const d = new Date(this.updatedAt + "Z");
+          return d.toLocaleTimeString(this.lang === "th" ? "th-TH" : "en-US", {
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+        },
+      };
+    }
+  </script>
+</body>
+</html>
