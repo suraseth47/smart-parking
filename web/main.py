@@ -8,6 +8,7 @@ from web.routers import (
     admin_pages,
     audit,
     auth,
+    calibration,
     cameras,
     health,
     live,
@@ -30,6 +31,7 @@ app.include_router(override.router)
 app.include_router(reports.router)
 app.include_router(audit.router)
 app.include_router(validation.router)
+app.include_router(calibration.router)
 app.include_router(admin_pages.router)
 app.include_router(public.router)
 
