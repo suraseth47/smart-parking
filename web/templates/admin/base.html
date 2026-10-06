@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}หลังบ้าน{% endblock %} - Smart Parking</title>
+  <link rel="stylesheet" href="/static/css/admin.css">
+  <script defer src="/static/js/vendor/alpine.min.js"></script>
+  <script src="/static/js/api.js"></script>
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <div class="topbar">
+    <span class="site-name">🅿️ Smart Parking - หลังบ้าน</span>
+    <nav>
+      <a href="/admin">กล้อง</a>
+      <a href="#" onclick="logout(); return false;">ออกจากระบบ</a>
+    </nav>
+  </div>
+  <div class="page">
+    {% block content %}{% endblock %}
+  </div>
+</body>
+</html>

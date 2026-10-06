@@ -21,8 +21,15 @@ def check_camera_connection(source: str, output_path: Path, timeout_s: int = 10)
         command += ["-rtsp_transport", "tcp", "-timeout", str(timeout_s * 1_000_000)]
     command += ["-i", source, "-frames:v", "1", str(output_path)]
     try:
+        # encoding ระบุตรงๆ เป็น utf-8 เพราะ default locale encoding ของเครื่อง (เช่น cp874
+        # บน Windows ไทย) ถอดข้อความ build ของ ffmpeg ไม่ได้ ทำให้ subprocess พังระหว่างอ่าน stderr
         result = subprocess.run(
-            command, capture_output=True, text=True, timeout=timeout_s + 5
+            command,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout_s + 5,
         )
     except subprocess.TimeoutExpired:
         return ConnectionTestResult(ok=False, message="หมดเวลาเชื่อมต่อกล้อง (timeout)")

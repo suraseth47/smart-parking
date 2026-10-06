@@ -1,0 +1,103 @@
+{% extends "admin/base.html" %}
+{% block title %}กล้อง{% endblock %}
+{% block content %}
+<div x-data="dashboard()" x-init="init()">
+  <div class="card" style="margin-bottom:1rem;">
+    <h2 style="margin-top:0;">กล้อง</h2>
+    <p class="muted" x-show="cameras.length === 0">ยังไม่มีกล้อง เพิ่มกล้องแรกด้านล่าง</p>
+    <table style="width:100%; border-collapse:collapse;" x-show="cameras.length > 0">
+      <thead>
+        <tr style="text-align:left; border-bottom:1px solid var(--color-border);">
+          <th style="padding:0.4rem;">ชื่อ</th>
+          <th style="padding:0.4rem;">ยี่ห้อ</th>
+          <th style="padding:0.4rem;">โฮสต์</th>
+          <th style="padding:0.4rem;">สถานะ</th>
+          <th style="padding:0.4rem;"></th>
+        </tr>
+      </thead>
+      <tbody>
+        <template x-for="cam in cameras" :key="cam.id">
+          <tr style="border-bottom:1px solid var(--color-border);">
+            <td style="padding:0.4rem;" x-text="cam.name"></td>
+            <td style="padding:0.4rem;" x-text="cam.brand"></td>
+            <td style="padding:0.4rem;" x-text="cam.host"></td>
+            <td style="padding:0.4rem;" x-text="cam.status"></td>
+            <td style="padding:0.4rem;">
+              <a class="btn" :href="'/admin/layout?camera_id=' + cam.id">กำหนดช่องจอด</a>
+            </td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2 style="margin-top:0;">เพิ่มกล้องใหม่</h2>
+    <form @submit.prevent="createCamera">
+      <label>ชื่อกล้อง</label>
+      <input type="text" x-model="form.name" required>
+
+      <label>ยี่ห้อ</label>
+      <select x-model="form.brand">
+        <option value="hikvision">Hikvision</option>
+        <option value="dahua">Dahua</option>
+        <option value="custom">Custom (กรอก RTSP URL เอง)</option>
+      </select>
+
+      <template x-if="form.brand !== 'custom'">
+        <div>
+          <label>IP กล้อง</label>
+          <input type="text" x-model="form.host" placeholder="192.168.1.10">
+          <label>Username</label>
+          <input type="text" x-model="form.username">
+          <label>Password</label>
+          <input type="password" x-model="form.password">
+          <label>Channel</label>
+          <input type="number" x-model.number="form.channel" min="1">
+        </div>
+      </template>
+      <template x-if="form.brand === 'custom'">
+        <div>
+          <label>RTSP URL (หรือ path ไฟล์วิดีโอ/ภาพสำหรับทดสอบ)</label>
+          <input type="text" x-model="form.rtsp_url_custom" placeholder="rtsp://... หรือ data/samples/xxx.mp4">
+        </div>
+      </template>
+
+      <button type="submit" style="margin-top:1rem;" :disabled="loading">เพิ่มกล้อง</button>
+      <p class="error-text" x-show="error" x-text="error"></p>
+    </form>
+  </div>
+</div>
+
+<script>
+  function dashboard() {
+    return {
+      cameras: [],
+      loading: false,
+      error: "",
+      form: { name: "", brand: "hikvision", host: "", username: "", password: "", channel: 1, rtsp_url_custom: "" },
+      async init() {
+        const user = await requireAuth();
+        if (!user) return;
+        await this.loadCameras();
+      },
+      async loadCameras() {
+        this.cameras = await apiJson("/api/admin/cameras");
+      },
+      async createCamera() {
+        this.loading = true;
+        this.error = "";
+        try {
+          await apiJson("/api/admin/cameras", { method: "POST", body: JSON.stringify(this.form) });
+          this.form = { name: "", brand: "hikvision", host: "", username: "", password: "", channel: 1, rtsp_url_custom: "" };
+          await this.loadCameras();
+        } catch (e) {
+          this.error = e.message;
+        } finally {
+          this.loading = false;
+        }
+      },
+    };
+  }
+</script>
+{% endblock %}

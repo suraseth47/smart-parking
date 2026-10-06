@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>เข้าสู่ระบบ - Smart Parking</title>
+  <link rel="stylesheet" href="/static/css/admin.css">
+  <script defer src="/static/js/vendor/alpine.min.js"></script>
+</head>
+<body>
+  <div class="login-wrap">
+    <div class="login-box card" x-data="loginForm()">
+      <h1>เข้าสู่ระบบหลังบ้าน</h1>
+      <form @submit.prevent="submit">
+        <label for="username">Username</label>
+        <input id="username" type="text" x-model="username" autocomplete="username" required>
+
+        <label for="password">Password</label>
+        <input id="password" type="password" x-model="password" autocomplete="current-password" required>
+
+        <button type="submit" :disabled="loading" style="margin-top:1rem; width:100%">
+          <span x-show="!loading">เข้าสู่ระบบ</span>
+          <span x-show="loading">กำลังเข้าสู่ระบบ...</span>
+        </button>
+        <p class="error-text" x-show="error" x-text="error"></p>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    function loginForm() {
+      return {
+        username: "",
+        password: "",
+        error: "",
+        loading: false,
+        async submit() {
+          this.loading = true;
+          this.error = "";
+          try {
+            const resp = await fetch("/api/admin/login", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ username: this.username, password: this.password }),
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok) {
+              this.error = data.detail || "เข้าสู่ระบบไม่สำเร็จ";
+              return;
+            }
+            window.location.href = "/admin";
+          } catch (e) {
+            this.error = "เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ";
+          } finally {
+            this.loading = false;
+          }
+        },
+      };
+    }
+  </script>
+</body>
+</html>

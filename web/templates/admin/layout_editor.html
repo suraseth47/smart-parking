@@ -1,0 +1,89 @@
+{% extends "admin/base.html" %}
+{% block title %}กำหนดช่องจอด{% endblock %}
+{% block head %}
+<script src="/static/js/vendor/konva.min.js"></script>
+{% endblock %}
+{% block content %}
+<div id="no-camera" class="card" style="display:none;">
+  <p>กรุณาเลือกกล้องจาก<a href="/admin">หน้ากล้อง</a>ก่อน</p>
+</div>
+
+<div id="editor-root" style="display:none;">
+  <div class="toolbar">
+    <strong id="camera-name">กล้อง</strong>
+    <button id="btn-fetch-snapshot" class="btn-secondary">ดึงภาพล่าสุด</button>
+    <button id="btn-draw">+ วาดช่องใหม่</button>
+    <button id="btn-save" class="btn-secondary">บันทึก Draft</button>
+    <button id="btn-preview" class="btn-secondary">Preview</button>
+    <button id="btn-publish">Publish</button>
+    <span id="status-text" class="muted"></span>
+  </div>
+
+  <div class="editor-layout">
+    <div class="editor-canvas-wrap">
+      <div id="stage-container"></div>
+      <p class="muted" id="no-snapshot-msg" style="display:none;">
+        ยังไม่มีภาพของกล้องนี้ กดปุ่ม "ดึงภาพล่าสุด" ก่อนเริ่มวาด
+      </p>
+      <p class="muted" id="preview-summary"></p>
+    </div>
+
+    <div class="editor-side">
+      <div class="card" style="margin-bottom:0.75rem;">
+        <h3 style="margin-top:0;">ค่าเริ่มต้นช่องใหม่</h3>
+        <label>โซน</label>
+        <select id="default-zone"></select>
+        <label>ประเภท</label>
+        <select id="default-type">
+          <option value="normal">ปกติ (normal)</option>
+          <option value="disabled">คนพิการ/ผู้สูงอายุ (disabled)</option>
+          <option value="ev">EV</option>
+          <option value="reserved">สงวน/VIP (reserved)</option>
+        </select>
+        <label>รหัสขึ้นต้น (auto-numbering)</label>
+        <input type="text" id="code-prefix" value="A-">
+      </div>
+
+      <div class="card" id="selected-slot-card" style="display:none; margin-bottom:0.75rem;">
+        <h3 style="margin-top:0;">ช่องที่เลือก</h3>
+        <label>รหัสช่อง</label>
+        <input type="text" id="sel-code">
+        <label>โซน</label>
+        <select id="sel-zone"></select>
+        <label>ประเภท</label>
+        <select id="sel-type">
+          <option value="normal">ปกติ (normal)</option>
+          <option value="disabled">คนพิการ/ผู้สูงอายุ (disabled)</option>
+          <option value="ev">EV</option>
+          <option value="reserved">สงวน/VIP (reserved)</option>
+        </select>
+        <label>Threshold</label>
+        <input type="number" id="sel-threshold" min="0" max="1" step="0.05">
+
+        <div style="margin-top:0.75rem; display:flex; gap:0.5rem; flex-wrap:wrap;">
+          <button id="btn-copy" class="btn-secondary">คัดลอก</button>
+          <button id="btn-delete" class="btn-danger">ลบ</button>
+        </div>
+
+        <hr style="margin:0.75rem 0; border-color:var(--color-border);">
+        <h4 style="margin:0 0 0.5rem;">ทำซ้ำตามแนว (Repeat)</h4>
+        <label>จำนวนช่องที่จะทำซ้ำ</label>
+        <input type="number" id="repeat-count" value="3" min="1" max="50">
+        <label>ทิศทาง</label>
+        <select id="repeat-direction">
+          <option value="right">ขวา →</option>
+          <option value="down">ลง ↓</option>
+        </select>
+        <button id="btn-repeat" class="btn-secondary" style="margin-top:0.5rem;">ทำซ้ำ</button>
+      </div>
+
+      <div class="card">
+        <h3 style="margin-top:0;">ช่องทั้งหมด (<span id="slot-count">0</span>)</h3>
+        <ul class="slot-list" id="slot-list"></ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/static/js/layout_editor.js"></script>
+{% endblock %}

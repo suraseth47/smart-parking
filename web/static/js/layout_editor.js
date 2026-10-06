@@ -1,0 +1,468 @@
+// Layout Editor: วาด/แก้/ลบ/คัดลอก/ทำซ้ำช่องจอดด้วย Konva.js (FR-24), preview (FR-25), publish (FR-26)
+
+const TYPE_LABELS = {
+  normal: "ปกติ",
+  disabled: "คนพิการ",
+  ev: "EV",
+  reserved: "สงวน",
+};
+
+const STATE_COLORS = { free: "#16a34a", occupied: "#dc2626" };
+const DEFAULT_STROKE = "#38bdf8";
+const SELECTED_STROKE = "#f97316";
+
+class LayoutEditor {
+  constructor(cameraId) {
+    this.cameraId = cameraId;
+    this.zones = [];
+    this.slots = [];
+    this.selected = null;
+    this.drawMode = false;
+    this.drawPoints = [];
+    this.stage = null;
+    this.layer = null;
+    this.imgWidth = 0;
+    this.imgHeight = 0;
+  }
+
+  async init() {
+    const camera = await apiJson(`/api/admin/cameras/${this.cameraId}`);
+    document.getElementById("camera-name").textContent = `กล้อง: ${camera.name}`;
+
+    this.zones = await apiJson("/api/admin/zones");
+    this._fillZoneSelect(document.getElementById("default-zone"));
+    this._fillZoneSelect(document.getElementById("sel-zone"));
+
+    await this._loadSnapshotAndSetupStage();
+    await this._loadSlots();
+    this._wireButtons();
+  }
+
+  _fillZoneSelect(selectEl) {
+    selectEl.innerHTML = "";
+    for (const z of this.zones) {
+      const opt = document.createElement("option");
+      opt.value = z.id;
+      opt.textContent = `${z.code} - ${z.name_th}`;
+      selectEl.appendChild(opt);
+    }
+  }
+
+  async _loadSnapshotAndSetupStage() {
+    const maxWidth = Math.min(900, window.innerWidth - 40);
+    const snapshotUrl = `/api/admin/cameras/${this.cameraId}/snapshot?t=${Date.now()}`;
+
+    const img = new Image();
+    const loaded = await new Promise((resolve) => {
+      img.onload = () => resolve(true);
+      img.onerror = () => resolve(false);
+      img.src = snapshotUrl;
+    });
+
+    if (loaded) {
+      document.getElementById("no-snapshot-msg").style.display = "none";
+      const scale = Math.min(1, maxWidth / img.naturalWidth);
+      this.imgWidth = Math.round(img.naturalWidth * scale);
+      this.imgHeight = Math.round(img.naturalHeight * scale);
+    } else {
+      document.getElementById("no-snapshot-msg").style.display = "block";
+      this.imgWidth = maxWidth;
+      this.imgHeight = Math.round(maxWidth * 0.5625);
+    }
+
+    document.getElementById("stage-container").innerHTML = "";
+    this.stage = new Konva.Stage({
+      container: "stage-container",
+      width: this.imgWidth,
+      height: this.imgHeight,
+    });
+
+    const bgLayer = new Konva.Layer();
+    if (loaded) {
+      bgLayer.add(new Konva.Image({ image: img, width: this.imgWidth, height: this.imgHeight }));
+    }
+    this.stage.add(bgLayer);
+
+    this.layer = new Konva.Layer();
+    this.stage.add(this.layer);
+
+    this.stage.on("click tap", (e) => this._onStageClick(e));
+  }
+
+  async _loadSlots() {
+    const data = await apiJson(`/api/admin/cameras/${this.cameraId}/slots`);
+    this.slots = data.map((s) => this._toSlotState(s));
+    this.selected = null;
+    this._renderAll();
+  }
+
+  _toSlotState(apiSlot) {
+    return {
+      id: apiSlot.id,
+      code: apiSlot.code,
+      zone_id: apiSlot.zone_id,
+      type: apiSlot.type,
+      polygon: apiSlot.polygon.map((p) => [...p]),
+      threshold: apiSlot.threshold,
+      is_active: apiSlot.is_active,
+      group: null,
+      previewState: null,
+    };
+  }
+
+  // ---------- วาดช่องใหม่ ----------
+
+  _onStageClick(e) {
+    if (!this.drawMode) return;
+    const pos = this.stage.getPointerPosition();
+    this.drawPoints.push([pos.x / this.imgWidth, pos.y / this.imgHeight]);
+    if (this.drawPoints.length === 4) {
+      this._finishDrawing(this.drawPoints);
+      this.drawPoints = [];
+    }
+  }
+
+  toggleDrawMode() {
+    this.drawMode = !this.drawMode;
+    this.drawPoints = [];
+    document.getElementById("btn-draw").textContent = this.drawMode
+      ? "กำลังวาด... (คลิก 4 จุด, กดอีกทีเพื่อหยุด)"
+      : "+ วาดช่องใหม่";
+    this.stage.container().style.cursor = this.drawMode ? "crosshair" : "default";
+  }
+
+  _finishDrawing(points) {
+    const zoneId = Number(document.getElementById("default-zone").value);
+    const type = document.getElementById("default-type").value;
+    const prefix = document.getElementById("code-prefix").value || "A-";
+
+    const slot = {
+      id: null,
+      code: this._nextCode(prefix),
+      zone_id: zoneId,
+      type,
+      polygon: points,
+      threshold: 0.3,
+      is_active: true,
+      group: null,
+      previewState: null,
+    };
+    this.slots.push(slot);
+    this.select(slot);
+  }
+
+  _nextCode(prefix) {
+    let max = 0;
+    for (const s of this.slots) {
+      if (s.code.startsWith(prefix)) {
+        const n = parseInt(s.code.slice(prefix.length), 10);
+        if (!isNaN(n) && n > max) max = n;
+      }
+    }
+    return prefix + String(max + 1).padStart(2, "0");
+  }
+
+  // ---------- render ----------
+
+  _renderAll() {
+    this.layer.destroyChildren();
+    for (const slot of this.slots) this._renderSlot(slot);
+    this.layer.draw();
+    this._renderSlotList();
+    document.getElementById("slot-count").textContent = this.slots.length;
+  }
+
+  _renderSlot(slot) {
+    const group = new Konva.Group();
+    const isSelected = this.selected === slot;
+
+    let stroke = DEFAULT_STROKE;
+    if (slot.previewState) stroke = STATE_COLORS[slot.previewState] || DEFAULT_STROKE;
+    if (isSelected) stroke = SELECTED_STROKE;
+
+    const points = slot.polygon.flatMap(([x, y]) => [x * this.imgWidth, y * this.imgHeight]);
+    const line = new Konva.Line({
+      points,
+      closed: true,
+      stroke,
+      strokeWidth: isSelected ? 3 : 2,
+      fill: stroke,
+      opacity: slot.previewState ? 0.35 : 0.15,
+    });
+    group.add(line);
+
+    const centroid = this._centroid(slot.polygon);
+    const label = new Konva.Text({
+      x: centroid[0] * this.imgWidth - 15,
+      y: centroid[1] * this.imgHeight - 7,
+      text: slot.code,
+      fontSize: 13,
+      fill: "#fff",
+      fontStyle: "bold",
+    });
+    group.add(label);
+
+    line.on("click tap", (evt) => {
+      if (this.drawMode) return;
+      evt.cancelBubble = true;
+      this.select(slot);
+    });
+
+    if (isSelected && !this.drawMode) {
+      slot.polygon.forEach((pt, idx) => {
+        const handle = new Konva.Circle({
+          x: pt[0] * this.imgWidth,
+          y: pt[1] * this.imgHeight,
+          radius: 6,
+          fill: "#fff",
+          stroke: SELECTED_STROKE,
+          strokeWidth: 2,
+          draggable: true,
+        });
+        handle.on("dragmove", () => {
+          slot.polygon[idx] = [handle.x() / this.imgWidth, handle.y() / this.imgHeight];
+          line.points(slot.polygon.flatMap(([x, y]) => [x * this.imgWidth, y * this.imgHeight]));
+          const c = this._centroid(slot.polygon);
+          label.x(c[0] * this.imgWidth - 15);
+          label.y(c[1] * this.imgHeight - 7);
+          this.layer.batchDraw();
+        });
+        group.add(handle);
+      });
+    }
+
+    slot.group = group;
+    this.layer.add(group);
+  }
+
+  _centroid(polygon) {
+    const n = polygon.length;
+    const sx = polygon.reduce((a, p) => a + p[0], 0);
+    const sy = polygon.reduce((a, p) => a + p[1], 0);
+    return [sx / n, sy / n];
+  }
+
+  _renderSlotList() {
+    const ul = document.getElementById("slot-list");
+    ul.innerHTML = "";
+    for (const slot of this.slots) {
+      const li = document.createElement("li");
+      if (slot === this.selected) li.classList.add("selected");
+      const zone = this.zones.find((z) => z.id === slot.zone_id);
+      const badge = slot.previewState ? `<span class="badge badge-${slot.previewState}">${slot.previewState}</span>` : "";
+      li.innerHTML = `<span>${slot.code} <span class="muted">(${zone ? zone.code : "?"}, ${TYPE_LABELS[slot.type] || slot.type})</span></span>${badge}`;
+      li.style.cursor = "pointer";
+      li.addEventListener("click", () => this.select(slot));
+      ul.appendChild(li);
+    }
+  }
+
+  // ---------- เลือก/แก้ไขช่อง ----------
+
+  select(slot) {
+    this.selected = slot;
+    this._renderAll();
+    const card = document.getElementById("selected-slot-card");
+    if (!slot) {
+      card.style.display = "none";
+      return;
+    }
+    card.style.display = "block";
+    document.getElementById("sel-code").value = slot.code;
+    document.getElementById("sel-zone").value = slot.zone_id;
+    document.getElementById("sel-type").value = slot.type;
+    document.getElementById("sel-threshold").value = slot.threshold;
+  }
+
+  applySelectedEdits() {
+    if (!this.selected) return;
+    this.selected.code = document.getElementById("sel-code").value;
+    this.selected.zone_id = Number(document.getElementById("sel-zone").value);
+    this.selected.type = document.getElementById("sel-type").value;
+    this.selected.threshold = Number(document.getElementById("sel-threshold").value);
+    this._renderAll();
+  }
+
+  deleteSelected() {
+    if (!this.selected) return;
+    this.slots = this.slots.filter((s) => s !== this.selected);
+    this.selected = null;
+    document.getElementById("selected-slot-card").style.display = "none";
+    this._renderAll();
+  }
+
+  copySelected() {
+    if (!this.selected) return;
+    const prefix = document.getElementById("code-prefix").value || "A-";
+    const offset = 0.03;
+    const copy = {
+      id: null,
+      code: this._nextCode(prefix),
+      zone_id: this.selected.zone_id,
+      type: this.selected.type,
+      polygon: this.selected.polygon.map(([x, y]) => [x + offset, y + offset]),
+      threshold: this.selected.threshold,
+      is_active: true,
+      group: null,
+      previewState: null,
+    };
+    this.slots.push(copy);
+    this.select(copy);
+  }
+
+  repeatSelected(count, direction) {
+    if (!this.selected) return;
+    const prefix = document.getElementById("code-prefix").value || "A-";
+    const xs = this.selected.polygon.map((p) => p[0]);
+    const ys = this.selected.polygon.map((p) => p[1]);
+    const width = Math.max(...xs) - Math.min(...xs);
+    const height = Math.max(...ys) - Math.min(...ys);
+    const dx = direction === "right" ? width : 0;
+    const dy = direction === "down" ? height : 0;
+
+    const base = this.selected;
+    for (let i = 1; i <= count; i++) {
+      this.slots.push({
+        id: null,
+        code: this._nextCode(prefix),
+        zone_id: base.zone_id,
+        type: base.type,
+        polygon: base.polygon.map(([x, y]) => [x + dx * i, y + dy * i]),
+        threshold: base.threshold,
+        is_active: true,
+        group: null,
+        previewState: null,
+      });
+    }
+    this._renderAll();
+  }
+
+  // ---------- save / preview / publish ----------
+
+  async saveDraft() {
+    this._setStatus("กำลังบันทึก...");
+    const payload = {
+      slots: this.slots.map((s) => ({
+        id: s.id,
+        code: s.code,
+        zone_id: s.zone_id,
+        type: s.type,
+        polygon: s.polygon,
+        threshold: s.threshold,
+        is_active: s.is_active,
+      })),
+    };
+    try {
+      const saved = await apiJson(`/api/admin/cameras/${this.cameraId}/slots`, {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      });
+      this.slots = saved.map((s) => this._toSlotState(s));
+      this.selected = null;
+      document.getElementById("selected-slot-card").style.display = "none";
+      this._renderAll();
+      this._setStatus(`บันทึก draft สำเร็จ (${saved.length} ช่อง)`);
+    } catch (e) {
+      this._setStatus("บันทึกไม่สำเร็จ: " + e.message, true);
+    }
+  }
+
+  async preview() {
+    this._setStatus("กำลังตรวจจับ...");
+    const payload = { slots: this.slots.map((s) => ({ code: s.code, polygon: s.polygon, threshold: s.threshold })) };
+    try {
+      const result = await apiJson(`/api/admin/cameras/${this.cameraId}/slots/preview`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      const byCode = {};
+      for (const r of result.results) byCode[r.code] = r;
+      for (const slot of this.slots) slot.previewState = byCode[slot.code] ? byCode[slot.code].state : null;
+
+      await this._refreshBackgroundImage();
+      this._renderAll();
+      document.getElementById("preview-summary").textContent = `ตรวจพบรถ ${result.detected_vehicle_count} คัน`;
+      this._setStatus("preview สำเร็จ");
+    } catch (e) {
+      this._setStatus("preview ไม่สำเร็จ: " + e.message, true);
+    }
+  }
+
+  async _refreshBackgroundImage() {
+    const bgLayer = this.stage.getLayers()[0];
+    const img = new Image();
+    await new Promise((resolve) => {
+      img.onload = resolve;
+      img.onerror = resolve;
+      img.src = `/api/admin/cameras/${this.cameraId}/snapshot?t=${Date.now()}`;
+    });
+    bgLayer.destroyChildren();
+    bgLayer.add(new Konva.Image({ image: img, width: this.imgWidth, height: this.imgHeight }));
+    bgLayer.draw();
+  }
+
+  async publish() {
+    if (!confirm("ยืนยัน publish layout นี้? ช่องทั้งหมดของกล้องนี้จะถูกใช้งานจริงทันที")) return;
+    this._setStatus("กำลัง publish...");
+    try {
+      const result = await apiJson(`/api/admin/cameras/${this.cameraId}/slots/publish`, { method: "POST" });
+      this._setStatus(`Publish สำเร็จ (${result.published_count} ช่อง)`);
+      await this._loadSlots();
+    } catch (e) {
+      this._setStatus("publish ไม่สำเร็จ: " + e.message, true);
+    }
+  }
+
+  async fetchFreshSnapshot() {
+    this._setStatus("กำลังดึงภาพจากกล้อง...");
+    try {
+      await apiJson(`/api/admin/cameras/${this.cameraId}/test`, { method: "POST" });
+      await this._loadSnapshotAndSetupStage();
+      this._renderAll();
+      this._setStatus("ดึงภาพสำเร็จ");
+    } catch (e) {
+      this._setStatus("ดึงภาพไม่สำเร็จ: " + e.message, true);
+    }
+  }
+
+  _setStatus(text, isError = false) {
+    const el = document.getElementById("status-text");
+    el.textContent = text;
+    el.style.color = isError ? "var(--color-danger)" : "var(--color-muted)";
+  }
+
+  _wireButtons() {
+    document.getElementById("btn-draw").addEventListener("click", () => this.toggleDrawMode());
+    document.getElementById("btn-save").addEventListener("click", () => this.saveDraft());
+    document.getElementById("btn-preview").addEventListener("click", () => this.preview());
+    document.getElementById("btn-publish").addEventListener("click", () => this.publish());
+    document.getElementById("btn-fetch-snapshot").addEventListener("click", () => this.fetchFreshSnapshot());
+    document.getElementById("btn-delete").addEventListener("click", () => this.deleteSelected());
+    document.getElementById("btn-copy").addEventListener("click", () => this.copySelected());
+    document.getElementById("btn-repeat").addEventListener("click", () => {
+      const count = Number(document.getElementById("repeat-count").value) || 1;
+      const direction = document.getElementById("repeat-direction").value;
+      this.repeatSelected(count, direction);
+    });
+    for (const id of ["sel-code", "sel-zone", "sel-type", "sel-threshold"]) {
+      document.getElementById(id).addEventListener("change", () => this.applySelectedEdits());
+    }
+  }
+}
+
+(async function bootstrap() {
+  const params = new URLSearchParams(window.location.search);
+  const cameraId = params.get("camera_id");
+
+  const user = await requireAuth();
+  if (!user) return;
+
+  if (!cameraId) {
+    document.getElementById("no-camera").style.display = "block";
+    return;
+  }
+
+  document.getElementById("editor-root").style.display = "block";
+  const editor = new LayoutEditor(Number(cameraId));
+  await editor.init();
+})();
