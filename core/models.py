@@ -114,6 +114,7 @@ class Camera(Base):
         SAEnum(CameraStatus, native_enum=False, length=20), default=CameraStatus.OFFLINE
     )
     last_frame_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_health_check_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     last_infer_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
     last_error: Mapped[str | None] = mapped_column(String(255), nullable=True)
     frame_w: Mapped[int | None] = mapped_column(Integer, nullable=True)

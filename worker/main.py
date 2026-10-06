@@ -11,9 +11,19 @@ from sqlalchemy.orm import Session
 from core.camera_utils import build_camera_url, snapshot_path
 from core.config import PROJECT_ROOT
 from core.db import SessionLocal
-from core.models import Camera, CameraStatus, LayoutStatus, OccupancyState, Slot, SlotEvent, SlotState
+from core.models import (
+    AlertLevel,
+    Camera,
+    CameraStatus,
+    LayoutStatus,
+    OccupancyState,
+    Slot,
+    SlotEvent,
+    SlotState,
+)
 from worker.capture import grab_frame
 from worker.detector import OnnxYoloxDetector
+from worker.health import detect_camera_moved, is_health_check_due, raise_alert, resolve_alerts
 from worker.occupancy import (
     apply_debounce,
     compute_footprint,
@@ -57,14 +67,49 @@ def _is_due(camera: Camera) -> bool:
 
 
 def process_camera(db: Session, camera: Camera, detector: OnnxYoloxDetector) -> None:
-    """รอบประมวลผล 1 กล้อง: ดึงภาพ -> ตรวจจับ -> อัปเดตสถานะทุกช่อง (FR-1, FR-2, FR-6..11)"""
-    camera.last_frame_at = datetime.utcnow()
+    """รอบประมวลผล 1 กล้อง: ดึงภาพ -> ตรวจกล้องขยับ -> ตรวจจับ -> อัปเดตสถานะทุกช่อง (FR-1,2,6..11,30,32)"""
+    now = datetime.utcnow()
+    camera.last_frame_at = now
+    connection_alert_source = f"camera:{camera.id}:connection"
+    moved_alert_source = f"camera:{camera.id}:moved"
 
     try:
         frame = grab_frame(build_camera_url(camera))
     except RuntimeError as exc:
         camera.status = CameraStatus.OFFLINE
         camera.last_error = str(exc)
+        raise_alert(db, AlertLevel.ERROR, connection_alert_source, f"กล้อง {camera.name} ขาดการเชื่อมต่อ: {exc}")
+        _mark_camera_slots_unknown(db, camera)
+        db.commit()
+        return
+
+    camera.last_error = None
+    resolve_alerts(db, connection_alert_source)
+    if camera.status != CameraStatus.MOVED:
+        camera.status = CameraStatus.ONLINE  # ถ้าค้างเป็น moved อยู่ ให้รอผลเช็ครอบถัดไปก่อนค่อยเปลี่ยน
+
+    frame_h, frame_w = frame.shape[:2]
+    camera.frame_w = frame_w
+    camera.frame_h = frame_h
+
+    path = snapshot_path(camera.id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    cv2.imencode(".jpg", frame)[1].tofile(str(path))  # FR-5: เก็บภาพล่าสุด 1 ภาพ (เขียนทับ)
+
+    if camera.reference_image_path and is_health_check_due(camera, now):
+        camera.last_health_check_at = now
+        if _check_camera_moved(camera, frame):
+            camera.status = CameraStatus.MOVED
+            raise_alert(
+                db, AlertLevel.WARNING, moved_alert_source,
+                f"กล้อง {camera.name} อาจถูกขยับตำแหน่ง กรุณาตรวจสอบ",
+            )
+        else:
+            camera.status = CameraStatus.ONLINE
+            resolve_alerts(db, moved_alert_source)
+
+    if camera.status == CameraStatus.MOVED:
+        # ช่องของกล้องที่ถูกขยับเชื่อถือไม่ได้จนกว่าจะเช็คยืนยันว่ากลับมาปกติ (FR-9)
         _mark_camera_slots_unknown(db, camera)
         db.commit()
         return
@@ -72,16 +117,6 @@ def process_camera(db: Session, camera: Camera, detector: OnnxYoloxDetector) -> 
     infer_start = time.perf_counter()
     detections = detector.detect(frame)
     camera.last_infer_ms = (time.perf_counter() - infer_start) * 1000
-
-    frame_h, frame_w = frame.shape[:2]
-    camera.frame_w = frame_w
-    camera.frame_h = frame_h
-    camera.status = CameraStatus.ONLINE
-    camera.last_error = None
-
-    path = snapshot_path(camera.id)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    cv2.imencode(".jpg", frame)[1].tofile(str(path))  # FR-5: เก็บภาพล่าสุด 1 ภาพ (เขียนทับ)
 
     footprints = [compute_footprint(normalize_box(d.box, frame_w, frame_h)) for d in detections]
 
@@ -93,11 +128,19 @@ def process_camera(db: Session, camera: Camera, detector: OnnxYoloxDetector) -> 
         )
     ).all()
 
-    now = datetime.utcnow()
     for slot in slots:
         _update_slot_state(db, slot, footprints, now)
 
     db.commit()
+
+
+def _check_camera_moved(camera: Camera, frame) -> bool:
+    """อ่านภาพอ้างอิงแล้วเทียบกับภาพปัจจุบัน; อ่านภาพอ้างอิงไม่ได้ถือว่ายังไม่ขยับ (ข้ามรอบนี้ไปก่อน)"""
+    try:
+        reference = grab_frame(camera.reference_image_path)
+    except RuntimeError:
+        return False
+    return detect_camera_moved(reference, frame)
 
 
 def _update_slot_state(db: Session, slot: Slot, footprints: list, now: datetime) -> None:
@@ -133,7 +176,7 @@ def _update_slot_state(db: Session, slot: Slot, footprints: list, now: datetime)
 
 
 def _mark_camera_slots_unknown(db: Session, camera: Camera) -> None:
-    """ดึงภาพไม่ได้ -> ช่องที่ publish แล้วของกล้องนี้ทั้งหมดเป็น unknown (FR-9)"""
+    """ดึงภาพไม่ได้ หรือกล้องถูกขยับ -> ช่องที่ publish แล้วของกล้องนี้ทั้งหมดเป็น unknown (FR-9)"""
     slots = db.scalars(
         select(Slot).where(Slot.camera_id == camera.id, Slot.layout_status == LayoutStatus.PUBLISHED)
     ).all()
