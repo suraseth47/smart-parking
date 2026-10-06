@@ -14,6 +14,32 @@ MIN_MATCH_COUNT = 10  # ถ้าหาจุดสังเกตร่วม�
 MOVED_TRANSLATION_THRESHOLD_PX = 50.0  # ภาพเลื่อนเกินนี้ (พิกเซล) ถือว่ากล้องถูกขยับ
 
 
+def compute_camera_transform(reference_image: np.ndarray, current_image: np.ndarray) -> np.ndarray | None:
+    """คำนวณ affine transform จากภาพอ้างอิงไปภาพปัจจุบันด้วย ORB feature matching
+
+    ใช้ร่วมกันโดย detect_camera_moved (FR-30) และปุ่ม Re-align (FR-30 เฟส 3)
+    คืน None ถ้าหาจุดสังเกตร่วมกันไม่พอ หรือคำนวณ transform ไม่ได้
+    """
+    orb = cv2.ORB_create(nfeatures=500)
+    kp1, des1 = orb.detectAndCompute(reference_image, None)
+    kp2, des2 = orb.detectAndCompute(current_image, None)
+
+    if des1 is None or des2 is None or len(kp1) < MIN_MATCH_COUNT or len(kp2) < MIN_MATCH_COUNT:
+        return None
+
+    matcher = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+    matches = matcher.match(des1, des2)
+    if len(matches) < MIN_MATCH_COUNT:
+        return None
+
+    matches = sorted(matches, key=lambda m: m.distance)[:100]
+    src_pts = np.float32([kp1[m.queryIdx].pt for m in matches]).reshape(-1, 1, 2)
+    dst_pts = np.float32([kp2[m.trainIdx].pt for m in matches]).reshape(-1, 1, 2)
+
+    transform, _inliers = cv2.estimateAffinePartial2D(src_pts, dst_pts, method=cv2.RANSAC)
+    return transform
+
+
 def detect_camera_moved(
     reference_image: np.ndarray,
     current_image: np.ndarray,
@@ -24,28 +50,25 @@ def detect_camera_moved(
     คืน True ถ้าน่าจะกล้องถูกขยับ: หาจุดสังเกตร่วมกันไม่พอ หรือระยะเลื่อน (translation)
     ที่ประมาณได้เกิน threshold_px
     """
-    orb = cv2.ORB_create(nfeatures=500)
-    kp1, des1 = orb.detectAndCompute(reference_image, None)
-    kp2, des2 = orb.detectAndCompute(current_image, None)
-
-    if des1 is None or des2 is None or len(kp1) < MIN_MATCH_COUNT or len(kp2) < MIN_MATCH_COUNT:
-        return True
-
-    matcher = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
-    matches = matcher.match(des1, des2)
-    if len(matches) < MIN_MATCH_COUNT:
-        return True
-
-    matches = sorted(matches, key=lambda m: m.distance)[:100]
-    src_pts = np.float32([kp1[m.queryIdx].pt for m in matches]).reshape(-1, 1, 2)
-    dst_pts = np.float32([kp2[m.trainIdx].pt for m in matches]).reshape(-1, 1, 2)
-
-    transform, _inliers = cv2.estimateAffinePartial2D(src_pts, dst_pts, method=cv2.RANSAC)
+    transform = compute_camera_transform(reference_image, current_image)
     if transform is None:
         return True
 
     translation = float(np.hypot(transform[0, 2], transform[1, 2]))
     return translation > threshold_px
+
+
+def apply_transform_to_polygon(
+    polygon: list[list[float]], transform: np.ndarray, frame_width: int, frame_height: int
+) -> list[list[float]]:
+    """ขยับ polygon (normalized 0-1) ตาม affine transform ที่คำนวณได้ (FR-30 เฟส 3 ปุ่ม Re-align)"""
+    result = []
+    for x_norm, y_norm in polygon:
+        x_px, y_px = x_norm * frame_width, y_norm * frame_height
+        new_x = transform[0, 0] * x_px + transform[0, 1] * y_px + transform[0, 2]
+        new_y = transform[1, 0] * x_px + transform[1, 1] * y_px + transform[1, 2]
+        result.append([new_x / frame_width, new_y / frame_height])
+    return result
 
 
 def is_health_check_due(camera: Camera, now: datetime, interval_minutes: int = 10) -> bool:

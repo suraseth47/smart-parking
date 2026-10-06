@@ -1,6 +1,9 @@
-"""จัดการกล้อง: CRUD + Test connection + snapshot (FR-21..23)"""
+"""จัดการกล้อง: CRUD + Test connection + snapshot + Re-align (FR-21..23, FR-30 เฟส 3)"""
 from __future__ import annotations
 
+from datetime import datetime
+
+import cv2
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -9,11 +12,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from core.db import get_db
-from core.models import AuditLog, Camera, CameraBrand, CameraStream
+from core.models import AuditLog, Camera, CameraBrand, CameraStatus, CameraStream, LayoutStatus, Slot
 from core.security import encrypt_camera_password
 from core.camera_utils import build_camera_url, snapshot_path as get_snapshot_path
 from web.deps import CurrentUser, get_current_user, require_admin, verify_csrf
 from worker.camera_connection import check_camera_connection
+from worker.capture import grab_frame
+from worker.health import apply_transform_to_polygon, compute_camera_transform, resolve_alerts
 
 router = APIRouter(prefix="/api/admin/cameras", tags=["cameras"])
 
@@ -146,6 +151,113 @@ def get_camera_snapshot(
     if not path.exists():
         raise HTTPException(status.HTTP_404_NOT_FOUND, "ยังไม่มีภาพ snapshot กรุณากด Test connection ก่อน")
     return FileResponse(path)
+
+
+class RealignSlotPreview(BaseModel):
+    slot_id: int
+    code: str
+    old_polygon: list[list[float]]
+    new_polygon: list[list[float]]
+
+
+class RealignPreviewOut(BaseModel):
+    transform_found: bool
+    snapshot_url: str
+    slots: list[RealignSlotPreview]
+
+
+@router.post("/{camera_id}/realign/preview", response_model=RealignPreviewOut)
+def preview_realign(
+    camera_id: int, db: Session = Depends(get_db), _admin: CurrentUser = Depends(require_admin)
+):
+    """คำนวณ homography จากกล้องที่ขยับ แล้ว preview กรอบที่จะขยับให้ (FR-30 เฟส 3) — ไม่บันทึกอะไรลง DB"""
+    camera = _get_camera_or_404(db, camera_id)
+    if not camera.reference_image_path:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "กล้องนี้ยังไม่มีภาพอ้างอิง (ต้อง publish layout ก่อน)")
+
+    try:
+        reference = grab_frame(camera.reference_image_path)
+        current = grab_frame(build_camera_url(camera))
+    except RuntimeError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"ดึงภาพไม่สำเร็จ: {exc}")
+
+    transform = compute_camera_transform(reference, current)
+    path = get_snapshot_path(camera_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    cv2.imencode(".jpg", current)[1].tofile(str(path))
+
+    if transform is None:
+        return RealignPreviewOut(
+            transform_found=False, snapshot_url=f"/api/admin/cameras/{camera_id}/snapshot", slots=[]
+        )
+
+    frame_h, frame_w = current.shape[:2]
+    slots = db.scalars(
+        select(Slot).where(Slot.camera_id == camera_id, Slot.layout_status == LayoutStatus.PUBLISHED)
+    ).all()
+    previews = [
+        RealignSlotPreview(
+            slot_id=slot.id,
+            code=slot.code,
+            old_polygon=slot.polygon,
+            new_polygon=apply_transform_to_polygon(slot.polygon, transform, frame_w, frame_h),
+        )
+        for slot in slots
+    ]
+    return RealignPreviewOut(
+        transform_found=True, snapshot_url=f"/api/admin/cameras/{camera_id}/snapshot", slots=previews
+    )
+
+
+@router.post("/{camera_id}/realign/confirm")
+def confirm_realign(
+    camera_id: int,
+    db: Session = Depends(get_db),
+    admin: CurrentUser = Depends(require_admin),
+    _csrf: None = Depends(verify_csrf),
+):
+    """Admin ยืนยันผล Re-align -> ขยับช่องที่ publish แล้วจริง, คืนสถานะกล้อง, ตั้งภาพอ้างอิงใหม่ (FR-30 เฟส 3)"""
+    camera = _get_camera_or_404(db, camera_id)
+    if not camera.reference_image_path:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "กล้องนี้ยังไม่มีภาพอ้างอิง (ต้อง publish layout ก่อน)")
+
+    try:
+        reference = grab_frame(camera.reference_image_path)
+        current = grab_frame(build_camera_url(camera))
+    except RuntimeError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"ดึงภาพไม่สำเร็จ: {exc}")
+
+    transform = compute_camera_transform(reference, current)
+    if transform is None:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "คำนวณ transform ไม่ได้ (หาจุดสังเกตร่วมไม่พอ) ลองใหม่อีกครั้ง")
+
+    frame_h, frame_w = current.shape[:2]
+    slots = db.scalars(
+        select(Slot).where(Slot.camera_id == camera_id, Slot.layout_status == LayoutStatus.PUBLISHED)
+    ).all()
+    for slot in slots:
+        slot.polygon = apply_transform_to_polygon(slot.polygon, transform, frame_w, frame_h)
+
+    reference_path = get_snapshot_path(camera_id).parent / f"camera_{camera_id}_reference.jpg"
+    reference_path.parent.mkdir(parents=True, exist_ok=True)
+
+    cv2.imencode(".jpg", current)[1].tofile(str(reference_path))
+    camera.reference_image_path = str(reference_path)
+    camera.status = CameraStatus.ONLINE
+    camera.last_health_check_at = datetime.utcnow()
+    resolve_alerts(db, f"camera:{camera.id}:moved")
+
+    db.add(
+        AuditLog(
+            user_id=admin.id,
+            action="realign_camera",
+            target=f"camera:{camera.id}",
+            detail={"slot_count": len(slots)},
+        )
+    )
+    db.commit()
+    return {"ok": True, "realigned_slot_count": len(slots)}
 
 
 def _camera_fields(data: CameraIn) -> dict:

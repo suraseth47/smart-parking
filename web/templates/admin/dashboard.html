@@ -1,5 +1,8 @@
 {% extends "admin/base.html" %}
 {% block title %}กล้อง{% endblock %}
+{% block head %}
+<script src="/static/js/vendor/konva.min.js"></script>
+{% endblock %}
 {% block content %}
 <div x-data="dashboard()" x-init="init()">
   <div class="card" x-show="isOperator" style="margin-bottom:1rem;">
@@ -30,11 +33,33 @@
             <td style="padding:0.4rem;" x-text="cam.status"></td>
             <td style="padding:0.4rem;">
               <a class="btn" :href="'/admin/layout?camera_id=' + cam.id">กำหนดช่องจอด</a>
+              <button x-show="cam.status === 'moved'" class="btn-secondary" @click="openRealign(cam)">Re-align</button>
             </td>
           </tr>
         </template>
       </tbody>
     </table>
+  </div>
+
+  <div class="card" x-show="realign" style="margin-bottom:1rem;">
+    <h2 style="margin-top:0;">Re-align กล้อง: <span x-text="realign && realign.cameraName"></span></h2>
+    <p class="muted" x-show="realign && !realign.transform_found">
+      คำนวณตำแหน่งใหม่ไม่ได้ (หาจุดสังเกตร่วมกับภาพอ้างอิงไม่พอ) ลองใหม่อีกครั้ง หรือตรวจกล้องด้วยตา
+    </p>
+    <template x-if="realign && realign.transform_found">
+      <div>
+        <p class="muted">กรอบส้มเส้นประ = ตำแหน่งเดิม, กรอบเขียว = ตำแหน่งใหม่ที่เสนอ (<span x-text="realign.slots.length"></span> ช่อง)</p>
+        <div id="realign-stage-container"></div>
+        <div style="display:flex; gap:0.5rem; margin-top:0.75rem;">
+          <button @click="confirmRealign()" :disabled="realignLoading">ยืนยัน Re-align</button>
+          <button class="btn-secondary" @click="cancelRealign()">ยกเลิก</button>
+        </div>
+      </div>
+    </template>
+    <template x-if="realign && !realign.transform_found">
+      <button class="btn-secondary" @click="cancelRealign()" style="margin-top:0.5rem;">ปิด</button>
+    </template>
+    <p class="error-text" x-show="realignError" x-text="realignError"></p>
   </div>
 
   <div class="card">
@@ -84,6 +109,9 @@
       isOperator: false,
       loading: false,
       error: "",
+      realign: null,
+      realignLoading: false,
+      realignError: "",
       form: { name: "", brand: "hikvision", host: "", username: "", password: "", channel: 1, rtsp_url_custom: "" },
       async init() {
         const user = await requireAuth();
@@ -108,7 +136,87 @@
           this.loading = false;
         }
       },
+      async openRealign(cam) {
+        this.realignError = "";
+        this.realign = null;
+        try {
+          const result = await apiJson(`/api/admin/cameras/${cam.id}/realign/preview`, { method: "POST" });
+          this.realign = Object.assign(result, { cameraId: cam.id, cameraName: cam.name });
+          if (result.transform_found) {
+            this.$nextTick(() => renderRealignPreview(result.snapshot_url, result.slots));
+          }
+        } catch (e) {
+          this.realignError = "ผิดพลาด: " + e.message;
+        }
+      },
+      async confirmRealign() {
+        if (!this.realign) return;
+        this.realignLoading = true;
+        try {
+          await apiJson(`/api/admin/cameras/${this.realign.cameraId}/realign/confirm`, { method: "POST" });
+          this.realign = null;
+          await this.loadCameras();
+        } catch (e) {
+          this.realignError = "ยืนยันไม่สำเร็จ: " + e.message;
+        } finally {
+          this.realignLoading = false;
+        }
+      },
+      cancelRealign() {
+        this.realign = null;
+        this.realignError = "";
+      },
     };
+  }
+
+  async function renderRealignPreview(snapshotUrl, slots) {
+    const container = document.getElementById("realign-stage-container");
+    if (!container) return;
+    const maxWidth = Math.min(900, container.closest(".card").clientWidth - 2);
+    const img = new Image();
+    const loaded = await new Promise((resolve) => {
+      img.onload = () => resolve(true);
+      img.onerror = () => resolve(false);
+      img.src = snapshotUrl + `?t=${Date.now()}`;
+    });
+    if (!loaded) {
+      container.innerHTML = '<p class="muted">โหลดภาพไม่สำเร็จ</p>';
+      return;
+    }
+    const scale = Math.min(1, maxWidth / img.naturalWidth);
+    const w = Math.round(img.naturalWidth * scale);
+    const h = Math.round(img.naturalHeight * scale);
+
+    container.innerHTML = "";
+    const stage = new Konva.Stage({ container: "realign-stage-container", width: w, height: h });
+    const bgLayer = new Konva.Layer();
+    bgLayer.add(new Konva.Image({ image: img, width: w, height: h }));
+    stage.add(bgLayer);
+    const overlay = new Konva.Layer();
+    stage.add(overlay);
+
+    for (const slot of slots) {
+      overlay.add(
+        new Konva.Line({
+          points: slot.old_polygon.flatMap(([x, y]) => [x * w, y * h]),
+          closed: true,
+          stroke: "#f97316",
+          strokeWidth: 2,
+          dash: [6, 4],
+          listening: false,
+        })
+      );
+      overlay.add(
+        new Konva.Line({
+          points: slot.new_polygon.flatMap(([x, y]) => [x * w, y * h]),
+          closed: true,
+          stroke: "#16a34a",
+          strokeWidth: 2,
+          listening: false,
+        })
+      );
+    }
+    overlay.draw();
   }
 </script>
 {% endblock %}
