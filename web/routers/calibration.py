@@ -1,12 +1,11 @@
-"""โหมดกึ่งออโต้: สร้าง calibration job (โหมด A Observation), ดู/อนุมัติ/ปฏิเสธ/แก้มุม
-proposal แล้วส่ง proposal ที่อนุมัติเข้า layout draft (FR-28, FR-29)
-
-โหมด B (Line detection) ยังไม่ทำในเฟสนี้ตามกฎห้ามข้ามเฟสใน CLAUDE.md
+"""โหมดกึ่งออโต้: สร้าง calibration job (โหมด A Observation หรือ โหมด B Line detection),
+ดู/อนุมัติ/ปฏิเสธ/แก้มุม proposal แล้วส่ง proposal ที่อนุมัติเข้า layout draft (FR-28, FR-29)
 """
 from __future__ import annotations
 
 from datetime import datetime, timedelta
 
+import cv2
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -14,6 +13,8 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from core.camera_utils import build_camera_url, snapshot_path
+from core.config import get_settings
 from core.models import (
     AuditLog,
     CalibJob,
@@ -29,20 +30,49 @@ from core.models import (
 )
 from core.db import get_db
 from web.deps import CurrentUser, require_admin, verify_csrf
+from worker.calibration.lines import (
+    DEFAULT_HOUGH_THRESHOLD,
+    DEFAULT_MIN_LINE_LENGTH,
+    propose_polygons_from_lines,
+)
 from worker.calibration.observation import cancel_calib_job
+from worker.capture import grab_frame
 
 router = APIRouter(prefix="/api/admin/calib", tags=["calibration"])
 
 MIN_DURATION_HOURS = 24  # FR-28a: ระยะเวลา 1-3 วัน
 MAX_DURATION_HOURS = 72
 
+DEFAULT_SLOT_WIDTH_MIN = 50.0
+DEFAULT_SLOT_WIDTH_MAX = 150.0
+
 
 class CreateJobIn(BaseModel):
     camera_id: int
+    method: CalibMethod = CalibMethod.OBSERVATION
+    # โหมด Observation (FR-28a)
     duration_hours: int = 48
     interval_minutes: int = 5
     hour_start: int = 0
     hour_end: int = 24
+    # โหมด Lines (FR-29a/b/c)
+    slot_width_min: float = DEFAULT_SLOT_WIDTH_MIN
+    slot_width_max: float = DEFAULT_SLOT_WIDTH_MAX
+    min_line_length: float = DEFAULT_MIN_LINE_LENGTH
+    hough_threshold: int = DEFAULT_HOUGH_THRESHOLD
+
+
+class LinesPreviewIn(BaseModel):
+    camera_id: int
+    slot_width_min: float = DEFAULT_SLOT_WIDTH_MIN
+    slot_width_max: float = DEFAULT_SLOT_WIDTH_MAX
+    min_line_length: float = DEFAULT_MIN_LINE_LENGTH
+    hough_threshold: int = DEFAULT_HOUGH_THRESHOLD
+
+
+class LinesPreviewOut(BaseModel):
+    polygons: list[list[list[float]]]
+    snapshot_url: str
 
 
 class JobOut(BaseModel):
@@ -88,11 +118,19 @@ def create_job(
     admin: CurrentUser = Depends(require_admin),
     _csrf: None = Depends(verify_csrf),
 ):
-    """สร้าง calibration job โหมด Observation (FR-28a) — worker loop จะเก็บ footprint ให้เอง"""
+    """สร้าง calibration job — โหมด Observation (FR-28a, รัน background ต่อ) หรือ
+    โหมด Lines (FR-29a/b, ประมวลผลจบทันทีจากภาพปัจจุบันของกล้อง)
+    """
     camera = db.get(Camera, data.camera_id)
     if camera is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "ไม่พบกล้องนี้")
 
+    if data.method == CalibMethod.LINES:
+        return _create_lines_job(db, camera, data, admin)
+    return _create_observation_job(db, camera, data, admin)
+
+
+def _create_observation_job(db: Session, camera: Camera, data: CreateJobIn, admin: CurrentUser) -> JobOut:
     duration_hours = max(MIN_DURATION_HOURS, min(MAX_DURATION_HOURS, data.duration_hours))
     if not (0 <= data.hour_start < data.hour_end <= 24):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "ช่วงเวลาที่สนใจไม่ถูกต้อง (0 <= hour_start < hour_end <= 24)")
@@ -118,12 +156,99 @@ def create_job(
             user_id=admin.id,
             action="create_calib_job",
             target=f"camera:{camera.id}",
-            detail={"job_id": job.id, "duration_hours": duration_hours},
+            detail={"job_id": job.id, "method": "observation", "duration_hours": duration_hours},
         )
     )
     db.commit()
     db.refresh(job)
     return _to_job_out(db, job)
+
+
+def _create_lines_job(db: Session, camera: Camera, data: CreateJobIn, admin: CurrentUser) -> JobOut:
+    try:
+        frame = grab_frame(build_camera_url(camera))
+    except RuntimeError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"ดึงภาพจากกล้องไม่สำเร็จ: {exc}")
+
+    polygons = propose_polygons_from_lines(
+        frame,
+        slot_width_min=data.slot_width_min,
+        slot_width_max=data.slot_width_max,
+        min_line_length=data.min_line_length,
+        hough_threshold=data.hough_threshold,
+    )
+
+    now = datetime.utcnow()
+    job_dir = get_settings().data_dir / "calib"
+    job = CalibJob(
+        camera_id=camera.id,
+        method=CalibMethod.LINES,
+        params={
+            "slot_width_min": data.slot_width_min,
+            "slot_width_max": data.slot_width_max,
+            "min_line_length": data.min_line_length,
+            "hough_threshold": data.hough_threshold,
+        },
+        status=CalibJobStatus.DONE,
+        progress=1.0,
+        started_at=now,
+        ends_at=now,
+        created_by=admin.id,
+    )
+    db.add(job)
+    db.flush()
+
+    image_dir = job_dir / f"job_{job.id}"
+    image_dir.mkdir(parents=True, exist_ok=True)
+    background_path = image_dir / "background.jpg"
+    cv2.imencode(".jpg", frame)[1].tofile(str(background_path))
+    job.background_image_path = str(background_path)
+
+    for polygon in polygons:
+        db.add(SlotProposal(job_id=job.id, camera_id=camera.id, polygon=polygon, confidence=1.0))
+
+    db.add(
+        AuditLog(
+            user_id=admin.id,
+            action="create_calib_job",
+            target=f"camera:{camera.id}",
+            detail={"job_id": job.id, "method": "lines", "proposal_count": len(polygons)},
+        )
+    )
+    db.commit()
+    db.refresh(job)
+    return _to_job_out(db, job)
+
+
+@router.post("/lines/preview", response_model=LinesPreviewOut)
+def preview_lines(
+    data: LinesPreviewIn,
+    db: Session = Depends(get_db),
+    _admin: CurrentUser = Depends(require_admin),
+):
+    """ปรับพารามิเตอร์ดูผลสด ไม่บันทึกอะไรลง DB (FR-29c)"""
+    camera = db.get(Camera, data.camera_id)
+    if camera is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "ไม่พบกล้องนี้")
+
+    try:
+        frame = grab_frame(build_camera_url(camera))
+    except RuntimeError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"ดึงภาพจากกล้องไม่สำเร็จ: {exc}")
+
+    polygons = propose_polygons_from_lines(
+        frame,
+        slot_width_min=data.slot_width_min,
+        slot_width_max=data.slot_width_max,
+        min_line_length=data.min_line_length,
+        hough_threshold=data.hough_threshold,
+    )
+
+    path = snapshot_path(camera.id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    cv2.imencode(".jpg", frame)[1].tofile(str(path))
+
+    return LinesPreviewOut(polygons=polygons, snapshot_url=f"/api/admin/cameras/{camera.id}/snapshot")
 
 
 @router.get("/jobs", response_model=list[JobOut])
