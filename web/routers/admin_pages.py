@@ -35,3 +35,8 @@ def live_page(request: Request):
 @router.get("/override")
 def override_page(request: Request):
     return templates.TemplateResponse(request, "admin/override.html")
+
+
+@router.get("/reports")
+def reports_page(request: Request):
+    return templates.TemplateResponse(request, "admin/reports.html")

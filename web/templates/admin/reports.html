@@ -1,0 +1,53 @@
+{% extends "admin/base.html" %}
+{% block title %}รายงาน{% endblock %}
+{% block head %}
+<script src="/static/js/vendor/chart.umd.min.js"></script>
+<style>
+  .heatmap-table { border-collapse: collapse; font-size: 0.7rem; }
+  .heatmap-table th, .heatmap-table td { padding: 2px 4px; text-align: center; }
+  .heatmap-table th { color: var(--color-muted); font-weight: 400; }
+  .heatmap-cell { width: 22px; height: 22px; border-radius: 3px; }
+  .chart-wrap { max-width: 900px; }
+</style>
+{% endblock %}
+{% block content %}
+<div x-data="reportsPage()" x-init="init()">
+  <div class="card" style="margin-bottom:0.75rem;">
+    <label class="muted" style="margin:0;">โซน</label>
+    <select x-model="zoneId" @change="loadAll()">
+      <template x-for="z in zones" :key="z.id">
+        <option :value="z.id" x-text="z.code + ' - ' + z.name_th"></option>
+      </template>
+    </select>
+    <p class="error-text" x-show="error" x-text="error"></p>
+  </div>
+
+  <div class="card" style="margin-bottom:0.75rem;">
+    <h3 style="margin-top:0;">รายชั่วโมง</h3>
+    <label class="muted" style="margin:0;">วันที่</label>
+    <input type="date" x-model="hourlyDate" @change="loadHourly()">
+    <div class="chart-wrap"><canvas id="hourly-chart" height="90"></canvas></div>
+  </div>
+
+  <div class="card" style="margin-bottom:0.75rem;">
+    <h3 style="margin-top:0;">รายวัน</h3>
+    <label class="muted" style="margin:0;">จาก</label>
+    <input type="date" x-model="dailyFrom" @change="loadDaily()">
+    <label class="muted" style="margin:0;">ถึง</label>
+    <input type="date" x-model="dailyTo" @change="loadDaily()">
+    <div class="chart-wrap"><canvas id="daily-chart" height="90"></canvas></div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0;">Heatmap — ช่วงเวลาที่คนมากสุดเฉลี่ยตามวันในสัปดาห์</h3>
+    <label class="muted" style="margin:0;">ย้อนหลัง (สัปดาห์)</label>
+    <input type="number" x-model.number="heatmapWeeks" min="1" max="52" style="width:80px;" @change="loadHeatmap()">
+    <div style="overflow-x:auto; margin-top:0.75rem;">
+      <table class="heatmap-table" id="heatmap-table"></table>
+    </div>
+    <p class="muted" style="margin-top:0.5rem;">สีเข้ม = ใช้งานเยอะ, ช่องว่าง = ยังไม่มีข้อมูล</p>
+  </div>
+</div>
+
+<script src="/static/js/reports.js"></script>
+{% endblock %}
