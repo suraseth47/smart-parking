@@ -96,8 +96,7 @@ cd smart-parking
 cp .env.example .env
 nano .env          # แก้ DOMAIN, SITE_NAME, สร้าง SECRET_KEY / FERNET_KEY
 
-# 5. ดาวน์โหลดโมเดล AI ไปไว้ที่ models/
-#    (ดูรายละเอียดใน models/README หลังพัฒนาเสร็จ)
+# 5. ดาวน์โหลดโมเดล AI ไปไว้ที่ models/ (ดูวิธีใน models/README.md)
 
 # 6. รันระบบ
 docker compose up -d
@@ -215,8 +214,8 @@ smart-parking/
 
 ## Roadmap
 
-- [ ] P0 Prototype — ดึงภาพ + ตรวจจับรถ + benchmark
-- [ ] P1 MVP — กล้อง, วาดช่อง, นับ, หน้าเว็บสาธารณะ, login, HTTPS
+- [x] P0 Prototype — ดึงภาพ + ตรวจจับรถ + benchmark
+- [ ] P1 MVP — กล้อง, วาดช่อง, นับ, หน้าเว็บสาธารณะ, login, HTTPS (โค้ดครบแล้ว รอทดสอบ deploy จริงบน Ubuntu+Docker)
 - [ ] P2 Operation — health, override, รายงาน, backup, validation
 - [ ] P3 Semi-auto — สังเกตรถจริง + อนุมัติ, ตรวจกล้องถูกขยับ
 - [ ] P4 Extra — หาเส้นช่องจอด, re-align อัตโนมัติ

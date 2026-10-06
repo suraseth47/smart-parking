@@ -1,0 +1,16 @@
+# รายการนี้ต้องตรงกับ dependencies ใน pyproject.toml เสมอ (ใช้สำหรับ build Docker image
+# เพราะโปรเจกต์นี้ไม่ได้ทำเป็น installable package ที่ `pip install .` ใช้ได้ตรงๆ)
+onnxruntime
+opencv-python
+numpy
+fastapi
+uvicorn[standard]
+jinja2
+sqlalchemy
+alembic
+shapely
+cryptography
+argon2-cffi
+python-multipart
+python-dotenv
+pytest
