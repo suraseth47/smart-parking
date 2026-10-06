@@ -5,21 +5,49 @@
 {% endblock %}
 {% block content %}
 <div class="card" style="margin-bottom:0.75rem;">
-  <h3 style="margin-top:0;">เริ่ม job สังเกตรถจอดจริงใหม่ (โหมด A)</h3>
-  <div class="toolbar">
-    <label class="muted" style="margin:0;">กล้อง</label>
-    <select id="camera-select"></select>
-    <label class="muted" style="margin:0;">ระยะเวลา (ชม. 24-72)</label>
-    <input type="number" id="duration-hours" value="48" min="24" max="72" style="width:70px;">
-    <label class="muted" style="margin:0;">ความถี่ (นาที)</label>
-    <input type="number" id="interval-minutes" value="5" min="1" style="width:60px;">
-    <label class="muted" style="margin:0;">ช่วงเวลาที่สนใจ</label>
-    <input type="number" id="hour-start" value="0" min="0" max="23" style="width:50px;" title="ชั่วโมงเริ่ม">
-    <span class="muted">-</span>
-    <input type="number" id="hour-end" value="24" min="1" max="24" style="width:50px;" title="ชั่วโมงจบ">
-    <button id="btn-start-job">เริ่ม job</button>
+  <div class="toolbar" style="margin-bottom:0.5rem;">
+    <label><input type="radio" name="method" value="observation" id="method-observation" checked> โหมด A: สังเกตรถจอดจริง</label>
+    <label><input type="radio" name="method" value="lines" id="method-lines"> โหมด B: ตรวจจับเส้น (ทดลอง)</label>
   </div>
-  <p class="muted" id="start-status"></p>
+
+  <div id="observation-form">
+    <h3 style="margin-top:0;">เริ่ม job สังเกตรถจอดจริงใหม่ (โหมด A)</h3>
+    <div class="toolbar">
+      <label class="muted" style="margin:0;">กล้อง</label>
+      <select id="camera-select"></select>
+      <label class="muted" style="margin:0;">ระยะเวลา (ชม. 24-72)</label>
+      <input type="number" id="duration-hours" value="48" min="24" max="72" style="width:70px;">
+      <label class="muted" style="margin:0;">ความถี่ (นาที)</label>
+      <input type="number" id="interval-minutes" value="5" min="1" style="width:60px;">
+      <label class="muted" style="margin:0;">ช่วงเวลาที่สนใจ</label>
+      <input type="number" id="hour-start" value="0" min="0" max="23" style="width:50px;" title="ชั่วโมงเริ่ม">
+      <span class="muted">-</span>
+      <input type="number" id="hour-end" value="24" min="1" max="24" style="width:50px;" title="ชั่วโมงจบ">
+      <button id="btn-start-job">เริ่ม job</button>
+    </div>
+    <p class="muted" id="start-status"></p>
+  </div>
+
+  <div id="lines-form" style="display:none;">
+    <h3 style="margin-top:0;">สร้าง proposals จากเส้นช่องจอด (โหมด B, ทดลอง)</h3>
+    <p class="muted">เลือกภาพตอนลานค่อนข้างว่าง (FR-29a) แล้วปรับพารามิเตอร์จนกรอบที่เสนอดูสมเหตุสมผลก่อนกด "สร้าง proposals"</p>
+    <div class="toolbar">
+      <label class="muted" style="margin:0;">กล้อง</label>
+      <select id="lines-camera-select"></select>
+      <label class="muted" style="margin:0;">ความกว้างช่อง (px)</label>
+      <input type="number" id="slot-width-min" value="50" min="1" style="width:60px;" title="ต่ำสุด">
+      <span class="muted">-</span>
+      <input type="number" id="slot-width-max" value="150" min="1" style="width:60px;" title="สูงสุด">
+      <label class="muted" style="margin:0;">ความยาวเส้นขั้นต่ำ (px)</label>
+      <input type="number" id="min-line-length" value="40" min="1" style="width:60px;">
+      <label class="muted" style="margin:0;">Hough threshold</label>
+      <input type="number" id="hough-threshold" value="40" min="1" style="width:60px;">
+      <button id="btn-preview-lines" class="btn-secondary">Preview</button>
+      <button id="btn-create-lines-job">สร้าง proposals</button>
+    </div>
+    <p class="muted" id="lines-status"></p>
+    <div id="lines-preview-container"></div>
+  </div>
 </div>
 
 <div class="editor-layout">

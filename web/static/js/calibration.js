@@ -28,6 +28,7 @@ class CalibrationPage {
     this.cameras = await apiJson("/api/admin/cameras");
     this.zones = await apiJson("/api/admin/zones");
     this._fillSelect("camera-select", this.cameras, (c) => c.id, (c) => c.name);
+    this._fillSelect("lines-camera-select", this.cameras, (c) => c.id, (c) => c.name);
     this._fillSelect("bulk-zone-select", this.zones, (z) => z.id, (z) => `${z.code} ${z.name_th}`);
     this._fillSelect("prop-zone", this.zones, (z) => z.id, (z) => `${z.code} ${z.name_th}`);
     await this.loadJobs();
@@ -78,6 +79,101 @@ class CalibrationPage {
         }),
       });
       statusEl.textContent = `สร้าง job #${job.id} สำเร็จ กำลังเก็บข้อมูลเบื้องหลัง (ใช้เวลาตามระยะเวลาที่ตั้งไว้)`;
+      await this.loadJobs();
+      await this.selectJob(job.id);
+    } catch (e) {
+      statusEl.textContent = "ผิดพลาด: " + e.message;
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  toggleMethodForm() {
+    const isLines = document.getElementById("method-lines").checked;
+    document.getElementById("observation-form").style.display = isLines ? "none" : "block";
+    document.getElementById("lines-form").style.display = isLines ? "block" : "none";
+  }
+
+  async previewLines() {
+    const cameraId = Number(document.getElementById("lines-camera-select").value);
+    const params = this._readLinesParams();
+    const statusEl = document.getElementById("lines-status");
+    statusEl.textContent = "กำลังดึงภาพ+ประมวลผล...";
+    try {
+      const result = await apiJson("/api/admin/calib/lines/preview", {
+        method: "POST",
+        body: JSON.stringify({ camera_id: cameraId, ...params }),
+      });
+      statusEl.textContent = `พบกรอบที่เป็นไปได้ ${result.polygons.length} กรอบ (ปรับพารามิเตอร์แล้วกด Preview ซ้ำได้)`;
+      await this._renderLinesPreview(result.snapshot_url, result.polygons);
+    } catch (e) {
+      statusEl.textContent = "ผิดพลาด: " + e.message;
+    }
+  }
+
+  async _renderLinesPreview(snapshotUrl, polygons) {
+    const container = document.getElementById("lines-preview-container");
+    const wrapEl = document.querySelector(".card");
+    const maxWidth = Math.min(900, wrapEl.clientWidth - 2);
+    const img = new Image();
+    const loaded = await new Promise((resolve) => {
+      img.onload = () => resolve(true);
+      img.onerror = () => resolve(false);
+      img.src = snapshotUrl + `?t=${Date.now()}`;
+    });
+    if (!loaded) {
+      container.innerHTML = '<p class="muted">โหลดภาพไม่สำเร็จ</p>';
+      return;
+    }
+    const scale = Math.min(1, maxWidth / img.naturalWidth);
+    const w = Math.round(img.naturalWidth * scale);
+    const h = Math.round(img.naturalHeight * scale);
+
+    container.innerHTML = "";
+    const stage = new Konva.Stage({ container: "lines-preview-container", width: w, height: h });
+    const bgLayer = new Konva.Layer();
+    bgLayer.add(new Konva.Image({ image: img, width: w, height: h }));
+    stage.add(bgLayer);
+    const overlay = new Konva.Layer();
+    stage.add(overlay);
+    for (const polygon of polygons) {
+      overlay.add(
+        new Konva.Line({
+          points: polygon.flatMap(([x, y]) => [x * w, y * h]),
+          closed: true,
+          stroke: "#f59e0b",
+          strokeWidth: 2,
+          fill: "#f59e0b",
+          opacity: 0.3,
+          listening: false,
+        })
+      );
+    }
+    overlay.draw();
+  }
+
+  _readLinesParams() {
+    return {
+      slot_width_min: Number(document.getElementById("slot-width-min").value) || 50,
+      slot_width_max: Number(document.getElementById("slot-width-max").value) || 150,
+      min_line_length: Number(document.getElementById("min-line-length").value) || 40,
+      hough_threshold: Number(document.getElementById("hough-threshold").value) || 40,
+    };
+  }
+
+  async createLinesJob() {
+    const cameraId = Number(document.getElementById("lines-camera-select").value);
+    const params = this._readLinesParams();
+    const statusEl = document.getElementById("lines-status");
+    const btn = document.getElementById("btn-create-lines-job");
+    btn.disabled = true;
+    statusEl.textContent = "กำลังสร้าง proposals...";
+    try {
+      const job = await apiJson("/api/admin/calib/jobs", {
+        method: "POST",
+        body: JSON.stringify({ camera_id: cameraId, method: "lines", ...params }),
+      });
+      statusEl.textContent = `สร้าง job #${job.id} สำเร็จ (${job.proposal_count} proposal) ดูและอนุมัติได้ในรายการ job ด้านซ้าย`;
       await this.loadJobs();
       await this.selectJob(job.id);
     } catch (e) {
@@ -304,6 +400,10 @@ class CalibrationPage {
   }
 
   _wireButtons() {
+    document.getElementById("method-observation").addEventListener("change", () => this.toggleMethodForm());
+    document.getElementById("method-lines").addEventListener("change", () => this.toggleMethodForm());
+    document.getElementById("btn-preview-lines").addEventListener("click", () => this.previewLines());
+    document.getElementById("btn-create-lines-job").addEventListener("click", () => this.createLinesJob());
     document.getElementById("btn-start-job").addEventListener("click", () => this.startJob());
     document.getElementById("btn-cancel-job").addEventListener("click", () => this.cancelJob());
     document.getElementById("btn-save-corners").addEventListener("click", () => this.saveCorners());
