@@ -55,3 +55,8 @@ def validation_page(request: Request):
 @router.get("/calibration")
 def calibration_page(request: Request):
     return templates.TemplateResponse(request, "admin/calibration.html")
+
+
+@router.get("/settings")
+def settings_page(request: Request):
+    return templates.TemplateResponse(request, "admin/settings.html")

@@ -1,0 +1,80 @@
+{% extends "admin/base.html" %}
+{% block title %}ตั้งค่า{% endblock %}
+{% block content %}
+<div x-data="settingsPage()" x-init="init()">
+  <div class="card" x-show="isOperator">
+    <p>หน้านี้ (ตั้งค่าระบบ) สำหรับ Admin เท่านั้น</p>
+  </div>
+
+  <template x-if="!isOperator">
+    <div class="card">
+      <h2 style="margin-top:0;">จำกัด IP เข้าหลังบ้าน (NFR-12)</h2>
+      <p class="muted">
+        หน้า login เข้าได้จากทุก IP เสมอ (ป้องกันล็อกตัวเองออกจากระบบ) แต่การทำงานอื่นๆ ทั้งหมด
+        หลัง login จะถูกบล็อกถ้า IP ไม่อยู่ในรายการด้านล่าง — ถ้าเปิดใช้แต่ยังไม่ใส่รายการ จะยังไม่บล็อกใครเลย
+      </p>
+      <p>IP ของคุณตอนนี้: <b x-text="yourIp"></b>
+        <button class="btn-secondary" @click="addMyIp()" type="button">+ เพิ่ม IP ของฉัน</button>
+      </p>
+
+      <label><input type="checkbox" x-model="enabled"> เปิดใช้การจำกัด IP</label>
+
+      <label style="margin-top:0.5rem;">รายการ IP หรือ CIDR (บรรทัดละ 1 รายการ เช่น 203.0.113.5 หรือ 192.168.1.0/24)</label>
+      <textarea x-model="ipsText" rows="6" style="width:100%; font-family:monospace;"></textarea>
+
+      <button @click="save()" style="margin-top:0.75rem;" :disabled="loading">บันทึก</button>
+      <p class="error-text" x-show="error" x-text="error"></p>
+      <p class="muted" x-show="savedMessage" x-text="savedMessage"></p>
+    </div>
+  </template>
+</div>
+
+<script>
+  function settingsPage() {
+    return {
+      isOperator: false,
+      enabled: false,
+      ipsText: "",
+      yourIp: "",
+      loading: false,
+      error: "",
+      savedMessage: "",
+      async init() {
+        const user = await requireAuth();
+        if (!user) return;
+        this.isOperator = user.role !== "admin";
+        if (this.isOperator) return;
+        await this.load();
+      },
+      async load() {
+        const data = await apiJson("/api/admin/settings");
+        this.enabled = data.ip_allowlist.enabled;
+        this.ipsText = data.ip_allowlist.ips.join("\n");
+        this.yourIp = data.your_ip;
+      },
+      addMyIp() {
+        const lines = this.ipsText.split("\n").map((s) => s.trim()).filter(Boolean);
+        if (!lines.includes(this.yourIp)) lines.push(this.yourIp);
+        this.ipsText = lines.join("\n");
+      },
+      async save() {
+        this.loading = true;
+        this.error = "";
+        this.savedMessage = "";
+        const ips = this.ipsText.split("\n").map((s) => s.trim()).filter(Boolean);
+        try {
+          await apiJson("/api/admin/settings/ip-allowlist", {
+            method: "PUT",
+            body: JSON.stringify({ enabled: this.enabled, ips }),
+          });
+          this.savedMessage = "บันทึกแล้ว";
+        } catch (e) {
+          this.error = "บันทึกไม่สำเร็จ: " + e.message;
+        } finally {
+          this.loading = false;
+        }
+      },
+    };
+  }
+</script>
+{% endblock %}
