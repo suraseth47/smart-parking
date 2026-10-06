@@ -1,0 +1,14 @@
+[project]
+name = "smart-parking"
+version = "0.1.0"
+description = "ระบบตรวจนับที่จอดรถว่างด้วยกล้อง IP (Smart Parking)"
+requires-python = ">=3.12"
+dependencies = [
+    "onnxruntime",
+    "opencv-python",
+    "numpy",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
