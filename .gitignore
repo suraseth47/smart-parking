@@ -1,0 +1,23 @@
+# secrets
+.env
+
+# ข้อมูลและภาพ
+data/
+*.jpg
+*.png
+!web/static/**/*.png
+
+# โมเดล AI (ไฟล์ใหญ่)
+models/*.onnx
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# Editor / OS
+.vscode/
+Thumbs.db
+.DS_Store
