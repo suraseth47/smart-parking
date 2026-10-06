@@ -25,3 +25,8 @@ def dashboard_page(request: Request):
 @router.get("/layout")
 def layout_editor_page(request: Request):
     return templates.TemplateResponse(request, "admin/layout_editor.html")
+
+
+@router.get("/live")
+def live_page(request: Request):
+    return templates.TemplateResponse(request, "admin/live.html")

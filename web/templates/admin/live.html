@@ -1,0 +1,38 @@
+{% extends "admin/base.html" %}
+{% block title %}Live view{% endblock %}
+{% block head %}
+<script src="/static/js/vendor/konva.min.js"></script>
+{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <label for="camera-select" class="muted" style="margin:0;">กล้อง:</label>
+  <select id="camera-select"></select>
+  <span id="camera-status" class="muted"></span>
+  <span id="status-text" class="muted"></span>
+</div>
+
+<div class="editor-layout">
+  <div class="editor-canvas-wrap">
+    <div id="stage-container"></div>
+    <p class="muted" id="no-camera-msg" style="display:none;">ยังไม่มีกล้องในระบบ</p>
+    <p class="muted" id="no-snapshot-msg" style="display:none;">กล้องนี้ยังไม่มีภาพ (ยังไม่เคย publish หรือ worker ยังไม่ได้ประมวลผล)</p>
+  </div>
+
+  <div class="editor-side">
+    <div class="card" style="margin-bottom:0.75rem;">
+      <h3 style="margin-top:0;">คำอธิบายสี</h3>
+      <p><span class="badge badge-free">free</span> ว่าง</p>
+      <p><span class="badge badge-occupied">occupied</span> มีรถ</p>
+      <p><span class="badge badge-unknown">unknown</span> ไม่มีข้อมูล</p>
+      <p class="muted" style="margin-top:0.5rem;">รีเฟรชอัตโนมัติทุก 30 วินาที</p>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-top:0;">ช่องทั้งหมด (<span id="slot-count">0</span>)</h3>
+      <ul class="slot-list" id="slot-list"></ul>
+    </div>
+  </div>
+</div>
+
+<script src="/static/js/live.js"></script>
+{% endblock %}

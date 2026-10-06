@@ -2,6 +2,12 @@
 {% block title %}กล้อง{% endblock %}
 {% block content %}
 <div x-data="dashboard()" x-init="init()">
+  <div class="card" x-show="isOperator" style="margin-bottom:1rem;">
+    <p>หน้านี้ (จัดการกล้อง) สำหรับ Admin เท่านั้น — <a href="/admin/live">ไปหน้า Live view</a> แทน</p>
+  </div>
+
+  <template x-if="!isOperator">
+  <div>
   <div class="card" style="margin-bottom:1rem;">
     <h2 style="margin-top:0;">กล้อง</h2>
     <p class="muted" x-show="cameras.length === 0">ยังไม่มีกล้อง เพิ่มกล้องแรกด้านล่าง</p>
@@ -67,18 +73,23 @@
       <p class="error-text" x-show="error" x-text="error"></p>
     </form>
   </div>
+  </div>
+  </template>
 </div>
 
 <script>
   function dashboard() {
     return {
       cameras: [],
+      isOperator: false,
       loading: false,
       error: "",
       form: { name: "", brand: "hikvision", host: "", username: "", password: "", channel: 1, rtsp_url_custom: "" },
       async init() {
         const user = await requireAuth();
         if (!user) return;
+        this.isOperator = user.role !== "admin";
+        if (this.isOperator) return;  // จัดการกล้องเป็นสิทธิ์ Admin เท่านั้น
         await this.loadCameras();
       },
       async loadCameras() {

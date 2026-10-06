@@ -48,7 +48,7 @@
               this.error = data.detail || "เข้าสู่ระบบไม่สำเร็จ";
               return;
             }
-            window.location.href = "/admin";
+            window.location.href = data.role === "admin" ? "/admin" : "/admin/live";
           } catch (e) {
             this.error = "เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ";
           } finally {
