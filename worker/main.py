@@ -24,6 +24,7 @@ from core.models import (
 from worker.capture import grab_frame
 from worker.detector import OnnxYoloxDetector
 from worker.health import detect_camera_moved, is_health_check_due, raise_alert, resolve_alerts
+from worker.stats import maybe_prune_old_stats, maybe_record_minute_stats
 from worker.occupancy import (
     apply_debounce,
     compute_footprint,
@@ -55,6 +56,11 @@ def run_cycle(detector: OnnxYoloxDetector) -> None:
         for camera in cameras:
             if _is_due(camera):
                 process_camera(db, camera, detector)
+
+        now = datetime.utcnow()
+        maybe_record_minute_stats(db, now)  # FR-36, FR-37
+        maybe_prune_old_stats(db, now)  # FR-39, FR-10
+        db.commit()
     finally:
         db.close()
 
