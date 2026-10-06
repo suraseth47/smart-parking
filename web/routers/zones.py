@@ -1,14 +1,14 @@
-"""จัดการโซน: CRUD + ปิด/เปิดโซนชั่วคราว (FR-35)"""
+"""จัดการโซน: CRUD + ปิด/เปิดโซนชั่วคราว (FR-35) + Coverage report (FR-27)"""
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from core.db import get_db
-from core.models import AuditLog, Zone
+from core.models import AuditLog, LayoutStatus, Slot, Zone
 from web.deps import CurrentUser, get_current_user, require_admin, verify_csrf
 
 router = APIRouter(prefix="/api/admin/zones", tags=["zones"])
@@ -71,6 +71,35 @@ def get_zone(
     zone_id: int, db: Session = Depends(get_db), _user: CurrentUser = Depends(get_current_user)
 ):
     return _get_zone_or_404(db, zone_id)
+
+
+@router.get("/{zone_id}/coverage")
+def get_zone_coverage(
+    zone_id: int, db: Session = Depends(get_db), _user: CurrentUser = Depends(get_current_user)
+):
+    """เทียบจำนวนช่องที่วาดแล้วกับ 'จำนวนช่องจริง' ที่ Admin กรอกไว้ (FR-27)"""
+    zone = _get_zone_or_404(db, zone_id)
+
+    drawn_slots = db.scalar(
+        select(func.count()).select_from(Slot).where(Slot.zone_id == zone_id)
+    )
+    published_slots = db.scalar(
+        select(func.count())
+        .select_from(Slot)
+        .where(Slot.zone_id == zone_id, Slot.layout_status == LayoutStatus.PUBLISHED)
+    )
+    coverage_pct = (
+        round(drawn_slots / zone.expected_slots * 100, 1) if zone.expected_slots > 0 else None
+    )
+
+    return {
+        "zone_id": zone.id,
+        "code": zone.code,
+        "expected_slots": zone.expected_slots,
+        "drawn_slots": drawn_slots,
+        "published_slots": published_slots,
+        "coverage_pct": coverage_pct,
+    }
 
 
 @router.put("/{zone_id}", response_model=ZoneOut)
