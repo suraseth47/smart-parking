@@ -14,3 +14,4 @@ argon2-cffi
 python-multipart
 python-dotenv
 pytest
+psutil

@@ -18,4 +18,5 @@ dependencies = [
     "python-multipart",
     "python-dotenv",
     "pytest",
+    "psutil",
 ]
