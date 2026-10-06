@@ -1,4 +1,4 @@
-"""ฟังก์ชันช่วยเกี่ยวกับกล้องที่ web/routers ใช้ร่วมกัน"""
+"""ฟังก์ชันช่วยเกี่ยวกับกล้องที่ web และ worker ใช้ร่วมกัน"""
 from __future__ import annotations
 
 from pathlib import Path
@@ -25,5 +25,5 @@ def build_camera_url(camera: Camera) -> str:
 
 
 def snapshot_path(camera_id: int) -> Path:
-    """path ไฟล์ snapshot ล่าสุดของกล้อง (ใช้ทั้ง test connection, preview, และหน้า Live)"""
+    """path ไฟล์ snapshot ล่าสุดของกล้อง (ใช้ทั้ง test connection, preview, worker loop, และหน้า Live)"""
     return get_settings().data_dir / "snapshots" / f"camera_{camera_id}.jpg"

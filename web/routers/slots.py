@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from core.config import PROJECT_ROOT, get_settings
 from core.db import get_db
 from core.models import AuditLog, Camera, LayoutStatus, Slot, SlotType, Zone
-from web.camera_utils import build_camera_url, snapshot_path
+from core.camera_utils import build_camera_url, snapshot_path
 from web.deps import CurrentUser, require_admin, verify_csrf
 from worker.camera_connection import check_camera_connection
 from worker.capture import grab_frame

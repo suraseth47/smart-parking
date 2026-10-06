@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from core.db import get_db
 from core.models import AuditLog, Camera, CameraBrand, CameraStream
 from core.security import encrypt_camera_password
-from web.camera_utils import build_camera_url, snapshot_path as get_snapshot_path
+from core.camera_utils import build_camera_url, snapshot_path as get_snapshot_path
 from web.deps import CurrentUser, get_current_user, require_admin, verify_csrf
 from worker.camera_connection import check_camera_connection
 

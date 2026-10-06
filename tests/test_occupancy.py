@@ -1,4 +1,14 @@
-from worker.occupancy import compute_footprint, compute_slot_score, is_occupied, normalize_box
+from datetime import datetime, timedelta
+
+from worker.occupancy import (
+    apply_debounce,
+    compute_footprint,
+    compute_slot_score,
+    is_occupied,
+    normalize_box,
+    resolve_override,
+    update_raw_history,
+)
 
 
 def test_compute_footprint_returns_bottom_half():
@@ -51,3 +61,62 @@ def test_is_occupied_threshold_boundary():
 def test_normalize_box():
     box = normalize_box((100.0, 200.0, 300.0, 400.0), frame_width=1000, frame_height=500)
     assert box == (0.1, 0.4, 0.3, 0.8)
+
+
+# ---------- update_raw_history (FR-8) ----------
+
+def test_update_raw_history_appends():
+    assert update_raw_history([], "free") == ["free"]
+    assert update_raw_history(["free"], "occupied") == ["free", "occupied"]
+
+
+def test_update_raw_history_keeps_last_3_only():
+    history = update_raw_history(["free", "free", "occupied"], "occupied")
+    assert history == ["free", "occupied", "occupied"]
+
+
+# ---------- apply_debounce (FR-8) ----------
+
+def test_debounce_empty_history_keeps_current_state():
+    assert apply_debounce([], "free") == "free"
+
+
+def test_debounce_2_of_3_majority_switches_state():
+    assert apply_debounce(["occupied", "occupied", "free"], "free") == "occupied"
+
+
+def test_debounce_3_of_3_switches_state():
+    assert apply_debounce(["occupied", "occupied", "occupied"], "free") == "occupied"
+
+
+def test_debounce_tie_keeps_current_state():
+    assert apply_debounce(["occupied", "free"], "free") == "free"
+    assert apply_debounce(["occupied", "free"], "occupied") == "occupied"
+
+
+def test_debounce_majority_matches_current_state_is_noop():
+    assert apply_debounce(["free", "free", "occupied"], "free") == "free"
+
+
+# ---------- resolve_override (FR-11) ----------
+
+def test_override_none_uses_debounced_state():
+    now = datetime(2026, 1, 1, 12, 0)
+    assert resolve_override("occupied", None, None, now) == "occupied"
+
+
+def test_override_active_without_expiry_wins():
+    now = datetime(2026, 1, 1, 12, 0)
+    assert resolve_override("free", "occupied", None, now) == "occupied"
+
+
+def test_override_active_before_expiry_wins():
+    now = datetime(2026, 1, 1, 12, 0)
+    until = now + timedelta(minutes=10)
+    assert resolve_override("free", "occupied", until, now) == "occupied"
+
+
+def test_override_expired_falls_back_to_debounced_state():
+    now = datetime(2026, 1, 1, 12, 0)
+    until = now - timedelta(minutes=1)
+    assert resolve_override("free", "occupied", until, now) == "free"

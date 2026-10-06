@@ -11,7 +11,10 @@ def grab_frame(source: str) -> np.ndarray:
     """คืนภาพ 1 เฟรมแบบ BGR จาก source; โยน RuntimeError ถ้าดึงไม่ได้"""
     if _is_image_file(source):
         # ใช้ imdecode แทน imread ตรงๆ เพราะ cv2.imread พังกับ path ที่มีอักษรไทย/unicode บน Windows
-        file_bytes = np.fromfile(source, dtype=np.uint8)
+        try:
+            file_bytes = np.fromfile(source, dtype=np.uint8)
+        except OSError as exc:
+            raise RuntimeError(f"อ่านไฟล์ภาพไม่ได้: {source} ({exc})") from exc
         frame = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
         if frame is None:
             raise RuntimeError(f"อ่านไฟล์ภาพไม่ได้: {source}")
