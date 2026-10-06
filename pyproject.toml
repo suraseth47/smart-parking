@@ -7,8 +7,15 @@ dependencies = [
     "onnxruntime",
     "opencv-python",
     "numpy",
+    "fastapi",
+    "uvicorn[standard]",
+    "jinja2",
+    "sqlalchemy",
+    "alembic",
+    "shapely",
+    "cryptography",
+    "argon2-cffi",
+    "python-multipart",
+    "python-dotenv",
+    "pytest",
 ]
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
