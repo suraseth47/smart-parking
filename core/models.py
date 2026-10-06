@@ -1,11 +1,11 @@
 """ตารางฐานข้อมูลตาม SPEC ข้อ 6
 
 หมายเหตุ: มีตารางของ P1 (users, zones, cameras, slots, slot_state,
-slot_events, settings, audit_log) และ P2 (zone_stats_minute,
+slot_events, settings, audit_log), P2 (zone_stats_minute,
 zone_stats_hour, alerts, validation_jobs, validation_samples —
 สองตัวหลังไม่มีใน SPEC ข้อ 6 ออกแบบเพิ่มเองเพื่อรองรับ NFR-4
-Validation tool) ส่วน calib_jobs, calib_samples, slot_proposals (P3)
-จะเพิ่มตอนถึงเฟสนั้นตามกฎห้ามข้ามเฟสใน CLAUDE.md
+Validation tool) และ P3 (calib_jobs, calib_samples, slot_proposals
+สำหรับโหมดกึ่งออโต้ FR-28/29)
 """
 from __future__ import annotations
 
@@ -279,3 +279,69 @@ class ValidationSample(Base):
     # slot_results: [{"slot_id", "code", "polygon", "detected_state", "score", "confirmed_state"}, ...]
     # confirmed_state เป็น null จนกว่า Admin จะกดยืนยัน
     slot_results: Mapped[list] = mapped_column(JSON)
+
+
+class CalibMethod(str, enum.Enum):
+    OBSERVATION = "observation"
+    LINES = "lines"
+
+
+class CalibJobStatus(str, enum.Enum):
+    RUNNING = "running"
+    DONE = "done"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class CalibJob(Base):
+    """งานกึ่งออโต้ของกล้องหนึ่งตัว: สังเกตรถจอดจริง (โหมด A) หรือจับเส้นช่องจอด (โหมด B) (FR-28, FR-29)"""
+
+    __tablename__ = "calib_jobs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    camera_id: Mapped[int] = mapped_column(ForeignKey("cameras.id"), index=True)
+    method: Mapped[CalibMethod] = mapped_column(SAEnum(CalibMethod, native_enum=False, length=20))
+    # params: observation -> {duration_hours, interval_minutes, hour_start, hour_end}
+    params: Mapped[dict] = mapped_column(JSON)
+    status: Mapped[CalibJobStatus] = mapped_column(
+        SAEnum(CalibJobStatus, native_enum=False, length=20), default=CalibJobStatus.RUNNING
+    )
+    progress: Mapped[float] = mapped_column(Float, default=0.0)  # 0.0-1.0
+    started_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    ends_at: Mapped[datetime] = mapped_column(DateTime)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    background_image_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+
+class CalibSample(Base):
+    """พิกัด footprint รถที่เก็บระหว่าง job กำลังทำงาน (FR-28b); ลบทิ้งหลังปิด job 7 วัน (FR-29f)"""
+
+    __tablename__ = "calib_samples"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("calib_jobs.id"), index=True)
+    ts: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    boxes: Mapped[list] = mapped_column(JSON)  # [[x1,y1,x2,y2 (normalized)], ...]
+
+
+class ProposalStatus(str, enum.Enum):
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+
+
+class SlotProposal(Base):
+    """กรอบช่องที่ระบบเสนอจากโหมดกึ่งออโต้ รอ Admin อนุมัติ (FR-28d, FR-29d)"""
+
+    __tablename__ = "slot_proposals"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("calib_jobs.id"), index=True)
+    camera_id: Mapped[int] = mapped_column(ForeignKey("cameras.id"), index=True)
+    polygon: Mapped[list] = mapped_column(JSON)  # normalized [[x,y], ...]
+    confidence: Mapped[float] = mapped_column(Float)
+    status: Mapped[ProposalStatus] = mapped_column(
+        SAEnum(ProposalStatus, native_enum=False, length=20), default=ProposalStatus.PENDING
+    )
+    decided_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
