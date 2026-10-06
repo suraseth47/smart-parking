@@ -30,3 +30,8 @@ def layout_editor_page(request: Request):
 @router.get("/live")
 def live_page(request: Request):
     return templates.TemplateResponse(request, "admin/live.html")
+
+
+@router.get("/override")
+def override_page(request: Request):
+    return templates.TemplateResponse(request, "admin/override.html")

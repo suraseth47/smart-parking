@@ -1,0 +1,70 @@
+{% extends "admin/base.html" %}
+{% block title %}Override{% endblock %}
+{% block content %}
+<div x-data="overridePage()" x-init="init()">
+  <div class="card" style="margin-bottom:0.75rem;">
+    <div class="toolbar">
+      <label class="muted" style="margin:0;">กรองตามโซน:</label>
+      <select id="zone-filter" x-model="zoneFilter" @change="loadSlots()">
+        <option value="">ทุกโซน</option>
+        <template x-for="z in zones" :key="z.id">
+          <option :value="z.id" x-text="z.code + ' - ' + z.name_th"></option>
+        </template>
+      </select>
+      <button class="btn-secondary" @click="selectAll()">เลือกทั้งหมดที่เห็น</button>
+      <button class="btn-secondary" @click="selectNone()">ยกเลิกการเลือก</button>
+      <span class="muted">เลือกอยู่ <span x-text="selected.size"></span> ช่อง</span>
+    </div>
+  </div>
+
+  <div class="card" x-show="selected.size > 0" style="margin-bottom:0.75rem;">
+    <h3 style="margin-top:0;">บังคับสถานะช่องที่เลือก (<span x-text="selected.size"></span> ช่อง)</h3>
+    <label>สถานะที่จะบังคับ</label>
+    <select x-model="overrideForm.state">
+      <option value="occupied">occupied (มีรถ / ปิดใช้งาน)</option>
+      <option value="free">free (ว่าง)</option>
+    </select>
+    <label>หมายเหตุ</label>
+    <input type="text" x-model="overrideForm.note" placeholder="เช่น ปิดซ่อม, วางกรวย">
+    <label>หมดอายุ (ไม่กรอก = ไม่มีวันหมดอายุ จนกว่าจะยกเลิกเอง)</label>
+    <input type="datetime-local" x-model="overrideForm.until">
+    <div style="margin-top:0.75rem; display:flex; gap:0.5rem;">
+      <button @click="applyOverride()" :disabled="loading">บังคับสถานะ</button>
+      <button class="btn-danger" @click="cancelOverride()" :disabled="loading">ยกเลิก Override</button>
+    </div>
+    <p class="error-text" x-show="error" x-text="error"></p>
+  </div>
+
+  <div class="card">
+    <table style="width:100%; border-collapse:collapse;">
+      <thead>
+        <tr style="text-align:left; border-bottom:1px solid var(--color-border);">
+          <th style="padding:0.4rem;"></th>
+          <th style="padding:0.4rem;">รหัสช่อง</th>
+          <th style="padding:0.4rem;">โซน</th>
+          <th style="padding:0.4rem;">ประเภท</th>
+          <th style="padding:0.4rem;">สถานะ</th>
+          <th style="padding:0.4rem;">Override</th>
+        </tr>
+      </thead>
+      <tbody>
+        <template x-for="slot in slots" :key="slot.id">
+          <tr style="border-bottom:1px solid var(--color-border);">
+            <td style="padding:0.4rem;">
+              <input type="checkbox" :checked="selected.has(slot.id)" @change="toggle(slot.id)">
+            </td>
+            <td style="padding:0.4rem;" x-text="slot.code"></td>
+            <td style="padding:0.4rem;" x-text="slot.zone_code"></td>
+            <td style="padding:0.4rem;" x-text="slot.type"></td>
+            <td style="padding:0.4rem;"><span class="badge" :class="'badge-' + slot.state" x-text="slot.state"></span></td>
+            <td style="padding:0.4rem;" x-text="slot.override_state ? (slot.override_state + (slot.override_note ? ' (' + slot.override_note + ')' : '')) : '-'"></td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+    <p class="muted" x-show="slots.length === 0">ไม่มีช่องในโซนที่เลือก</p>
+  </div>
+</div>
+
+<script src="/static/js/override.js"></script>
+{% endblock %}
