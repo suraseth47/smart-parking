@@ -5,13 +5,14 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from core.config import get_settings
 from core.db import get_db
 from core.models import AuditLog, Camera, CameraBrand, CameraStream
-from core.rtsp import build_rtsp_url
-from core.security import decrypt_camera_password, encrypt_camera_password
+from core.security import encrypt_camera_password
+from web.camera_utils import build_camera_url
 from web.deps import CurrentUser, get_current_user, require_admin, verify_csrf
 from worker.camera_connection import check_camera_connection
 
@@ -51,6 +52,7 @@ class CameraOut(BaseModel):
     tiling_enabled: bool
     roi_polygon: list | None
     status: str
+    reference_image_path: str | None
 
     model_config = {"from_attributes": True}
 
@@ -110,7 +112,11 @@ def delete_camera(
     camera = _get_camera_or_404(db, camera_id)
     db.add(AuditLog(user_id=admin.id, action="delete_camera", target=camera.name))
     db.delete(camera)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, "ลบไม่ได้ เพราะมีช่องจอดผูกกับกล้องนี้อยู่")
 
 
 @router.post("/{camera_id}/test")
@@ -118,7 +124,7 @@ def test_camera_connection(
     camera_id: int, db: Session = Depends(get_db), _admin: CurrentUser = Depends(require_admin)
 ):
     camera = _get_camera_or_404(db, camera_id)
-    url = _build_camera_url(camera)
+    url = build_camera_url(camera)
     snapshot_path = _snapshot_path(camera_id)
     snapshot_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -154,20 +160,6 @@ def _get_camera_or_404(db: Session, camera_id: int) -> Camera:
     if camera is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "ไม่พบกล้องนี้")
     return camera
-
-
-def _build_camera_url(camera: Camera) -> str:
-    password = decrypt_camera_password(camera.password_enc) if camera.password_enc else ""
-    return build_rtsp_url(
-        brand=camera.brand,
-        host=camera.host,
-        port=camera.port,
-        channel=camera.channel,
-        stream=camera.stream,
-        username=camera.username or "",
-        password=password,
-        rtsp_url_custom=camera.rtsp_url_custom,
-    )
 
 
 def _snapshot_path(camera_id: int):
