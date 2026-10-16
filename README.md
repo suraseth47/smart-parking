@@ -2,7 +2,7 @@
 
 ระบบตรวจนับที่จอดรถว่างจากกล้องวงจรปิด IP (Hikvision / Dahua) แล้วแสดงจำนวนที่ว่างบนเว็บไซต์ให้คนทั่วไปดูได้แบบออนไลน์ — ติดตั้งบน Server เครื่องเดียวที่หน้างาน
 
-> ⚠️ README นี้เขียนก่อนเริ่มพัฒนา คำสั่งและโครงสร้างเป็น **แผน** อาจเปลี่ยนระหว่างพัฒนา
+> พัฒนาครบทุกเฟสตาม SPEC ข้อ 12 แล้ว (P0–P4) คำสั่ง/โครงสร้างด้านล่างตรงกับโค้ดจริง
 > รายละเอียดการออกแบบทั้งหมดอยู่ใน [SPEC.md](SPEC.md)
 
 ---
@@ -75,6 +75,21 @@ ffmpeg -rtsp_transport tcp -i "rtsp://user:pass@IP:554/Streaming/Channels/101" -
 
 ---
 
+## ถ้าเครื่อง Server เป็น Proxmox
+
+ขั้นตอนด้านล่างทั้งหมด (Docker, การติดตั้ง) ต้องรันบน **Ubuntu Server 24.04 LTS** —
+ถ้า Server หน้างานลงไว้เป็น Proxmox (hypervisor) ต้องสร้าง **VM** (ไม่ใช่ LXC container
+เพราะ Docker-in-LXC ต้องเปิด nesting เสี่ยงมีปัญหา) ก่อน แล้วค่อยทำตามขั้นตอนข้างล่างนี้
+*ในตัว VM*:
+
+1. Proxmox UI → **Create VM** → เลือก ISO ของ Ubuntu Server 24.04 LTS
+2. สเปก VM: อย่างน้อย 4 vCPU, RAM 16 GB, Disk 512 GB (ปรับตามจำนวนกล้อง ดูหัวข้อฮาร์ดแวร์ด้านบน)
+3. Network: ใช้ **Bridge** (เช่น `vmbr0`) ไม่ใช่ NAT ให้ VM ได้ IP ของตัวเองในเครือข่ายเดียวกับกล้อง
+4. ติดตั้ง Ubuntu ตามปกติ ตั้ง static IP ให้ VM (จะได้ตั้ง port forward จากเราเตอร์มาที่ IP นี้ได้แน่นอน)
+5. จากนั้น SSH เข้า VM แล้วทำตาม "การติดตั้ง" ด้านล่างนี้ต่อได้เลย เหมือนเป็น Ubuntu Server ปกติ
+
+---
+
 ## การติดตั้ง
 
 ```bash
@@ -89,7 +104,7 @@ sudo ufw allow from 192.168.0.0/16 to any port 22 proto tcp   # SSH เฉพา
 sudo ufw enable
 
 # 3. ดึงโปรเจกต์
-git clone <repo-url> smart-parking
+git clone https://github.com/suraseth47/smart-parking.git
 cd smart-parking
 
 # 4. ตั้งค่า
@@ -105,7 +120,7 @@ docker compose up -d
 docker compose exec web python scripts/create_admin.py
 ```
 
-### ตัวแปรใน `.env` (แผน)
+### ตัวแปรใน `.env`
 
 | ตัวแปร | ตัวอย่าง | คำอธิบาย |
 |---|---|---|
@@ -114,8 +129,10 @@ docker compose exec web python scripts/create_admin.py
 | `SITE_NAME_TH` / `SITE_NAME_EN` | `ลานจอดรถ ...` | ชื่อที่แสดงบนเว็บ |
 | `SECRET_KEY` | (สุ่มยาว) | เซ็น session |
 | `FERNET_KEY` | (สุ่ม) | เข้ารหัสรหัสผ่านกล้องใน DB |
-| `ADMIN_ALLOW_IPS` | `203.0.113.5,192.168.0.0/16` | (ไม่บังคับ) จำกัด IP ที่เข้าหลังบ้านได้ |
 | `TZ` | `Asia/Bangkok` | |
+
+> จำกัด IP ที่เข้าหลังบ้านได้ (ไม่บังคับ) ตั้งที่หน้า **หลังบ้าน → ตั้งค่า** หลัง login
+> (ไม่ได้ตั้งผ่าน `.env`)
 
 สร้าง key แบบสุ่ม:
 ```bash
