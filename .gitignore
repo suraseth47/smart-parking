@@ -19,5 +19,6 @@ venv/
 
 # Editor / OS
 .vscode/
+.claude/
 Thumbs.db
 .DS_Store
