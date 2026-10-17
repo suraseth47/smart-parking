@@ -1,7 +1,7 @@
 """จุดเริ่มต้นของ web service (FastAPI)"""
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 
 from web.ip_allowlist import IPAllowlistMiddleware
@@ -40,3 +40,16 @@ app.include_router(admin_pages.router)
 app.include_router(public.router)
 
 app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")), name="static")
+
+
+@app.middleware("http")
+async def no_cache_static(request: Request, call_next):
+    """บังคับให้เบราว์เซอร์ revalidate ไฟล์ static ทุกครั้ง (เช็ค ETag ถูกๆ) แทนที่จะ
+    cache ไว้เฉยๆ โดยไม่ถามเลย — บาง browser (เช่น Safari บนมือถือ) cache CSS/JS
+    ค้างนานผิดปกติถ้าไม่มี Cache-Control กำกับไว้ชัดเจน ทำให้เห็นหน้าเว็บเก่าแม้ deploy
+    โค้ดใหม่ไปแล้ว
+    """
+    response = await call_next(request)
+    if request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
