@@ -50,6 +50,7 @@
                 <span x-text="zone.free_ev"></span> <span x-text="t('ev')"></span>
               </div>
               <div class="zone-status-label" x-show="zone.status === 'partial'" x-text="t('partialData')"></div>
+              <div class="zone-free-list" x-text="freeSlotsText(zone)"></div>
             </div>
           </template>
 
@@ -89,6 +90,8 @@
         updatedAt: "อัปเดตล่าสุด",
         stale: "ระบบขัดข้องชั่วคราว ตัวเลขอาจไม่เป็นปัจจุบัน",
         never: "ยังไม่มีข้อมูล",
+        availableSlots: "มีช่องจอดรถว่างตำแหน่ง",
+        noAvailableSlots: "ไม่มีช่องว่าง",
       },
       en: {
         subtitle: "Real-time parking availability",
@@ -103,6 +106,8 @@
         updatedAt: "Last updated",
         stale: "System temporarily unavailable, numbers may be outdated",
         never: "No data yet",
+        availableSlots: "Available slots:",
+        noAvailableSlots: "No available slots",
       },
     };
 
@@ -164,6 +169,14 @@
           if (pct < 10) color = "#dc2626";
           else if (pct < 30) color = "#ca8a04";
           return `--zone-color: ${color}`;
+        },
+
+        freeSlotsText(zone) {
+          // ใช้ zone.slots ตัวเดียวกับที่วาดแผนผังช่องจอด -> จำนวนรหัสตรงกับ zone.free เสมอ
+          // (ทั้งคู่กรองด้วยกติกาเดียวกันฝั่ง server รวม override/unknown ที่ resolve แล้ว)
+          const codes = (zone.slots || []).filter((s) => s.state === "free").map((s) => s.code);
+          if (codes.length === 0) return this.t("noAvailableSlots");
+          return `${this.t("availableSlots")} ${codes.join(", ")}`;
         },
 
         get formattedUpdatedAt() {

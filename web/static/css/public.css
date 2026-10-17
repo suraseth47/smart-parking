@@ -106,6 +106,7 @@ body {
 .zone-free { font-size: 1.8rem; font-weight: 700; color: var(--zone-color, var(--color-text)); }
 .zone-capacity { color: var(--color-muted); font-size: 0.85rem; }
 .zone-status-label { font-size: 0.8rem; color: var(--color-muted); margin-top: 0.3rem; }
+.zone-free-list { font-size: 0.8rem; color: var(--color-text); margin-top: 0.4rem; line-height: 1.4; }
 
 .zone-extra { font-size: 0.75rem; color: var(--color-muted); margin-top: 0.35rem; }
 
