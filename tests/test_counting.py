@@ -2,14 +2,18 @@ from core.counting import (
     SlotInfo,
     ZoneInfo,
     build_public_summary,
+    build_slot_maps,
+    build_zone_slot_map,
     filter_countable_slots,
     summarize_total,
     summarize_zone,
 )
 
 
-def slot(zone_id=1, type="normal", state="free", is_active=True, layout_status="published"):
-    return SlotInfo(zone_id=zone_id, type=type, state=state, is_active=is_active, layout_status=layout_status)
+def slot(zone_id=1, type="normal", state="free", is_active=True, layout_status="published", code=""):
+    return SlotInfo(
+        zone_id=zone_id, type=type, state=state, is_active=is_active, layout_status=layout_status, code=code
+    )
 
 
 def zone(id=1, code="A", is_public=True, is_closed=False):
@@ -143,3 +147,47 @@ def test_build_public_summary_end_to_end():
     assert by_code["B"].status == "closed"
     assert total.free == 1
     assert total.excluded_zones == ["B"]
+
+
+# ---------- build_zone_slot_map / build_slot_maps (แผนผังช่องจอดหน้าสาธารณะ) ----------
+
+def test_zone_slot_map_none_for_closed_zone():
+    assert build_zone_slot_map(zone(is_closed=True), [slot(code="A-01")]) is None
+
+
+def test_zone_slot_map_excludes_reserved_and_draft_and_inactive():
+    slots = [
+        slot(code="A-01", type="reserved"),
+        slot(code="A-02", type="normal", layout_status="draft"),
+        slot(code="A-03", type="normal", is_active=False),
+        slot(code="A-04", type="normal"),
+    ]
+    result = build_zone_slot_map(zone(), slots)
+    assert [s["code"] for s in result] == ["A-04"]
+
+
+def test_zone_slot_map_sorted_by_code():
+    slots = [slot(code="A-03"), slot(code="A-01"), slot(code="A-02")]
+    result = build_zone_slot_map(zone(), slots)
+    assert [s["code"] for s in result] == ["A-01", "A-02", "A-03"]
+
+
+def test_zone_slot_map_includes_state():
+    slots = [slot(code="A-01", state="occupied"), slot(code="A-02", state="unknown")]
+    result = build_zone_slot_map(zone(), slots)
+    assert {s["code"]: s["state"] for s in result} == {"A-01": "occupied", "A-02": "unknown"}
+
+
+def test_build_slot_maps_skips_non_public_zones():
+    zones = [zone(id=1, code="A", is_public=True), zone(id=2, code="B", is_public=False)]
+    slots = [slot(zone_id=1, code="A-01"), slot(zone_id=2, code="B-01")]
+    result = build_slot_maps(zones, slots)
+    assert list(result.keys()) == ["A"]
+
+
+def test_build_slot_maps_per_zone():
+    zones = [zone(id=1, code="A"), zone(id=2, code="B", is_closed=True)]
+    slots = [slot(zone_id=1, code="A-01"), slot(zone_id=2, code="B-01")]
+    result = build_slot_maps(zones, slots)
+    assert [s["code"] for s in result["A"]] == ["A-01"]
+    assert result["B"] is None

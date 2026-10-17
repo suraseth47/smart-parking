@@ -109,6 +109,29 @@ body {
 
 .zone-extra { font-size: 0.75rem; color: var(--color-muted); margin-top: 0.35rem; }
 
+.slot-map {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.6rem;
+}
+.slot-box {
+  min-width: 2.1rem;
+  height: 1.6rem;
+  padding: 0 0.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: #fff;
+  line-height: 1;
+}
+.slot-box.slot-free { background: var(--color-green); }
+.slot-box.slot-occupied { background: var(--color-red); }
+.slot-box.slot-unknown { background: var(--color-gray); }
+
 .updated-at {
   text-align: center;
   color: var(--color-muted);

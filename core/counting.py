@@ -16,6 +16,7 @@ class SlotInfo:
     state: str  # "free" | "occupied" | "unknown"
     is_active: bool
     layout_status: str  # "draft" | "published"
+    code: str = ""
 
 
 @dataclass
@@ -115,3 +116,27 @@ def build_public_summary(
         summarize_zone(zone, [s for s in slots if s.zone_id == zone.id]) for zone in public_zones
     ]
     return summaries, summarize_total(summaries)
+
+
+def build_zone_slot_map(zone: ZoneInfo, slots: list[SlotInfo]) -> list[dict] | None:
+    """รายการช่องจอดของ 1 โซนสำหรับแสดงเป็นแผนผังในหน้าสาธารณะ เรียงตามรหัส (ต่อขยาย FR-17)
+
+    คืน None ถ้าโซนปิด (ไม่ต้องแสดงแผนผัง) — มิฉะนั้นคืนเฉพาะช่องที่นับยอดสาธารณะได้
+    (ตัด reserved/draft/inactive ออกตาม FR-12) เรียงรหัสจากน้อยไปมาก
+    """
+    if zone.is_closed:
+        return None
+    countable = filter_countable_slots(slots)
+    return sorted(
+        ({"code": s.code, "state": s.state} for s in countable),
+        key=lambda item: item["code"],
+    )
+
+
+def build_slot_maps(zones: list[ZoneInfo], slots: list[SlotInfo]) -> dict[str, list[dict] | None]:
+    """สร้างแผนผังช่องจอดของทุกโซนสาธารณะ ใช้คู่กับ build_public_summary"""
+    public_zones = [z for z in zones if z.is_public]
+    return {
+        zone.code: build_zone_slot_map(zone, [s for s in slots if s.zone_id == zone.id])
+        for zone in public_zones
+    }

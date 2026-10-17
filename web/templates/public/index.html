@@ -59,6 +59,12 @@
           <template x-if="zone.status === 'closed'">
             <div class="zone-status-label" x-text="t('closed')"></div>
           </template>
+
+          <div class="slot-map" x-show="zone.slots && zone.slots.length > 0">
+            <template x-for="slot in zone.slots" :key="slot.code">
+              <div class="slot-box" :class="'slot-' + slot.state" :title="slot.code" x-text="slot.code"></div>
+            </template>
+          </div>
         </div>
       </template>
     </div>

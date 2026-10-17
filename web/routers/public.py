@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from core.config import get_settings
-from core.counting import SlotInfo, ZoneInfo, build_public_summary
+from core.counting import SlotInfo, ZoneInfo, build_public_summary, build_slot_maps
 from core.db import get_db
 from core.models import Camera, Slot, SlotState, Zone
 from web.templates_env import templates
@@ -40,6 +40,11 @@ class TotalOut(BaseModel):
     excluded_zones: list[str]
 
 
+class SlotBoxOut(BaseModel):
+    code: str
+    state: str  # "free" | "occupied" | "unknown"
+
+
 class ZoneSummaryOut(BaseModel):
     code: str
     name_th: str
@@ -49,6 +54,7 @@ class ZoneSummaryOut(BaseModel):
     capacity: int | None = None
     free_disabled: int | None = None
     free_ev: int | None = None
+    slots: list[SlotBoxOut] | None = None
 
 
 class PublicSummaryOut(BaseModel):
@@ -98,12 +104,13 @@ def _build_summary(db: Session) -> dict:
     zone_names = {z.id: (z.name_th, z.name_en) for z in zones}
 
     rows = db.execute(
-        select(Slot.zone_id, Slot.type, Slot.is_active, Slot.layout_status, SlotState.state)
+        select(Slot.zone_id, Slot.code, Slot.type, Slot.is_active, Slot.layout_status, SlotState.state)
         .outerjoin(SlotState, SlotState.slot_id == Slot.id)
     ).all()
     slot_infos = [
         SlotInfo(
             zone_id=r.zone_id,
+            code=r.code,
             type=r.type.value,
             state=r.state.value if r.state else "unknown",
             is_active=r.is_active,
@@ -113,6 +120,7 @@ def _build_summary(db: Session) -> dict:
     ]
 
     zone_summaries, total = build_public_summary(zone_infos, slot_infos)
+    slot_maps = build_slot_maps(zone_infos, slot_infos)
     zone_id_by_code = {z.code: z.id for z in zones}
 
     latest_update = db.scalar(select(func.max(Camera.last_frame_at)).where(Camera.enabled.is_(True)))
@@ -141,6 +149,7 @@ def _build_summary(db: Session) -> dict:
                 "capacity": z.capacity,
                 "free_disabled": z.free_disabled,
                 "free_ev": z.free_ev,
+                "slots": slot_maps.get(z.code),
             }
             for z in zone_summaries
         ],
