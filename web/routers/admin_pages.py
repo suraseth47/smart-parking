@@ -32,6 +32,11 @@ def live_page(request: Request):
     return templates.TemplateResponse(request, "admin/live.html")
 
 
+@router.get("/cctv")
+def cctv_page(request: Request):
+    return templates.TemplateResponse(request, "admin/cctv.html")
+
+
 @router.get("/override")
 def override_page(request: Request):
     return templates.TemplateResponse(request, "admin/override.html")

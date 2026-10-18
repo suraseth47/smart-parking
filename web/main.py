@@ -11,6 +11,7 @@ from web.routers import (
     auth,
     calibration,
     cameras,
+    cctv,
     health,
     live,
     override,
@@ -30,6 +31,7 @@ app.include_router(zones.router)
 app.include_router(slots.router)
 app.include_router(health.router)
 app.include_router(live.router)
+app.include_router(cctv.router)
 app.include_router(override.router)
 app.include_router(reports.router)
 app.include_router(audit.router)
