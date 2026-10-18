@@ -4,27 +4,36 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}หลังบ้าน{% endblock %} - Smart Parking</title>
-  <link rel="stylesheet" href="/static/css/admin.css">
+  <link rel="stylesheet" href="/static/css/admin.css?v=20261018">
   <script defer src="/static/js/vendor/alpine.min.js"></script>
   <script src="/static/js/api.js"></script>
   {% block head %}{% endblock %}
 </head>
 <body>
-  <div class="topbar">
-    <span class="site-name">🅿️ Smart Parking - หลังบ้าน</span>
-    <nav>
-      <a href="/admin">กล้อง</a>
-      <a href="/admin/live">Live</a>
-      <a href="/admin/cctv">กล้องวงจรปิด</a>
-      <a href="/admin/override">Override</a>
-      <a href="/admin/reports">รายงาน</a>
-      <a href="/admin/audit">Audit log</a>
-      <a href="/admin/validation">Validation</a>
-      <a href="/admin/calibration">กึ่งออโต้</a>
-      <a href="/admin/settings">ตั้งค่า</a>
-      <a href="#" onclick="logout(); return false;">ออกจากระบบ</a>
+  {% set path = request.url.path.rstrip('/') %}
+  {% set nav_items = [
+    ("/admin", "กล้อง", ["/admin", "/admin/layout"]),
+    ("/admin/live", "Live", ["/admin/live"]),
+    ("/admin/cctv", "กล้องวงจรปิด", ["/admin/cctv"]),
+    ("/admin/override", "Override", ["/admin/override"]),
+    ("/admin/reports", "รายงาน", ["/admin/reports"]),
+    ("/admin/audit", "Audit log", ["/admin/audit"]),
+    ("/admin/validation", "Validation", ["/admin/validation"]),
+    ("/admin/calibration", "กึ่งออโต้", ["/admin/calibration"]),
+    ("/admin/settings", "ตั้งค่า", ["/admin/settings"]),
+  ] %}
+  <header class="topbar">
+    <a class="brand" href="/admin">
+      <span class="brand-mark" aria-hidden="true">P</span>
+      <span class="brand-text">Smart Parking<small>ระบบหลังบ้าน</small></span>
+    </a>
+    <nav aria-label="เมนูหลัก">
+      {% for href, label, matches in nav_items %}
+        <a href="{{ href }}"{% if path in matches %} class="active" aria-current="page"{% endif %}>{{ label }}</a>
+      {% endfor %}
+      <a href="#" class="nav-logout" onclick="logout(); return false;">ออกจากระบบ</a>
     </nav>
-  </div>
+  </header>
   <div class="page">
     {% block content %}{% endblock %}
   </div>
