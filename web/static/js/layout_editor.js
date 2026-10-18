@@ -152,6 +152,7 @@ class LayoutEditor {
     };
     this.slots.push(slot);
     this.select(slot);
+    this._markUnpublished();
   }
 
   _nextCode(prefix) {
@@ -266,6 +267,7 @@ class LayoutEditor {
   select(slot) {
     this.selected = slot;
     this._renderAll();
+    document.getElementById("delete-confirm").style.display = "none";
     const card = document.getElementById("selected-slot-card");
     if (!slot) {
       card.style.display = "none";
@@ -287,12 +289,36 @@ class LayoutEditor {
     this._renderAll();
   }
 
+  async saveSelectedEdits() {
+    if (!this.selected) return;
+    const threshold = Number(document.getElementById("sel-threshold").value);
+    if (isNaN(threshold) || threshold < 0.1 || threshold > 0.9) {
+      this._setStatus("Threshold ต้องอยู่ระหว่าง 0.1-0.9", true);
+      return;
+    }
+    this.applySelectedEdits();
+    await this.saveDraft();
+    this._setStatus("บันทึกแล้ว");
+  }
+
+  requestDeleteSelected() {
+    if (!this.selected) return;
+    document.getElementById("delete-confirm-text").textContent = `ต้องการลบช่อง ${this.selected.code} ใช่ไหม`;
+    document.getElementById("delete-confirm").style.display = "block";
+  }
+
+  cancelDeleteSelected() {
+    document.getElementById("delete-confirm").style.display = "none";
+  }
+
   deleteSelected() {
     if (!this.selected) return;
     this.slots = this.slots.filter((s) => s !== this.selected);
     this.selected = null;
+    document.getElementById("delete-confirm").style.display = "none";
     document.getElementById("selected-slot-card").style.display = "none";
     this._renderAll();
+    this._markUnpublished();
   }
 
   copySelected() {
@@ -312,6 +338,7 @@ class LayoutEditor {
     };
     this.slots.push(copy);
     this.select(copy);
+    this._markUnpublished();
   }
 
   repeatSelected(count, direction) {
@@ -339,6 +366,7 @@ class LayoutEditor {
       });
     }
     this._renderAll();
+    this._markUnpublished();
   }
 
   // ---------- save / preview / publish ----------
@@ -366,6 +394,7 @@ class LayoutEditor {
       document.getElementById("selected-slot-card").style.display = "none";
       this._renderAll();
       this._setStatus(`บันทึก draft สำเร็จ (${saved.length} ช่อง)`);
+      this._markUnpublished();
     } catch (e) {
       this._setStatus("บันทึกไม่สำเร็จ: " + e.message, true);
     }
@@ -411,10 +440,19 @@ class LayoutEditor {
     try {
       const result = await apiJson(`/api/admin/cameras/${this.cameraId}/slots/publish`, { method: "POST" });
       this._setStatus(`Publish สำเร็จ (${result.published_count} ช่อง)`);
+      this._clearUnpublished();
       await this._loadSlots();
     } catch (e) {
       this._setStatus("publish ไม่สำเร็จ: " + e.message, true);
     }
+  }
+
+  _markUnpublished() {
+    document.getElementById("unpublished-banner").style.display = "block";
+  }
+
+  _clearUnpublished() {
+    document.getElementById("unpublished-banner").style.display = "none";
   }
 
   async fetchFreshSnapshot() {
@@ -441,7 +479,10 @@ class LayoutEditor {
     document.getElementById("btn-preview").addEventListener("click", () => this.preview());
     document.getElementById("btn-publish").addEventListener("click", () => this.publish());
     document.getElementById("btn-fetch-snapshot").addEventListener("click", () => this.fetchFreshSnapshot());
-    document.getElementById("btn-delete").addEventListener("click", () => this.deleteSelected());
+    document.getElementById("btn-save-selected").addEventListener("click", () => this.saveSelectedEdits());
+    document.getElementById("btn-delete").addEventListener("click", () => this.requestDeleteSelected());
+    document.getElementById("btn-delete-confirm").addEventListener("click", () => this.deleteSelected());
+    document.getElementById("btn-delete-cancel").addEventListener("click", () => this.cancelDeleteSelected());
     document.getElementById("btn-copy").addEventListener("click", () => this.copySelected());
     document.getElementById("btn-repeat").addEventListener("click", () => {
       const count = Number(document.getElementById("repeat-count").value) || 1;
@@ -450,6 +491,9 @@ class LayoutEditor {
     });
     for (const id of ["sel-code", "sel-zone", "sel-type", "sel-threshold"]) {
       document.getElementById(id).addEventListener("change", () => this.applySelectedEdits());
+    }
+    for (const id of ["sel-code", "sel-threshold"]) {
+      document.getElementById(id).addEventListener("input", () => this.applySelectedEdits());
     }
   }
 }
