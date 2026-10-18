@@ -73,3 +73,31 @@ def build_heatmap_report(rows: list[tuple[datetime, float]]) -> list[HeatmapCell
         HeatmapCell(day_of_week=dow, hour=hour, avg_occ_pct=sum(vals) / len(vals))
         for (dow, hour), vals in sorted(buckets.items())
     ]
+
+
+@dataclass
+class PeakPoint:
+    hour: int  # 0-23 ตามเวลาท้องถิ่น
+    avg_occ_pct: float
+
+
+def build_public_peak(
+    rows: list[tuple[datetime, float]], weekday: int, utc_offset_hours: float
+) -> list[PeakPoint]:
+    """กราฟ "ช่วงเวลาที่คนหนาแน่น" สำหรับหน้าสาธารณะ — pure function
+
+    rows: [(hour_ts แบบ UTC, avg_occ_pct), ...] ของทุกโซนสาธารณะย้อนหลังหลายสัปดาห์
+    weekday: วันที่ต้องการ (0=จันทร์ ... 6=อาทิตย์) ตามเวลาท้องถิ่น
+    คืนค่าเฉลี่ย % การใช้งานรายชั่วโมงของวันนั้น เฉพาะชั่วโมงที่มีข้อมูล (ไม่ปลอมเป็น 0%)
+    """
+    from datetime import timedelta
+
+    buckets: dict[int, list[float]] = defaultdict(list)
+    for ts, avg in rows:
+        local = ts + timedelta(hours=utc_offset_hours)
+        if local.weekday() == weekday:
+            buckets[local.hour].append(avg)
+    return [
+        PeakPoint(hour=hour, avg_occ_pct=round(sum(vals) / len(vals), 1))
+        for hour, vals in sorted(buckets.items())
+    ]

@@ -3,132 +3,360 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b1120">
   <title>ที่จอดรถว่าง - Smart Parking</title>
   <link rel="stylesheet" href="/static/css/public.css">
   <script defer src="/static/js/vendor/alpine.min.js"></script>
 </head>
 <body>
   <div class="wrap" x-data="publicPage()" x-init="init()">
-    <div class="header">
-      <div class="site-name">
-        <span x-text="lang === 'th' ? site.name_th : site.name_en">Smart Parking</span>
-        <small x-text="t('subtitle')"></small>
-      </div>
-      <button class="lang-toggle" @click="toggleLang()" x-text="lang === 'th' ? 'EN' : 'ไทย'"></button>
-    </div>
 
-    <div class="stale-banner" x-show="stale" x-text="t('stale')"></div>
+    <!-- ===================== หน้าภาพรวม ===================== -->
+    <div x-show="view === 'overview'">
+      <header class="header">
+        <div>
+          <div class="subtitle" x-text="t('subtitle')"></div>
+          <h1 class="site-name" x-text="lang === 'th' ? site.name_th : site.name_en">Smart Parking</h1>
+        </div>
+        <button type="button" class="pill-btn" @click="toggleLang()" x-text="lang === 'th' ? 'EN' : 'ไทย'"></button>
+      </header>
 
-    <div class="total-card">
-      <div class="total-number" x-text="total.free"></div>
-      <div class="total-label" x-text="t('totalFree')"></div>
-      <div class="total-capacity">
-        <span x-text="t('ofCapacity')"></span> <span x-text="total.capacity"></span>
+      <div class="live-row" x-show="!stale">
+        <span class="live-dot"></span>
+        <span x-text="t('online') + ' · ' + t('updatedAt') + ' ' + formattedUpdatedAt"></span>
       </div>
-      <div class="extra-row">
-        <span><b x-text="total.free_disabled"></b> <span x-text="t('disabled')"></span></span>
-        <span><b x-text="total.free_ev"></b> <span x-text="t('ev')"></span></span>
-      </div>
-      <div class="excluded-note" x-show="total.excluded_zones.length > 0">
-        <span x-text="t('excludedNote')"></span>: <span x-text="total.excluded_zones.join(', ')"></span>
-      </div>
-    </div>
 
-    <div class="zones-grid">
+      <div class="banner banner-warn" role="status" x-show="stale">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 21h20L12 3z"/><path d="M12 10v5M12 18h.01"/></svg>
+        <div>
+          <div class="banner-title" x-text="t('staleTitle')"></div>
+          <div class="banner-text" x-text="t('staleText') + ' ' + formattedUpdatedAt"></div>
+        </div>
+      </div>
+
+      <!-- ลานจอดเต็ม -->
+      <section class="card card-full" x-show="isFull">
+        <div class="full-icon">
+          <svg viewBox="0 0 64 30" width="40" height="19" aria-hidden="true"><use href="#car"/></svg>
+        </div>
+        <div class="full-title" x-text="t('fullTitle')"></div>
+        <div class="full-sub" x-text="t('free') + ' 0 ' + t('of') + ' ' + total.capacity + ' ' + t('slots')"></div>
+        <div class="full-text" x-text="t('fullText')"></div>
+      </section>
+
+      <!-- วงแหวนสรุปยอด -->
+      <section class="card hero" :class="stale ? 'is-stale' : ''" x-show="!isFull">
+        <div class="ring">
+          <svg viewBox="0 0 200 200" role="img" :aria-label="t('free') + ' ' + total.free + ' ' + t('of') + ' ' + total.capacity">
+            <circle cx="100" cy="100" r="84" class="ring-track"/>
+            <circle cx="100" cy="100" r="84" class="ring-value" :stroke-dasharray="ringDash" transform="rotate(-90 100 100)"/>
+          </svg>
+          <div class="ring-center">
+            <div class="ring-number" x-text="total.free">0</div>
+            <div class="ring-label" x-text="t('freeOf') + ' ' + total.capacity"></div>
+          </div>
+        </div>
+        <div class="stat-grid">
+          <div class="stat"><div class="stat-num c-free" x-text="total.free"></div><div class="stat-label" x-text="t('free')"></div></div>
+          <div class="stat"><div class="stat-num c-taken" x-text="counts.occupied"></div><div class="stat-label" x-text="t('occupied')"></div></div>
+          <div class="stat"><div class="stat-num c-locked" x-text="counts.locked"></div><div class="stat-label" x-text="t('locked')"></div></div>
+        </div>
+        <div class="extra-row">
+          <span class="extra">
+            <svg class="icon c-acc" viewBox="0 0 24 24" aria-hidden="true"><use href="#wheelchair"/></svg>
+            <span x-text="t('disabled') + ' ' + t('free') + ' ' + total.free_disabled"></span>
+          </span>
+          <span class="extra">
+            <svg class="icon c-muted" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>
+            <span x-text="'EV ' + t('free') + ' ' + total.free_ev"></span>
+          </span>
+        </div>
+        <div class="excluded-note" x-show="total.excluded_zones.length > 0">
+          <span x-text="t('excludedNote')"></span>: <span x-text="total.excluded_zones.join(', ')"></span>
+        </div>
+      </section>
+
+      <!-- การ์ดแต่ละโซน -->
       <template x-for="zone in zones" :key="zone.code">
-        <div class="zone-card" :class="'status-' + zone.status" :style="zoneStyle(zone)">
-          <div class="zone-name" x-text="lang === 'th' ? zone.name_th : zone.name_en"></div>
-
-          <template x-if="zone.status === 'ok' || zone.status === 'partial'">
-            <div>
-              <div class="zone-free" x-text="zone.free"></div>
-              <div class="zone-capacity">
-                <span x-text="t('ofCapacity')"></span> <span x-text="zone.capacity"></span>
+        <section class="card zone-card" :class="zone.status === 'closed' ? 'card-closed' : ''">
+          <template x-if="zone.status === 'closed'">
+            <div class="closed-row">
+              <div class="closed-icon"><svg class="icon c-locked" viewBox="0 0 24 24" aria-hidden="true"><use href="#lock"/></svg></div>
+              <div>
+                <h2 class="zone-title" x-text="zoneName(zone) + ' · ' + t('closed')"></h2>
+                <div class="closed-note" x-text="zone.closed_note || t('closedDefault')"></div>
               </div>
-              <div class="zone-extra" x-show="zone.free_disabled || zone.free_ev">
-                <span x-text="zone.free_disabled"></span> <span x-text="t('disabled')"></span> ·
-                <span x-text="zone.free_ev"></span> <span x-text="t('ev')"></span>
-              </div>
-              <div class="zone-status-label" x-show="zone.status === 'partial'" x-text="t('partialData')"></div>
-              <div class="zone-free-list" x-text="freeSlotsText(zone)"></div>
             </div>
           </template>
 
-          <template x-if="zone.status === 'no_data'">
-            <div class="zone-status-label" x-text="t('noData')"></div>
+          <template x-if="zone.status !== 'closed'">
+            <div class="zone-body">
+              <div class="zone-head">
+                <h2 class="zone-title" x-text="zoneName(zone)"></h2>
+                <div class="zone-count" x-show="zone.free !== null">
+                  <span class="zone-free c-free" x-text="zone.free"></span> / <span x-text="zone.capacity"></span>
+                </div>
+              </div>
+              <div class="zone-status-label" x-show="zone.status === 'partial'" x-text="t('partialData')"></div>
+              <div class="zone-status-label" x-show="zone.status === 'no_data'" x-text="t('noData')"></div>
+              <div class="strip" aria-hidden="true" x-show="zone.slots && zone.slots.length" :style="'grid-template-columns: repeat(' + (zone.slots || []).length + ', minmax(0, 1fr))'">
+                <template x-for="slot in (zone.slots || [])" :key="slot.code">
+                  <div class="strip-cell" :class="'s-' + slotKind(slot)"></div>
+                </template>
+              </div>
+              <div class="free-list" x-show="zone.status === 'ok' || zone.status === 'partial'">
+                <span class="free-list-label" x-text="freeCodes(zone).length ? t('availableSlots') : t('noAvailableSlots')"></span>
+                <span class="free-list-codes" x-text="freeCodes(zone).map(noBreak).join(', ')"></span>
+              </div>
+              <button type="button" class="primary-btn" x-show="zone.slots && zone.slots.length" @click="openMap(zone.code)">
+                <span x-text="t('viewMap')"></span>
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+              </button>
+            </div>
           </template>
-          <template x-if="zone.status === 'closed'">
-            <div class="zone-status-label" x-text="t('closed')"></div>
-          </template>
+        </section>
+      </template>
 
-          <div class="slot-map" x-show="zone.slots && zone.slots.length > 0">
-            <template x-for="slot in zone.slots" :key="slot.code">
-              <div class="slot-box" :class="'slot-' + slot.state" :title="slot.code" x-text="slot.code"></div>
-            </template>
+      <!-- ช่วงเวลาที่คนหนาแน่น -->
+      <section class="card" x-show="peak.points.length > 0">
+        <div class="zone-head">
+          <h2 class="zone-title" x-text="t('peakTitle')"></h2>
+          <span class="muted-sm" x-text="dayName(peak.weekday)"></span>
+        </div>
+        <div class="bars" role="img" :aria-label="peakAria">
+          <template x-for="b in peakBars" :key="b.hour">
+            <div class="bar-col">
+              <div class="bar" :class="b.cls" :style="'height: ' + b.height + '%'"></div>
+            </div>
+          </template>
+        </div>
+        <div class="bar-labels">
+          <template x-for="b in peakBars" :key="'l' + b.hour">
+            <span x-text="b.hour % 3 === 0 ? String(b.hour).padStart(2, '0') : ''"></span>
+          </template>
+        </div>
+        <div class="muted-sm" x-text="t('peakNote').replace('{w}', peak.weeks)"></div>
+      </section>
+
+      <footer class="footer">
+        <span x-text="t('footer1')"></span><br>
+        <span x-text="t('footer2')"></span>
+      </footer>
+    </div>
+
+    <!-- ===================== หน้าผังช่องจอด ===================== -->
+    <div x-show="view === 'map'" x-cloak>
+      <header class="map-header">
+        <button type="button" class="round-btn" @click="closeMap()" :aria-label="t('back')">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+        </button>
+        <div>
+          <h1 class="map-title" x-text="t('mapOf') + ' ' + (mapZone ? zoneName(mapZone) : '')"></h1>
+          <div class="muted-sm" x-show="mapZone && mapZone.free !== null">
+            <span x-text="t('free')"></span> <b class="c-free" x-text="mapZone ? mapZone.free : ''"></b>
+            <span x-text="t('of') + ' ' + (mapZone ? mapZone.capacity : '') + ' ' + t('slots') + ' · ' + t('updatedAt') + ' ' + formattedUpdatedAt"></span>
           </div>
         </div>
-      </template>
+      </header>
+
+      <div class="banner banner-warn" role="status" x-show="stale">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 21h20L12 3z"/><path d="M12 10v5M12 18h.01"/></svg>
+        <div class="banner-text" x-text="t('staleTitle')"></div>
+      </div>
+
+      <div class="legend">
+        <span><i class="lg lg-free"></i><span x-text="t('free')"></span></span>
+        <span><i class="lg lg-taken"></i><span x-text="t('occupied')"></span></span>
+        <span><i class="lg lg-locked"></i><span x-text="t('locked')"></span></span>
+        <span><i class="lg lg-acc"></i><span x-text="t('disabled')"></span></span>
+        <span><i class="lg lg-unknown"></i><span x-text="t('unknown')"></span></span>
+      </div>
+
+      <div class="lot-heads">
+        <div x-text="colRange(mapLeft)"></div>
+        <div></div>
+        <div x-text="colRange(mapRight)"></div>
+      </div>
+
+      <div class="lot">
+        <div class="lot-col">
+          <template x-for="slot in mapLeft" :key="slot.code">
+            <button type="button" class="slot" :class="slotClass(slot)" @click="selected = slot.code" :aria-label="slot.code + ' ' + slotLabel(slot)">
+              <span class="slot-inner" x-html="slotContent(slot, false)"></span>
+            </button>
+          </template>
+        </div>
+        <div class="aisle" aria-hidden="true">
+          <svg class="icon" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg>
+          <span class="aisle-label" x-text="t('aisle')"></span>
+          <svg class="icon" viewBox="0 0 24 24"><path d="M12 5v14M6 13l6 6 6-6"/></svg>
+        </div>
+        <div class="lot-col">
+          <template x-for="slot in mapRight" :key="slot.code">
+            <button type="button" class="slot slot-right" :class="slotClass(slot)" @click="selected = slot.code" :aria-label="slot.code + ' ' + slotLabel(slot)">
+              <span class="slot-inner" x-html="slotContent(slot, true)"></span>
+            </button>
+          </template>
+        </div>
+      </div>
+
+      <section class="card sel-card" x-show="selectedSlot">
+        <div class="sel-badge" :class="selectedSlot ? 'b-' + slotKind(selectedSlot) : ''" x-text="selectedSlot ? selectedSlot.code : ''"></div>
+        <div>
+          <div class="sel-label" :class="selectedSlot ? 'c-' + slotKind(selectedSlot) : ''" x-text="selectedSlot ? slotLabel(selectedSlot) : ''"></div>
+          <div class="muted-sm" x-text="selectedSlot && selectedSlot.state === 'locked' ? t('selHintLocked') : t('selHint')"></div>
+        </div>
+      </section>
+      <div class="footer" x-show="!selectedSlot" x-text="t('tapHint')"></div>
     </div>
 
-    <div class="updated-at">
-      <span x-text="t('updatedAt')"></span>: <span x-text="formattedUpdatedAt"></span>
-    </div>
+    <!-- ไอคอนที่ใช้ซ้ำ -->
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+      <defs>
+        <g id="car">
+          <rect x="1" y="2" width="62" height="26" rx="9" fill="#fb7185"/>
+          <rect x="38" y="5" width="11" height="20" rx="3" fill="#3f0d17" opacity=".7"/>
+          <rect x="10" y="6" width="8" height="18" rx="3" fill="#3f0d17" opacity=".55"/>
+          <rect x="18" y="6" width="20" height="18" rx="3" fill="#fda4af"/>
+        </g>
+        <g id="lock" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>
+        </g>
+        <g id="wheelchair" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="4" r="2"/><path d="M11 7v6h6l2 5"/><path d="M8 10.5a6 6 0 1 0 8.5 7.5"/>
+        </g>
+      </defs>
+    </svg>
   </div>
 
   <script>
     const STRINGS = {
       th: {
         subtitle: "ที่จอดรถว่างแบบเรียลไทม์",
-        totalFree: "ที่จอดว่างทั้งหมด",
-        ofCapacity: "จาก",
+        online: "ออนไลน์",
+        updatedAt: "อัปเดต",
+        never: "-",
+        free: "ว่าง",
+        of: "จาก",
+        freeOf: "ช่องว่าง จาก",
+        slots: "ช่อง",
+        occupied: "มีรถจอด",
+        locked: "สงวน/ล็อก",
+        unknown: "ไม่ทราบ",
         disabled: "คนพิการ",
-        ev: "EV",
         excludedNote: "ไม่รวมโซน",
         noData: "ไม่มีข้อมูล",
         partialData: "ข้อมูลบางส่วน",
-        closed: "ปิดให้บริการ",
-        updatedAt: "อัปเดตล่าสุด",
-        stale: "ระบบขัดข้องชั่วคราว ตัวเลขอาจไม่เป็นปัจจุบัน",
-        never: "ยังไม่มีข้อมูล",
+        closed: "ปิดชั่วคราว",
+        closedDefault: "โซนนี้ปิดให้บริการชั่วคราว",
+        staleTitle: "ข้อมูลอาจไม่เป็นปัจจุบัน",
+        staleText: "ระบบไม่ได้รับภาพจากกล้องชั่วคราว ข้อมูลล่าสุดเมื่อ",
+        fullTitle: "ที่จอดเต็มแล้ว",
+        fullText: "กรุณารอสักครู่ แล้วลองตรวจสอบอีกครั้ง",
         availableSlots: "มีช่องจอดรถว่างตำแหน่ง",
         noAvailableSlots: "ไม่มีช่องว่าง",
+        viewMap: "ดูผังช่องจอด",
+        peakTitle: "ช่วงเวลาที่คนหนาแน่น",
+        peakNote: "เฉลี่ยจากวันเดียวกันย้อนหลัง {w} สัปดาห์ · แท่งสีฟ้าคือชั่วโมงปัจจุบัน",
+        footer1: "ตัวเลขนับโดย AI จากกล้อง อาจคลาดเคลื่อนได้เล็กน้อย",
+        footer2: "ไม่มีการเผยแพร่ภาพจากกล้อง เพื่อความเป็นส่วนตัวของผู้มาใช้บริการ",
+        back: "กลับหน้าภาพรวม",
+        mapOf: "ผังช่องจอด",
+        aisle: "ทางวิ่งรถ",
+        tapHint: "แตะช่องเพื่อดูรายละเอียด",
+        selHint: "สถานะจาก AI อาจคลาดเคลื่อนเล็กน้อย",
+        selHintLocked: "ผู้ดูแลกำหนดให้เป็นช่องสงวน",
+        lblFree: "ว่าง",
+        lblAcc: "ว่าง · ช่องสำหรับคนพิการ",
+        lblEv: "ว่าง · ช่องชาร์จรถไฟฟ้า",
+        lblTaken: "มีรถจอดอยู่",
+        lblLocked: "สงวน/ล็อก ไม่เปิดให้จอด",
+        lblUnknown: "ยังไม่ทราบสถานะ",
+        days: ["วันจันทร์", "วันอังคาร", "วันพุธ", "วันพฤหัสบดี", "วันศุกร์", "วันเสาร์", "วันอาทิตย์"],
       },
       en: {
         subtitle: "Real-time parking availability",
-        totalFree: "Total Available",
-        ofCapacity: "of",
+        online: "Online",
+        updatedAt: "Updated",
+        never: "-",
+        free: "Free",
+        of: "of",
+        freeOf: "free of",
+        slots: "slots",
+        occupied: "Occupied",
+        locked: "Reserved",
+        unknown: "Unknown",
         disabled: "Disabled",
-        ev: "EV",
         excludedNote: "Excluding zones",
         noData: "No data",
         partialData: "Partial data",
-        closed: "Closed",
-        updatedAt: "Last updated",
-        stale: "System temporarily unavailable, numbers may be outdated",
-        never: "No data yet",
+        closed: "Temporarily closed",
+        closedDefault: "This zone is temporarily closed",
+        staleTitle: "Data may be out of date",
+        staleText: "Camera feed temporarily unavailable. Last update at",
+        fullTitle: "Parking is full",
+        fullText: "Please wait a moment and check again",
         availableSlots: "Available slots:",
         noAvailableSlots: "No available slots",
+        viewMap: "View parking map",
+        peakTitle: "Busy times",
+        peakNote: "Average of the same weekday over the last {w} weeks · blue bar is the current hour",
+        footer1: "Counted by AI from cameras; may be slightly inaccurate",
+        footer2: "Camera images are never published, to protect visitors' privacy",
+        back: "Back to overview",
+        mapOf: "Map ·",
+        aisle: "Driveway",
+        tapHint: "Tap a slot for details",
+        selHint: "AI status may be slightly inaccurate",
+        selHintLocked: "Set aside by the site staff",
+        lblFree: "Free",
+        lblAcc: "Free · accessible slot",
+        lblEv: "Free · EV charging slot",
+        lblTaken: "Occupied",
+        lblLocked: "Reserved, not open for parking",
+        lblUnknown: "Status unknown",
+        days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
       },
     };
+
+    const RING_CIRCUMFERENCE = 2 * Math.PI * 84;
+    const ICON_CAR = '<svg class="car" viewBox="0 0 64 30" aria-hidden="true"><use href="#car"/></svg>';
+    const ICON_LOCK = '<svg class="icon c-locked" viewBox="0 0 24 24" aria-hidden="true"><use href="#lock"/></svg>';
+    const ICON_ACC = '<svg class="icon c-acc" viewBox="0 0 24 24" aria-hidden="true"><use href="#wheelchair"/></svg>';
+    const ICON_EV = '<svg class="icon c-free" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>';
+
+    function escapeHtml(text) {
+      return String(text).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    }
 
     function publicPage() {
       return {
         lang: "th",
+        view: "overview",
+        mapZoneCode: null,
+        selected: null,
         site: { name_th: "", name_en: "" },
         total: { free: 0, capacity: 0, free_disabled: 0, free_ev: 0, excluded_zones: [] },
         zones: [],
         updatedAt: null,
         stale: false,
-        pollTimer: null,
+        peak: { weekday: 0, now_hour: 0, weeks: 4, points: [] },
 
         init() {
           this.lang = this._resolveLang();
+          document.documentElement.lang = this.lang;
           this.fetchSummary();
-          this.pollTimer = setInterval(() => this.fetchSummary(), 30000);
+          this.fetchPeak();
+          setInterval(() => this.fetchSummary(), 30000);
+          setInterval(() => this.fetchPeak(), 600000);
+          if (location.hash.startsWith("#map-")) this.openMap(decodeURIComponent(location.hash.slice(5)));
+          window.addEventListener("popstate", () => {
+            if (!location.hash.startsWith("#map-")) this.view = "overview";
+          });
         },
 
         t(key) {
-          return STRINGS[this.lang][key] || key;
+          return STRINGS[this.lang][key] ?? key;
         },
 
         _resolveLang() {
@@ -144,6 +372,7 @@
 
         toggleLang() {
           this.lang = this.lang === "th" ? "en" : "th";
+          document.documentElement.lang = this.lang;
           document.cookie = `lang=${this.lang}; path=/; max-age=31536000`;
         },
 
@@ -162,30 +391,158 @@
           }
         },
 
-        zoneStyle(zone) {
-          if (zone.status !== "ok" && zone.status !== "partial") return {};
-          const pct = zone.capacity > 0 ? (zone.free / zone.capacity) * 100 : 0;
-          let color = "#16a34a";
-          if (pct < 10) color = "#dc2626";
-          else if (pct < 30) color = "#ca8a04";
-          return `--zone-color: ${color}`;
+        async fetchPeak() {
+          try {
+            const resp = await fetch("/api/public/peak");
+            if (resp.ok) this.peak = await resp.json();
+          } catch (e) {
+            // ไม่มีกราฟก็ยังใช้หน้าเว็บได้ปกติ
+          }
         },
 
-        freeSlotsText(zone) {
-          // ใช้ zone.slots ตัวเดียวกับที่วาดแผนผังช่องจอด -> จำนวนรหัสตรงกับ zone.free เสมอ
-          // (ทั้งคู่กรองด้วยกติกาเดียวกันฝั่ง server รวม override/unknown ที่ resolve แล้ว)
-          const codes = (zone.slots || []).filter((s) => s.state === "free").map((s) => s.code);
-          if (codes.length === 0) return this.t("noAvailableSlots");
-          return `${this.t("availableSlots")} ${codes.join(", ")}`;
+        zoneName(zone) {
+          return this.lang === "th" ? zone.name_th : zone.name_en;
+        },
+
+        // ---------- ยอดรวม ----------
+        get countableZones() {
+          return this.zones.filter((z) => z.status === "ok" || z.status === "partial");
+        },
+
+        get counts() {
+          let occupied = 0;
+          let locked = 0;
+          for (const z of this.countableZones) {
+            for (const s of z.slots || []) {
+              if (s.state === "occupied") occupied++;
+              if (s.state === "locked") locked++;
+            }
+          }
+          return { occupied, locked };
+        },
+
+        get isFull() {
+          return !this.stale && this.total.capacity > 0 && this.total.free === 0;
+        },
+
+        get ringDash() {
+          const ratio = this.total.capacity > 0 ? this.total.free / this.total.capacity : 0;
+          return `${(RING_CIRCUMFERENCE * ratio).toFixed(1)} ${RING_CIRCUMFERENCE.toFixed(1)}`;
+        },
+
+        noBreak(code) {
+          // ใช้ขีดแบบไม่ตัดบรรทัด ไม่ให้ "A-10" ถูกตัดเป็น "A-" กับ "10"
+          return String(code).replace(/-/g, "\u2011");
+        },
+
+        freeCodes(zone) {
+          // ใช้ zone.slots ตัวเดียวกับแผนผัง -> จำนวนรหัสตรงกับ zone.free เสมอ
+          return (zone.slots || []).filter((s) => s.state === "free").map((s) => s.code);
+        },
+
+        // ---------- ช่องจอด ----------
+        slotKind(slot) {
+          if (slot.state === "locked") return "locked";
+          if (slot.state === "occupied") return "taken";
+          if (slot.state === "unknown") return "unknown";
+          if (slot.type === "disabled") return "acc";
+          if (slot.type === "ev") return "ev";
+          return "free";
+        },
+
+        slotLabel(slot) {
+          const map = { free: "lblFree", acc: "lblAcc", ev: "lblEv", taken: "lblTaken", locked: "lblLocked", unknown: "lblUnknown" };
+          return this.t(map[this.slotKind(slot)]);
+        },
+
+        slotClass(slot) {
+          return "k-" + this.slotKind(slot) + (this.selected === slot.code ? " is-selected" : "");
+        },
+
+        slotContent(slot, rightSide) {
+          const code = `<span class="slot-code">${escapeHtml(slot.code)}</span>`;
+          const kind = this.slotKind(slot);
+          let icon = "";
+          if (kind === "taken") icon = ICON_CAR;
+          else if (kind === "locked") icon = ICON_LOCK;
+          else if (kind === "acc") icon = ICON_ACC;
+          else if (kind === "ev") icon = ICON_EV;
+          else if (kind === "free") icon = `<span class="slot-tag">${escapeHtml(this.t("free"))}</span>`;
+          else icon = '<span class="slot-tag">?</span>';
+          return rightSide ? code + icon : icon + code;
+        },
+
+        // ---------- ผังช่องจอด ----------
+        get mapZone() {
+          return this.zones.find((z) => z.code === this.mapZoneCode) || null;
+        },
+
+        get mapSlots() {
+          return this.mapZone ? this.mapZone.slots || [] : [];
+        },
+
+        get mapLeft() {
+          return this.mapSlots.slice(0, Math.ceil(this.mapSlots.length / 2));
+        },
+
+        get mapRight() {
+          return this.mapSlots.slice(Math.ceil(this.mapSlots.length / 2));
+        },
+
+        get selectedSlot() {
+          return this.mapSlots.find((s) => s.code === this.selected) || null;
+        },
+
+        colRange(list) {
+          if (!list.length) return "";
+          return list.length === 1 ? list[0].code : `${list[0].code} – ${list[list.length - 1].code}`;
+        },
+
+        openMap(code) {
+          this.mapZoneCode = code;
+          this.selected = null;
+          this.view = "map";
+          if (location.hash !== "#map-" + encodeURIComponent(code)) history.pushState(null, "", "#map-" + encodeURIComponent(code));
+          window.scrollTo(0, 0);
+        },
+
+        closeMap() {
+          if (location.hash.startsWith("#map-")) history.back();
+          this.view = "overview";
+        },
+
+        // ---------- กราฟช่วงเวลาหนาแน่น ----------
+        get peakBars() {
+          const pts = this.peak.points;
+          if (!pts.length) return [];
+          const byHour = Object.fromEntries(pts.map((p) => [p.hour, p.avg_occ_pct]));
+          const minH = Math.min(6, ...pts.map((p) => p.hour));
+          const maxH = Math.max(20, ...pts.map((p) => p.hour));
+          const bars = [];
+          for (let h = minH; h <= maxH; h++) {
+            const pct = byHour[h] ?? 0;
+            let cls = "bar-low";
+            if (h === this.peak.now_hour) cls = "bar-now";
+            else if (pct >= 70) cls = "bar-high";
+            bars.push({ hour: h, height: Math.max(pct, 2), cls });
+          }
+          return bars;
+        },
+
+        get peakAria() {
+          const top = [...this.peak.points].sort((a, b) => b.avg_occ_pct - a.avg_occ_pct)[0];
+          if (!top) return "";
+          return `${this.t("peakTitle")}: ${String(top.hour).padStart(2, "0")}:00 ${Math.round(top.avg_occ_pct)}%`;
+        },
+
+        dayName(weekday) {
+          return this.t("days")[weekday] || "";
         },
 
         get formattedUpdatedAt() {
           if (!this.updatedAt) return this.t("never");
           const d = new Date(this.updatedAt + "Z");
-          return d.toLocaleTimeString(this.lang === "th" ? "th-TH" : "en-US", {
-            hour: "2-digit",
-            minute: "2-digit",
-          });
+          return d.toLocaleTimeString(this.lang === "th" ? "th-TH" : "en-US", { hour: "2-digit", minute: "2-digit" });
         },
       };
     }

@@ -155,15 +155,27 @@ def test_zone_slot_map_none_for_closed_zone():
     assert build_zone_slot_map(zone(is_closed=True), [slot(code="A-01")]) is None
 
 
-def test_zone_slot_map_excludes_reserved_and_draft_and_inactive():
+def test_zone_slot_map_excludes_draft_and_inactive():
     slots = [
-        slot(code="A-01", type="reserved"),
         slot(code="A-02", type="normal", layout_status="draft"),
         slot(code="A-03", type="normal", is_active=False),
         slot(code="A-04", type="normal"),
     ]
     result = build_zone_slot_map(zone(), slots)
     assert [s["code"] for s in result] == ["A-04"]
+
+
+def test_zone_slot_map_shows_reserved_as_locked():
+    slots = [slot(code="A-01", type="reserved", state="free"), slot(code="A-02", type="normal")]
+    result = build_zone_slot_map(zone(), slots)
+    assert result[0] == {"code": "A-01", "state": "locked", "type": "reserved"}
+    assert result[1]["type"] == "normal"
+
+
+def test_zone_slot_map_locked_not_counted_as_free():
+    slots = [slot(code="A-01", type="reserved", state="free"), slot(code="A-02", type="normal", state="free")]
+    summary = summarize_zone(zone(), slots)
+    assert summary.free == 1 and summary.capacity == 1
 
 
 def test_zone_slot_map_sorted_by_code():

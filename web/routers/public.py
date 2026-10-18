@@ -12,7 +12,8 @@ from sqlalchemy.orm import Session
 from core.config import get_settings
 from core.counting import SlotInfo, ZoneInfo, build_public_summary, build_slot_maps
 from core.db import get_db
-from core.models import Camera, Slot, SlotState, Zone
+from core.models import Camera, Slot, SlotState, Zone, ZoneStatHour
+from core.reports import build_public_peak
 from web.templates_env import templates
 
 router = APIRouter(tags=["public"])
@@ -42,7 +43,8 @@ class TotalOut(BaseModel):
 
 class SlotBoxOut(BaseModel):
     code: str
-    state: str  # "free" | "occupied" | "unknown"
+    state: str  # "free" | "occupied" | "unknown" | "locked" (ช่อง reserved ไม่นับยอด)
+    type: str = "normal"  # "normal" | "disabled" | "ev" | "reserved"
 
 
 class ZoneSummaryOut(BaseModel):
@@ -50,6 +52,7 @@ class ZoneSummaryOut(BaseModel):
     name_th: str
     name_en: str
     status: str
+    closed_note: str | None = None
     free: int | None = None
     capacity: int | None = None
     free_disabled: int | None = None
@@ -102,6 +105,7 @@ def _build_summary(db: Session) -> dict:
         for z in zones
     ]
     zone_names = {z.id: (z.name_th, z.name_en) for z in zones}
+    zone_notes = {z.code: z.closed_note for z in zones}
 
     rows = db.execute(
         select(Slot.zone_id, Slot.code, Slot.type, Slot.is_active, Slot.layout_status, SlotState.state)
@@ -145,6 +149,7 @@ def _build_summary(db: Session) -> dict:
                 "name_th": zone_names[zone_id_by_code[z.code]][0],
                 "name_en": zone_names[zone_id_by_code[z.code]][1],
                 "status": z.status,
+                "closed_note": zone_notes.get(z.code) if z.status == "closed" else None,
                 "free": z.free,
                 "capacity": z.capacity,
                 "free_disabled": z.free_disabled,
@@ -154,6 +159,67 @@ def _build_summary(db: Session) -> dict:
             for z in zone_summaries
         ],
     }
+
+
+PEAK_WEEKS = 4
+PEAK_CACHE_TTL_SECONDS = 600
+_peak_cache: dict | None = None
+_peak_cache_at: float = 0.0
+
+
+class PeakPointOut(BaseModel):
+    hour: int
+    avg_occ_pct: float
+
+
+class PublicPeakOut(BaseModel):
+    weekday: int  # 0=จันทร์ ... 6=อาทิตย์ (เวลาท้องถิ่น)
+    now_hour: int
+    weeks: int
+    points: list[PeakPointOut]
+
+
+@router.get("/api/public/peak", response_model=PublicPeakOut)
+def get_public_peak(request: Request, db: Session = Depends(get_db)):
+    """ช่วงเวลาที่คนหนาแน่นของ "วันนี้" (เฉลี่ยวันเดียวกันย้อนหลัง 4 สัปดาห์) ทุกโซนสาธารณะรวมกัน
+
+    เป็นตัวเลขรวม % การใช้งานเท่านั้น ไม่มีข้อมูลส่วนบุคคล
+    """
+    global _peak_cache, _peak_cache_at
+    client_ip = request.client.host if request.client else "unknown"
+    _check_rate_limit(client_ip)
+    if _peak_cache is not None and (time.monotonic() - _peak_cache_at) < PEAK_CACHE_TTL_SECONDS:
+        return _peak_cache
+
+    offset_hours = _local_utc_offset_hours()
+    local_now = datetime.utcnow() + timedelta(hours=offset_hours)
+    public_zone_ids = select(Zone.id).where(Zone.is_public.is_(True))
+    rows = db.execute(
+        select(ZoneStatHour.hour_ts, ZoneStatHour.avg_occ_pct).where(
+            ZoneStatHour.zone_id.in_(public_zone_ids),
+            ZoneStatHour.hour_ts >= datetime.utcnow() - timedelta(weeks=PEAK_WEEKS),
+        )
+    ).all()
+    points = build_public_peak(rows, weekday=local_now.weekday(), utc_offset_hours=offset_hours)
+    result = {
+        "weekday": local_now.weekday(),
+        "now_hour": local_now.hour,
+        "weeks": PEAK_WEEKS,
+        "points": [{"hour": p.hour, "avg_occ_pct": p.avg_occ_pct} for p in points],
+    }
+    _peak_cache, _peak_cache_at = result, time.monotonic()
+    return result
+
+
+def _local_utc_offset_hours() -> float:
+    """ค่า offset ของเขตเวลาใน .env (TZ) เทียบ UTC; ถ้าอ่านไม่ได้ใช้ +7 (ประเทศไทย)"""
+    try:
+        from zoneinfo import ZoneInfo as TzZoneInfo
+
+        offset = datetime.now(TzZoneInfo(get_settings().tz)).utcoffset()
+        return offset.total_seconds() / 3600 if offset is not None else 7.0
+    except Exception:
+        return 7.0
 
 
 def _get_cached() -> dict | None:

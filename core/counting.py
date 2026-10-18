@@ -121,16 +121,22 @@ def build_public_summary(
 def build_zone_slot_map(zone: ZoneInfo, slots: list[SlotInfo]) -> list[dict] | None:
     """รายการช่องจอดของ 1 โซนสำหรับแสดงเป็นแผนผังในหน้าสาธารณะ เรียงตามรหัส (ต่อขยาย FR-17)
 
-    คืน None ถ้าโซนปิด (ไม่ต้องแสดงแผนผัง) — มิฉะนั้นคืนเฉพาะช่องที่นับยอดสาธารณะได้
-    (ตัด reserved/draft/inactive ออกตาม FR-12) เรียงรหัสจากน้อยไปมาก
+    คืน None ถ้าโซนปิด (ไม่ต้องแสดงแผนผัง) — มิฉะนั้นคืนช่องที่ published + is_active
+    ช่องที่นับยอดได้ใช้ state จริง ส่วนช่อง reserved แสดงเป็น state="locked"
+    (โชว์บนผังว่าเป็นช่องสงวน แต่ไม่นับเป็นที่ว่างตาม FR-12) เรียงรหัสจากน้อยไปมาก
     """
     if zone.is_closed:
         return None
-    countable = filter_countable_slots(slots)
-    return sorted(
-        ({"code": s.code, "state": s.state} for s in countable),
-        key=lambda item: item["code"],
-    )
+    countable_ids = {id(s) for s in filter_countable_slots(slots)}
+    items = []
+    for s in slots:
+        if s.layout_status != "published" or not s.is_active:
+            continue
+        if id(s) in countable_ids:
+            items.append({"code": s.code, "state": s.state, "type": s.type})
+        elif s.type == "reserved":
+            items.append({"code": s.code, "state": "locked", "type": s.type})
+    return sorted(items, key=lambda item: item["code"])
 
 
 def build_slot_maps(zones: list[ZoneInfo], slots: list[SlotInfo]) -> dict[str, list[dict] | None]:
