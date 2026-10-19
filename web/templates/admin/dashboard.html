@@ -1,10 +1,53 @@
 {% extends "admin/base.html" %}
-{% block title %}กล้อง{% endblock %}
+{% block title %}ภาพรวม · กล้องและช่องจอด{% endblock %}
 {% block head %}
 <script src="/static/js/vendor/konva.min.js"></script>
 {% endblock %}
 {% block content %}
 <div x-data="dashboard()" x-init="init()">
+  <section class="hero">
+    <div>
+      <div class="hero-eyebrow">SMART PARKING · <span x-text="isOperator ? 'OPERATOR' : 'ADMIN'"></span></div>
+      <h2 class="hero-title">สวัสดี <span x-text="username"></span></h2>
+      <div class="hero-sub" x-text="heroSub"></div>
+    </div>
+    <div class="hero-side" x-text="updatedLabel"></div>
+  </section>
+
+  <div class="stat-grid">
+    <div class="stat-card">
+      <div class="stat-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h3l2-3h8l2 3h3v12H3z"/><circle cx="12" cy="13" r="3.5"/></svg></div>
+      <div>
+        <div class="stat-label">กล้องทั้งหมด</div>
+        <div class="stat-value" x-text="liveCams.length"></div>
+        <div class="stat-note"><span class="ok" x-text="'● ' + camOnline + ' online'"></span> &nbsp; <span class="bad" x-text="'● ' + (liveCams.length - camOnline) + ' offline'"></span></div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 16V8h3.5a2.5 2.5 0 0 1 0 5H9"/></svg></div>
+      <div>
+        <div class="stat-label">ช่องจอดทั้งหมด</div>
+        <div class="stat-value" x-text="totals.capacity"></div>
+        <div class="stat-note" x-text="totals.locked ? ('ไม่รวมช่องสงวน ' + totals.locked + ' ช่อง') : 'ช่องที่เปิดให้จอด'"></div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon green"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12l4 4 10-10"/></svg></div>
+      <div>
+        <div class="stat-label">ว่างตอนนี้</div>
+        <div class="stat-value green" x-text="totals.free"></div>
+        <div class="stat-note" x-text="'คนพิการ ' + totals.free_disabled + ' · EV ' + totals.free_ev"></div>
+      </div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon red"><svg viewBox="0 0 64 30" aria-hidden="true" style="stroke-width:3"><rect x="3" y="4" width="58" height="22" rx="8"/><path d="M20 6v18M42 6v18"/></svg></div>
+      <div>
+        <div class="stat-label">มีรถจอด</div>
+        <div class="stat-value red" x-text="totals.occupied"></div>
+        <div class="stat-note" x-text="totals.capacity ? ('ใช้งาน ' + Math.round(totals.occupied * 100 / totals.capacity) + '%') : '-'"></div>
+      </div>
+    </div>
+  </div>
   <div class="card" x-show="isOperator" style="margin-bottom:1rem;">
     <p>หน้านี้ (จัดการกล้อง) สำหรับ Admin เท่านั้น — <a href="/admin/live">ไปหน้า Live view</a> แทน</p>
   </div>
@@ -30,7 +73,7 @@
             <td style="padding:0.4rem;" x-text="cam.name"></td>
             <td style="padding:0.4rem;" x-text="cam.brand"></td>
             <td style="padding:0.4rem;" x-text="cam.host"></td>
-            <td style="padding:0.4rem;" x-text="cam.status"></td>
+            <td style="padding:0.4rem;"><span class="status-pill" :class="cam.status" x-text="cam.status"></span></td>
             <td style="padding:0.4rem;">
               <a class="btn" :href="'/admin/layout?camera_id=' + cam.id">กำหนดช่องจอด</a>
               <button x-show="cam.status === 'moved'" class="btn-secondary" @click="openRealign(cam)">Re-align</button>
@@ -107,6 +150,42 @@
     return {
       cameras: [],
       isOperator: false,
+      username: "",
+      liveCams: [],
+      totals: { capacity: 0, free: 0, occupied: 0, locked: 0, free_disabled: 0, free_ev: 0 },
+      updatedAt: null,
+      get camOnline() {
+        return this.liveCams.filter((c) => c.status === "online").length;
+      },
+      get heroSub() {
+        return `ดูแล ${this.liveCams.length} กล้อง · ${this.totals.capacity} ช่องจอด · ว่าง ${this.totals.free} ช่อง`;
+      },
+      get updatedLabel() {
+        if (!this.updatedAt) return "";
+        const d = new Date(this.updatedAt + "Z");
+        return "อัปเดตล่าสุด " + d.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" }) + " น.";
+      },
+      async loadOverview() {
+        try {
+          this.liveCams = await apiJson("/api/admin/live/cameras");
+          const resp = await fetch("/api/public/summary");
+          if (!resp.ok) return;
+          const data = await resp.json();
+          let occupied = 0;
+          let locked = 0;
+          for (const z of data.zones) {
+            if (z.status !== "ok" && z.status !== "partial") continue;
+            for (const sl of z.slots || []) {
+              if (sl.state === "occupied") occupied++;
+              if (sl.state === "locked") locked++;
+            }
+          }
+          this.totals = { ...data.total, occupied, locked };
+          this.updatedAt = data.updated_at;
+        } catch (e) {
+          // ภาพรวมโหลดไม่ได้ ไม่กระทบส่วนจัดการกล้อง
+        }
+      },
       loading: false,
       error: "",
       realign: null,
@@ -117,6 +196,9 @@
         const user = await requireAuth();
         if (!user) return;
         this.isOperator = user.role !== "admin";
+        this.username = user.username;
+        this.loadOverview();
+        setInterval(() => this.loadOverview(), 30000);
         if (this.isOperator) return;  // จัดการกล้องเป็นสิทธิ์ Admin เท่านั้น
         await this.loadCameras();
       },
