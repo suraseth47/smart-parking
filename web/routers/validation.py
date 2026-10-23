@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
 from core.camera_utils import build_camera_url
-from core.config import PROJECT_ROOT, get_settings
+from core.config import get_detector_model_path, get_settings
 from core.db import get_db
 from core.models import (
     Camera,
@@ -41,7 +41,7 @@ _detector: OnnxYoloxDetector | None = None
 def _get_detector() -> OnnxYoloxDetector:
     global _detector
     if _detector is None:
-        _detector = OnnxYoloxDetector(PROJECT_ROOT / "models" / "yolox_s.onnx")
+        _detector = OnnxYoloxDetector(get_detector_model_path())
     return _detector
 
 

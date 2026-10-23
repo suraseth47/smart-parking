@@ -10,6 +10,8 @@ const TYPE_LABELS = {
 const STATE_COLORS = { free: "#16a34a", occupied: "#dc2626" };
 const DEFAULT_STROKE = "#38bdf8";
 const SELECTED_STROKE = "#f97316";
+// กรอบที่ AI เห็นใน Preview: เขียว = AI ทายว่าเป็นรถ, เหลืองอำพัน = วัตถุใหญ่ที่นับเป็นรถ
+const DETECTION_COLORS = { vehicle: "#22c55e", large: "#f59e0b" };
 
 class LayoutEditor {
   constructor(cameraId) {
@@ -21,6 +23,9 @@ class LayoutEditor {
     this.drawPoints = [];
     this.stage = null;
     this.layer = null;
+    this.detLayer = null;
+    this.previewDetections = [];
+    this.showDetections = true;
     this.imgWidth = 0;
     this.imgHeight = 0;
   }
@@ -85,6 +90,10 @@ class LayoutEditor {
       bgLayer.add(new Konva.Image({ image: img, width: this.imgWidth, height: this.imgHeight }));
     }
     this.stage.add(bgLayer);
+
+    // ชั้นกรอบที่ AI เห็น (อยู่ใต้ช่องจอด และไม่รับคลิก จะได้ไม่บังการวาด/เลือกช่อง)
+    this.detLayer = new Konva.Layer({ listening: false });
+    this.stage.add(this.detLayer);
 
     this.layer = new Konva.Layer();
     this.stage.add(this.layer);
@@ -199,7 +208,10 @@ class LayoutEditor {
     const label = new Konva.Text({
       x: centroid[0] * this.imgWidth - 15,
       y: centroid[1] * this.imgHeight - 7,
-      text: slot.code,
+      text: slot.previewScore != null ? `${slot.code} · ${slot.previewScore.toFixed(2)}` : slot.code,
+      shadowColor: "#000",
+      shadowBlur: 3,
+      shadowOpacity: 0.9,
       fontSize: 13,
       fill: "#fff",
       fontStyle: "bold",
@@ -254,7 +266,13 @@ class LayoutEditor {
       const li = document.createElement("li");
       if (slot === this.selected) li.classList.add("selected");
       const zone = this.zones.find((z) => z.id === slot.zone_id);
-      const badge = slot.previewState ? `<span class="badge badge-${slot.previewState}">${slot.previewState}</span>` : "";
+      let badge = "";
+      if (slot.previewState) {
+        const scoreText = slot.previewScore != null
+          ? `<span class="muted" style="font-size:0.8rem;" title="คะแนน / Threshold">${slot.previewScore.toFixed(2)} / ${slot.threshold}</span> `
+          : "";
+        badge = `<span>${scoreText}<span class="badge badge-${slot.previewState}">${slot.previewState}</span></span>`;
+      }
       li.innerHTML = `<span>${slot.code} <span class="muted">(${zone ? zone.code : "?"}, ${TYPE_LABELS[slot.type] || slot.type})</span></span>${badge}`;
       li.style.cursor = "pointer";
       li.addEventListener("click", () => this.select(slot));
@@ -434,15 +452,74 @@ class LayoutEditor {
       });
       const byCode = {};
       for (const r of result.results) byCode[r.code] = r;
-      for (const slot of this.slots) slot.previewState = byCode[slot.code] ? byCode[slot.code].state : null;
+      for (const slot of this.slots) {
+        const r = byCode[slot.code];
+        slot.previewState = r ? r.state : null;
+        slot.previewScore = r ? r.score : null;
+      }
+      this.previewDetections = result.detections || [];
 
       await this._refreshBackgroundImage();
       this._renderAll();
-      document.getElementById("preview-summary").textContent = `ตรวจพบรถ ${result.detected_vehicle_count} คัน`;
+      this._renderDetections();
+      this._renderPreviewSummary(result.detected_vehicle_count);
       this._setStatus("preview สำเร็จ");
     } catch (e) {
       this._setStatus("preview ไม่สำเร็จ: " + e.message, true);
     }
+  }
+
+  _renderPreviewSummary(total) {
+    const large = this.previewDetections.filter((d) => d.kind === "large").length;
+    const vehicles = this.previewDetections.length - large;
+    let text = `ตรวจพบรถ ${total} คัน`;
+    if (this.previewDetections.length) {
+      text += ` (AI ทายว่าเป็นรถ ${vehicles}`;
+      if (large) text += ` · วัตถุขนาดใหญ่ที่นับเป็นรถ ${large}`;
+      text += ")";
+    }
+    document.getElementById("preview-summary").textContent = text;
+    document.getElementById("preview-legend").style.display = this.previewDetections.length ? "" : "none";
+  }
+
+  _clearPreview() {
+    this.previewDetections = [];
+    for (const slot of this.slots) {
+      slot.previewState = null;
+      slot.previewScore = null;
+    }
+    if (this.detLayer) this.detLayer.destroyChildren();
+    document.getElementById("preview-summary").textContent = "";
+    document.getElementById("preview-legend").style.display = "none";
+  }
+
+  // วาดกรอบที่ระบบนับเป็นรถ + แถบส่วนที่ใช้คำนวณคะแนนจริง (ครึ่งล่างของกรอบ)
+  _renderDetections() {
+    if (!this.detLayer) return;
+    this.detLayer.destroyChildren();
+    if (this.showDetections) {
+      const w = this.imgWidth;
+      const h = this.imgHeight;
+      for (const d of this.previewDetections) {
+        const color = DETECTION_COLORS[d.kind] || DETECTION_COLORS.vehicle;
+        const [x1, y1, x2, y2] = d.box;
+        const [fx1, fy1, fx2, fy2] = d.footprint;
+        this.detLayer.add(new Konva.Rect({
+          x: fx1 * w, y: fy1 * h, width: (fx2 - fx1) * w, height: (fy2 - fy1) * h,
+          fill: color, opacity: 0.18,
+        }));
+        this.detLayer.add(new Konva.Rect({
+          x: x1 * w, y: y1 * h, width: (x2 - x1) * w, height: (y2 - y1) * h,
+          stroke: color, strokeWidth: 2, dash: d.kind === "large" ? [8, 5] : undefined,
+        }));
+        const tag = new Konva.Label({ x: x1 * w, y: Math.max(0, y1 * h) });
+        tag.add(new Konva.Tag({ fill: color, opacity: 0.9 }));
+        const name = d.kind === "large" ? `${d.class_name}→รถ` : d.class_name;
+        tag.add(new Konva.Text({ text: `${name} ${d.score.toFixed(2)}`, fontSize: 12, padding: 3, fill: "#111" }));
+        this.detLayer.add(tag);
+      }
+    }
+    this.detLayer.draw();
   }
 
   async _refreshBackgroundImage() {
@@ -486,6 +563,7 @@ class LayoutEditor {
     try {
       await apiJson(`/api/admin/cameras/${this.cameraId}/test`, { method: "POST" });
       await this._loadSnapshotAndSetupStage();
+      this._clearPreview();  // ภาพเปลี่ยนแล้ว ผล Preview เดิมไม่ตรงกับภาพใหม่
       this._renderAll();
       this._setStatus("ดึงภาพสำเร็จ");
     } catch (e) {
@@ -513,6 +591,10 @@ class LayoutEditor {
     document.getElementById("btn-clear-all").addEventListener("click", () => this.requestClearAll());
     document.getElementById("btn-clear-all-confirm").addEventListener("click", () => this.clearAll());
     document.getElementById("btn-clear-all-cancel").addEventListener("click", () => this.cancelClearAll());
+    document.getElementById("show-detections").addEventListener("change", (e) => {
+      this.showDetections = e.target.checked;
+      this._renderDetections();
+    });
     document.getElementById("btn-repeat").addEventListener("click", () => {
       const count = Number(document.getElementById("repeat-count").value) || 1;
       const direction = document.getElementById("repeat-direction").value;

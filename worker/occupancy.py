@@ -62,32 +62,42 @@ def box_area(box: BoxXYXY) -> float:
     return max(0.0, x2 - x1) * max(0.0, y2 - y1)
 
 
+def classify_detection(
+    class_name: str, normalized_box: BoxXYXY, large_object_min_area: float | None
+) -> str | None:
+    """ตัดสินว่ากรอบนี้นับเป็นรถแบบไหน: "vehicle" (AI ทายว่าเป็นรถ), "large" (วัตถุใหญ่ที่นับเป็นรถ)
+    หรือ None (ไม่นับ)
+
+    โหมดวัตถุขนาดใหญ่ (large_object_min_area ไม่เป็น None): วัตถุคลาสอื่นที่กรอบใหญ่ >= สัดส่วนนี้
+    ของภาพ นับเป็นรถด้วย ยกเว้นคน/สัตว์/มอเตอร์ไซค์/จักรยาน — เพราะกล้องที่มองรถจากด้านบน
+    ใกล้ๆ โมเดลหากรอบรถเจอแต่ทายชื่อผิด (cell_phone, suitcase ฯลฯ) และของจริงพวกนั้นไม่มีทาง
+    ใหญ่ขนาดหลายเปอร์เซ็นต์ของภาพลานจอด
+    """
+    if class_name in VEHICLE_CLASS_NAMES:
+        return "vehicle"
+    if (
+        large_object_min_area is not None
+        and class_name not in NEVER_COUNTED_CLASS_NAMES
+        and box_area(normalized_box) >= large_object_min_area
+    ):
+        return "large"
+    return None
+
+
 def select_vehicle_boxes(
     detections: list,
     frame_width: int,
     frame_height: int,
     large_object_min_area: float | None = None,
 ) -> list[BoxXYXY]:
-    """เลือกกรอบที่จะถือว่าเป็นรถ แล้วคืนเป็น normalized box
-
-    - car / bus / truck นับเสมอ
-    - ถ้าเปิดโหมดวัตถุขนาดใหญ่ (large_object_min_area ไม่เป็น None): วัตถุคลาสอื่นที่กรอบ
-      ใหญ่ >= สัดส่วนนี้ของภาพ ก็นับเป็นรถด้วย ยกเว้นคน/สัตว์/มอเตอร์ไซค์/จักรยาน
-      เหตุผล: กล้องที่มองรถจากด้านบนใกล้ๆ โมเดลหากรอบรถเจอแต่ทายชื่อผิด (cell_phone,
-      suitcase ฯลฯ) และของจริงพวกนั้นไม่มีทางใหญ่ขนาดหลายเปอร์เซ็นต์ของภาพลานจอด
+    """เลือกกรอบที่จะถือว่าเป็นรถ แล้วคืนเป็น normalized box (กติกาดูที่ classify_detection)
 
     detections: อะไรก็ได้ที่มี .box (พิกเซล x1,y1,x2,y2) และ .class_name
     """
     selected: list[BoxXYXY] = []
     for detection in detections:
         normalized = normalize_box(detection.box, frame_width, frame_height)
-        if detection.class_name in VEHICLE_CLASS_NAMES:
-            selected.append(normalized)
-        elif (
-            large_object_min_area is not None
-            and detection.class_name not in NEVER_COUNTED_CLASS_NAMES
-            and box_area(normalized) >= large_object_min_area
-        ):
+        if classify_detection(detection.class_name, normalized, large_object_min_area):
             selected.append(normalized)
     return selected
 

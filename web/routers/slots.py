@@ -8,7 +8,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from core.config import PROJECT_ROOT, get_settings
+from core.config import get_detector_model_path, get_settings
 from core.db import get_db
 from core.models import AuditLog, Camera, LayoutStatus, Slot, SlotEvent, SlotState, SlotType, Zone
 from core.camera_utils import build_camera_url, snapshot_path
@@ -17,7 +17,7 @@ from worker.camera_connection import check_camera_connection
 from worker.capture import grab_frame
 from worker.detector import OnnxYoloxDetector
 from worker.occupancy import compute_slot_score, is_occupied
-from worker.vehicle_boxes import detect_vehicle_footprints
+from worker.vehicle_boxes import analyze_vehicle_boxes
 
 router = APIRouter(prefix="/api/admin", tags=["layout"])
 
@@ -28,7 +28,7 @@ def _get_detector() -> OnnxYoloxDetector:
     """โหลดโมเดล YOLOX ครั้งแรกที่ใช้แล้วเก็บไว้ใช้ซ้ำ (โหลดโมเดลช้า ไม่อยากโหลดทุก request)"""
     global _detector
     if _detector is None:
-        _detector = OnnxYoloxDetector(PROJECT_ROOT / "models" / "yolox_s.onnx")
+        _detector = OnnxYoloxDetector(get_detector_model_path())
     return _detector
 
 
@@ -73,6 +73,7 @@ class SlotPreviewRequest(BaseModel):
 class SlotPreviewResult(BaseModel):
     code: str
     score: float
+    threshold: float
     state: str  # "free" | "occupied"
 
 
@@ -176,13 +177,16 @@ def preview_slots(
     except RuntimeError as exc:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"ดึงภาพจากกล้องไม่สำเร็จ: {exc}")
 
-    footprints = detect_vehicle_footprints(_get_detector(), frame, camera.large_object_min_area)
+    vehicle_boxes = analyze_vehicle_boxes(_get_detector(), frame, camera.large_object_min_area)
+    footprints = [v.footprint for v in vehicle_boxes]
 
     results = []
     for slot in data.slots:
         score = compute_slot_score(slot.polygon, footprints)
         state = "occupied" if is_occupied(score, slot.threshold) else "free"
-        results.append(SlotPreviewResult(code=slot.code, score=round(score, 3), state=state))
+        results.append(
+            SlotPreviewResult(code=slot.code, score=round(score, 3), threshold=slot.threshold, state=state)
+        )
 
     path = snapshot_path(camera_id)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -191,6 +195,17 @@ def preview_slots(
     return {
         "snapshot_url": f"/api/admin/cameras/{camera_id}/snapshot",
         "detected_vehicle_count": len(footprints),
+        # กรอบที่ระบบนับเป็นรถ (normalized 0-1) ให้หน้า Preview วาดทับภาพ เพื่อปรับช่อง/threshold
+        "detections": [
+            {
+                "box": [round(v, 4) for v in vb.box],
+                "footprint": [round(v, 4) for v in vb.footprint],
+                "class_name": vb.class_name,
+                "score": round(vb.score, 2),
+                "kind": vb.kind,
+            }
+            for vb in vehicle_boxes
+        ],
         "results": results,
     }
 

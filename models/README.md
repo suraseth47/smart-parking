@@ -23,3 +23,28 @@ curl -L -o models/yolox_s.onnx \
 ```bash
 python -c "import onnxruntime as ort; ort.InferenceSession('models/yolox_s.onnx')"
 ```
+
+## เลือกโมเดลที่แม่นขึ้น (YOLOX-m)
+
+YOLOX-m แม่นกว่า YOLOX-s ชัดเจน (ทดสอบกับกล้องลานจอดจริง: ความมั่นใจของรถ 0.9 เทียบกับ 0.4–0.5
+ทำให้ไม่หลุดเกณฑ์ง่าย) แต่ใช้ CPU มากขึ้นประมาณ 2 เท่า และไฟล์ใหญ่ ~97 MB — license เดียวกัน (Apache-2.0)
+
+1. ดาวน์โหลดไว้คู่กับ yolox_s (บน Server ในโฟลเดอร์ `~/smart-parking`):
+   ```bash
+   curl -L -o models/yolox_m.onnx \
+     https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_m.onnx
+   ```
+2. เทียบกับภาพจริงของกล้องก่อน (ไม่เปลี่ยนค่าในระบบ):
+   ```bash
+   docker compose exec -T worker python - < tools/compare_models.py
+   ```
+3. ถ้าผลดีกว่าและเวลาต่อภาพรับได้ ให้เพิ่มใน `.env` แล้วรีสตาร์ต:
+   ```bash
+   echo "DETECTOR_MODEL=yolox_m.onnx" >> .env
+   docker compose up -d
+   docker compose logs worker | grep "ใช้โมเดล"
+   ```
+   ย้อนกลับ: ลบบรรทัด `DETECTOR_MODEL` ใน `.env` แล้ว `docker compose up -d`
+   (ถ้าตั้งชื่อไฟล์ที่ไม่มีอยู่ ระบบจะกลับไปใช้ yolox_s.onnx ให้อัตโนมัติ)
+
+ประมาณงานของ CPU: เวลาต่อภาพ x จำนวนกล้อง ต้องน้อยกว่ารอบตรวจจับ (ค่าเริ่ม 30 วินาที/กล้อง) มากๆ

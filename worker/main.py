@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from core.camera_utils import build_camera_url, snapshot_path
-from core.config import PROJECT_ROOT
+from core.config import get_detector_model_path
 from core.db import SessionLocal
 from core.models import (
     AlertLevel,
@@ -50,7 +50,9 @@ TICK_SECONDS = 5  # เช็คทุก 5 วิ ว่ากล้องไ�
 
 def run_forever() -> None:
     """เริ่มลูปหลักของ worker (เรียกจาก `python -m worker.main`)"""
-    detector = OnnxYoloxDetector(PROJECT_ROOT / "models" / "yolox_s.onnx")
+    model_path = get_detector_model_path()
+    print(f"[worker] ใช้โมเดล {model_path.name}", flush=True)
+    detector = OnnxYoloxDetector(model_path)
     while True:
         start = time.monotonic()
         run_cycle(detector)

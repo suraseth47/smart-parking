@@ -36,7 +36,16 @@
       <p class="muted" id="no-snapshot-msg" style="display:none;">
         ยังไม่มีภาพของกล้องนี้ กดปุ่ม "ดึงภาพล่าสุด" ก่อนเริ่มวาด
       </p>
-      <p class="muted" id="preview-summary"></p>
+      <p class="muted" id="preview-summary" style="margin-bottom:0.25rem;"></p>
+      <div id="preview-legend" class="muted" style="display:none; font-size:0.85rem;">
+        <label style="display:inline-flex; gap:0.35rem; align-items:center; margin-right:1rem;">
+          <input type="checkbox" id="show-detections" checked style="width:auto; margin:0;"> แสดงกรอบที่ AI เห็น
+        </label>
+        <span style="color:#16a34a; font-weight:600;">▭ เขียว</span> = AI ทายว่าเป็นรถ ·
+        <span style="color:#d97706; font-weight:600;">┅ เหลือง</span> = วัตถุใหญ่ที่นับเป็นรถ ·
+        แถบโปร่งในกรอบ = ส่วนที่ใช้คิดคะแนนจริง ·
+        ตัวเลขบนช่อง = คะแนน (เทียบกับ Threshold ในรายการด้านขวา)
+      </div>
     </div>
 
     <div class="editor-side">
@@ -105,5 +114,5 @@
   </div>
 </div>
 
-<script src="/static/js/layout_editor.js"></script>
+<script src="/static/js/layout_editor.js?v=20261023"></script>
 {% endblock %}
