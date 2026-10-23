@@ -16,6 +16,18 @@ import onnxruntime as ort
 # คลาสของ COCO ที่สนใจ (ไม่นับ motorcycle ตาม FR-2)
 VEHICLE_CLASSES = {2: "car", 5: "bus", 7: "truck"}
 
+# ชื่อคลาสทั้ง 80 ของ COCO เรียงตาม class id — ใช้กับโหมด "นับวัตถุขนาดใหญ่เป็นรถ"
+# (กล้องที่มองรถจากด้านบนใกล้ๆ โมเดลมักหากรอบเจอแต่ทายชื่อผิด เช่น cell_phone, suitcase)
+COCO_CLASS_NAMES = (
+    "person bicycle car motorcycle airplane bus train truck boat traffic_light fire_hydrant "
+    "stop_sign parking_meter bench bird cat dog horse sheep cow elephant bear zebra giraffe "
+    "backpack umbrella handbag tie suitcase frisbee skis snowboard sports_ball kite baseball_bat "
+    "baseball_glove skateboard surfboard tennis_racket bottle wine_glass cup fork knife spoon bowl "
+    "banana apple sandwich orange broccoli carrot hot_dog pizza donut cake chair couch "
+    "potted_plant bed dining_table toilet tv laptop mouse remote keyboard cell_phone microwave "
+    "oven toaster sink refrigerator book clock vase scissors teddy_bear hair_drier toothbrush"
+).split()
+
 INPUT_SIZE = (640, 640)  # (height, width) ตามที่โมเดล yolox_s ถูกเทรนมา
 STRIDES = (8, 16, 32)
 
@@ -32,7 +44,9 @@ class Detection:
 class Detector(Protocol):
     """สัญญากลางของตัวตรวจจับรถ เพื่อให้สลับโมเดลได้ภายหลังโดยไม่แก้โค้ดส่วนอื่น"""
 
-    def detect(self, image: np.ndarray) -> list[Detection]: ...
+    def detect(
+        self, image: np.ndarray, other_classes_min_score: float | None = None
+    ) -> list[Detection]: ...
 
 
 class OnnxYoloxDetector:
@@ -49,11 +63,21 @@ class OnnxYoloxDetector:
         self.conf_threshold = conf_threshold
         self.nms_threshold = nms_threshold
 
-    def detect(self, image: np.ndarray) -> list[Detection]:
+    def detect(
+        self, image: np.ndarray, other_classes_min_score: float | None = None
+    ) -> list[Detection]:
+        """ตรวจจับรถ (car/bus/truck) — ถ้าส่ง other_classes_min_score มา จะคืนวัตถุคลาสอื่น
+        ที่ score ถึงเกณฑ์นี้มาด้วย (ใช้ inference รอบเดียวกัน ไม่เปลืองเพิ่ม)
+        """
         padded, ratio = _preprocess(image, INPUT_SIZE)
         raw_output = self.session.run(None, {self.input_name: padded[None, :, :, :]})[0]
         decoded = _decode_outputs(raw_output[0], INPUT_SIZE)
-        return _postprocess(decoded, ratio, self.conf_threshold, self.nms_threshold)
+        detections = _postprocess(decoded, ratio, self.conf_threshold, self.nms_threshold)
+        if other_classes_min_score is not None:
+            detections += _postprocess_other_classes(
+                decoded, ratio, other_classes_min_score, self.nms_threshold
+            )
+        return detections
 
 
 def _preprocess(image: np.ndarray, input_size: tuple[int, int]) -> tuple[np.ndarray, float]:
@@ -109,6 +133,28 @@ def _postprocess(
             x, y, w, h = boxes_xywh[i]
             box = (float(x), float(y), float(x + w), float(y + h))
             detections.append(Detection(box, float(scores[keep_idx][i]), class_name))
+    return detections
+
+
+def _postprocess_other_classes(
+    decoded: np.ndarray, ratio: float, conf_threshold: float, nms_threshold: float
+) -> list[Detection]:
+    """วัตถุที่ไม่ใช่รถ: แต่ละจุดเลือกคลาสที่มั่นใจที่สุด (ไม่รวมคลาสรถ) แล้วตัดกรอบซ้ำด้วย NMS"""
+    class_scores = decoded[:, 5:].copy()
+    class_scores[:, list(VEHICLE_CLASSES)] = 0.0  # คลาสรถจัดการแยกใน _postprocess แล้ว
+    class_ids = class_scores.argmax(axis=1)
+    scores = decoded[:, 4] * class_scores[np.arange(len(class_ids)), class_ids]
+    keep_idx = np.where(scores >= conf_threshold)[0]
+    if len(keep_idx) == 0:
+        return []
+
+    boxes_xywh = _cxcywh_to_xywh(decoded[keep_idx, :4]) / ratio
+    kept = cv2.dnn.NMSBoxes(boxes_xywh.tolist(), scores[keep_idx].tolist(), conf_threshold, nms_threshold)
+    detections: list[Detection] = []
+    for i in np.array(kept).reshape(-1):
+        x, y, w, h = boxes_xywh[i]
+        name = COCO_CLASS_NAMES[int(class_ids[keep_idx][i])]
+        detections.append(Detection((float(x), float(y), float(x + w), float(y + h)), float(scores[keep_idx][i]), name))
     return detections
 
 

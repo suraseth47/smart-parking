@@ -46,6 +46,52 @@ def is_occupied(score: float, threshold: float) -> bool:
     return score >= threshold
 
 
+VEHICLE_CLASS_NAMES = frozenset({"car", "bus", "truck"})
+
+# โหมด "นับวัตถุขนาดใหญ่เป็นรถ": คลาสที่ห้ามนับเป็นรถเด็ดขาด แม้กรอบจะใหญ่
+# (คนเดินผ่าน/สัตว์/มอเตอร์ไซค์ ต้องไม่ทำให้ช่องขึ้นว่ามีรถ — มอเตอร์ไซค์ไม่นับตาม FR-2)
+NEVER_COUNTED_CLASS_NAMES = frozenset({
+    "person", "bicycle", "motorcycle",
+    "bird", "cat", "dog", "horse", "sheep", "cow", "elephant", "bear", "zebra", "giraffe",
+})
+
+
+def box_area(box: BoxXYXY) -> float:
+    """พื้นที่กรอบ (หน่วย normalized 0-1) ตัดส่วนที่ล้นขอบภาพออก"""
+    x1, y1, x2, y2 = (min(max(v, 0.0), 1.0) for v in box)
+    return max(0.0, x2 - x1) * max(0.0, y2 - y1)
+
+
+def select_vehicle_boxes(
+    detections: list,
+    frame_width: int,
+    frame_height: int,
+    large_object_min_area: float | None = None,
+) -> list[BoxXYXY]:
+    """เลือกกรอบที่จะถือว่าเป็นรถ แล้วคืนเป็น normalized box
+
+    - car / bus / truck นับเสมอ
+    - ถ้าเปิดโหมดวัตถุขนาดใหญ่ (large_object_min_area ไม่เป็น None): วัตถุคลาสอื่นที่กรอบ
+      ใหญ่ >= สัดส่วนนี้ของภาพ ก็นับเป็นรถด้วย ยกเว้นคน/สัตว์/มอเตอร์ไซค์/จักรยาน
+      เหตุผล: กล้องที่มองรถจากด้านบนใกล้ๆ โมเดลหากรอบรถเจอแต่ทายชื่อผิด (cell_phone,
+      suitcase ฯลฯ) และของจริงพวกนั้นไม่มีทางใหญ่ขนาดหลายเปอร์เซ็นต์ของภาพลานจอด
+
+    detections: อะไรก็ได้ที่มี .box (พิกเซล x1,y1,x2,y2) และ .class_name
+    """
+    selected: list[BoxXYXY] = []
+    for detection in detections:
+        normalized = normalize_box(detection.box, frame_width, frame_height)
+        if detection.class_name in VEHICLE_CLASS_NAMES:
+            selected.append(normalized)
+        elif (
+            large_object_min_area is not None
+            and detection.class_name not in NEVER_COUNTED_CLASS_NAMES
+            and box_area(normalized) >= large_object_min_area
+        ):
+            selected.append(normalized)
+    return selected
+
+
 def normalize_box(detection_box: BoxXYXY, frame_width: int, frame_height: int) -> BoxXYXY:
     """แปลงกล่องพิกเซลจริงจากตัวตรวจจับเป็น normalized 0-1 ให้หน่วยเดียวกับ slot polygon"""
     x1, y1, x2, y2 = detection_box

@@ -70,13 +70,18 @@
       <tbody>
         <template x-for="cam in cameras" :key="cam.id">
           <tr style="border-bottom:1px solid var(--color-border);">
-            <td style="padding:0.4rem;" x-text="cam.name"></td>
+            <td style="padding:0.4rem;">
+              <span x-text="cam.name"></span>
+              <div class="muted" style="font-size:0.8rem;" x-show="cam.large_object_min_area != null"
+                   x-text="'นับวัตถุขนาดใหญ่เป็นรถ ≥ ' + formatPct(cam.large_object_min_area)"></div>
+            </td>
             <td style="padding:0.4rem;" x-text="cam.brand"></td>
             <td style="padding:0.4rem;" x-text="cam.host"></td>
             <td style="padding:0.4rem;"><span class="status-pill" :class="cam.status" x-text="cam.status"></span></td>
             <td style="padding:0.4rem;">
               <a class="btn" :href="'/admin/layout?camera_id=' + cam.id">กำหนดช่องจอด</a>
               <button x-show="cam.status === 'moved'" class="btn-secondary" @click="openRealign(cam)">Re-align</button>
+              <button class="btn-secondary" @click="openDetect(cam)">ตั้งค่าตรวจจับ</button>
               <button class="btn-secondary" style="color:var(--color-danger);" @click="askClearSlots(cam)">ลบช่องจอดทั้งหมด</button>
             </td>
           </tr>
@@ -99,6 +104,38 @@
   </div>
   <div class="card" x-show="clearDone" style="margin-bottom:1rem; border-color:#bbf7d0; background:#ecfdf3;">
     <p style="margin:0;" x-text="clearDone"></p>
+  </div>
+
+  <div class="card" x-show="detectTarget" style="margin-bottom:1rem;">
+    <h2 style="margin-top:0;">ตั้งค่าการตรวจจับ: <span x-text="detectTarget && detectTarget.name"></span></h2>
+    <label style="display:flex; gap:0.5rem; align-items:center; font-weight:600;">
+      <input type="checkbox" x-model="detectForm.enabled" style="width:auto; margin:0;">
+      นับวัตถุขนาดใหญ่เป็นรถ
+    </label>
+    <p class="muted">
+      ใช้กับกล้องที่มองรถจากด้านบนในระยะใกล้ ซึ่ง AI มักตีกรอบรถได้ตรง แต่ทายชื่อผิด (เช่น โทรศัพท์ กระเป๋า)
+      เมื่อเปิดไว้ วัตถุที่กรอบใหญ่เกินขนาดที่กำหนดจะถูกนับเป็นรถด้วย
+      ยกเว้นคน สัตว์ มอเตอร์ไซค์ และจักรยาน ซึ่งไม่นับเป็นรถเสมอ
+    </p>
+    <div x-show="detectForm.enabled">
+      <label for="detect-min-area">ขนาดกรอบขั้นต่ำ (% ของพื้นที่ภาพ)</label>
+      <input id="detect-min-area" type="number" min="0.5" max="50" step="0.5" x-model.number="detectForm.minAreaPct" style="max-width:160px;">
+      <p class="muted" style="margin-top:0.25rem;">
+        ค่าแนะนำ 3% · ตั้งต่ำไปอาจนับของชิ้นเล็กเป็นรถ ตั้งสูงไปรถที่อยู่ไกลกล้องจะไม่ถูกนับในโหมดนี้
+        (รถที่ AI ทายถูกว่าเป็นรถยังนับตามปกติเสมอ)
+      </p>
+    </div>
+    <p class="muted">หลังบันทึก กด "กำหนดช่องจอด" แล้วกด Preview เพื่อดูผลกับภาพปัจจุบันได้ทันที</p>
+    <div style="display:flex; gap:0.5rem; margin-top:0.75rem;">
+      <button @click="saveDetect()" :disabled="detectSaving">
+        <span x-text="detectSaving ? 'กำลังบันทึก...' : 'บันทึก'"></span>
+      </button>
+      <button class="btn-secondary" @click="detectTarget = null" :disabled="detectSaving">ยกเลิก</button>
+    </div>
+    <p class="error-text" x-show="detectError" x-text="detectError"></p>
+  </div>
+  <div class="card" x-show="detectDone" style="margin-bottom:1rem; border-color:#bbf7d0; background:#ecfdf3;">
+    <p style="margin:0;" x-text="detectDone"></p>
   </div>
 
   <div class="card" x-show="realign" style="margin-bottom:1rem;">
@@ -230,6 +267,48 @@
           this.clearError = "ลบไม่สำเร็จ: " + e.message;
         } finally {
           this.clearing = false;
+        }
+      },
+      detectTarget: null,
+      detectForm: { enabled: false, minAreaPct: 3 },
+      detectSaving: false,
+      detectError: "",
+      detectDone: "",
+      formatPct(fraction) {
+        return (Math.round(fraction * 1000) / 10) + "%";
+      },
+      openDetect(cam) {
+        const current = cam.large_object_min_area;
+        this.detectTarget = cam;
+        this.detectForm = {
+          enabled: current != null,
+          minAreaPct: current != null ? Math.round(current * 1000) / 10 : 3,
+        };
+        this.detectError = "";
+        this.detectDone = "";
+      },
+      async saveDetect() {
+        const cam = this.detectTarget;
+        if (!cam) return;
+        const pct = Number(this.detectForm.minAreaPct);
+        if (this.detectForm.enabled && (!(pct >= 0.5) || pct > 50)) {
+          this.detectError = "ขนาดกรอบขั้นต่ำต้องอยู่ระหว่าง 0.5 ถึง 50%";
+          return;
+        }
+        this.detectSaving = true;
+        this.detectError = "";
+        try {
+          const body = { large_object_min_area: this.detectForm.enabled ? pct / 100 : null };
+          await apiJson(`/api/admin/cameras/${cam.id}/detection`, { method: "PATCH", body: JSON.stringify(body) });
+          this.detectDone = this.detectForm.enabled
+            ? `กล้อง ${cam.name}: เปิดนับวัตถุขนาดใหญ่เป็นรถ (ขั้นต่ำ ${pct}%) มีผลในรอบตรวจจับถัดไป`
+            : `กล้อง ${cam.name}: ปิดนับวัตถุขนาดใหญ่เป็นรถแล้ว`;
+          this.detectTarget = null;
+          await this.loadCameras();
+        } catch (e) {
+          this.detectError = "บันทึกไม่สำเร็จ: " + e.message;
+        } finally {
+          this.detectSaving = false;
         }
       },
       realignLoading: false,

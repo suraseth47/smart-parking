@@ -6,7 +6,7 @@ from datetime import datetime
 import cv2
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -54,6 +54,7 @@ class CameraOut(BaseModel):
     detect_interval_s: int
     conf_threshold: float
     tiling_enabled: bool
+    large_object_min_area: float | None = None
     roi_polygon: list | None
     status: str
     reference_image_path: str | None
@@ -101,6 +102,35 @@ def update_camera(
     for key, value in _camera_fields(data).items():
         setattr(camera, key, value)
     db.add(AuditLog(user_id=admin.id, action="update_camera", target=camera.name))
+    db.commit()
+    db.refresh(camera)
+    return camera
+
+
+class DetectionSettingsIn(BaseModel):
+    # None = ปิดโหมด "นับวัตถุขนาดใหญ่เป็นรถ"; ตัวเลข = ขนาดกรอบขั้นต่ำเป็นสัดส่วนพื้นที่ภาพ
+    large_object_min_area: float | None = Field(default=None, ge=0.005, le=0.5)
+
+
+@router.patch("/{camera_id}/detection", response_model=CameraOut)
+def update_detection_settings(
+    camera_id: int,
+    data: DetectionSettingsIn,
+    db: Session = Depends(get_db),
+    admin: CurrentUser = Depends(require_admin),
+    _csrf: None = Depends(verify_csrf),
+):
+    """ตั้งค่าการตรวจจับรายกล้อง โดยไม่แตะข้อมูลเชื่อมต่อกล้อง (รหัสผ่านกล้องไม่หาย)"""
+    camera = _get_camera_or_404(db, camera_id)
+    camera.large_object_min_area = data.large_object_min_area
+    db.add(
+        AuditLog(
+            user_id=admin.id,
+            action="update_camera_detection",
+            target=camera.name,
+            detail={"large_object_min_area": data.large_object_min_area},
+        )
+    )
     db.commit()
     db.refresh(camera)
     return camera

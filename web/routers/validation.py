@@ -28,7 +28,8 @@ from core.validation import compute_accuracy
 from web.deps import CurrentUser, require_admin, verify_csrf
 from worker.capture import grab_frame
 from worker.detector import OnnxYoloxDetector
-from worker.occupancy import compute_footprint, compute_slot_score, is_occupied, normalize_box
+from worker.occupancy import compute_slot_score, is_occupied
+from worker.vehicle_boxes import detect_vehicle_footprints
 
 router = APIRouter(prefix="/api/admin/validation", tags=["validation"])
 
@@ -116,9 +117,7 @@ def create_job(
                 raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"ดึงภาพจากกล้องไม่สำเร็จ: {exc}")
             break  # ถ่ายได้บ้างแล้ว เก็บผลเท่าที่มีไว้ก่อน
 
-        frame_h, frame_w = frame.shape[:2]
-        detections = detector.detect(frame)
-        footprints = [compute_footprint(normalize_box(d.box, frame_w, frame_h)) for d in detections]
+        footprints = detect_vehicle_footprints(detector, frame, camera.large_object_min_area)
 
         slot_results = []
         for slot in slots:

@@ -34,14 +34,13 @@ from worker.calibration.observation import (
 )
 from worker.capture import grab_frame
 from worker.detector import OnnxYoloxDetector
+from worker.vehicle_boxes import detect_vehicle_footprints
 from worker.health import detect_camera_moved, is_health_check_due, raise_alert, resolve_alerts
 from worker.stats import maybe_prune_old_stats, maybe_record_minute_stats
 from worker.occupancy import (
     apply_debounce,
-    compute_footprint,
     compute_slot_score,
     is_occupied,
-    normalize_box,
     resolve_override,
     update_raw_history,
 )
@@ -134,10 +133,8 @@ def process_camera(db: Session, camera: Camera, detector: OnnxYoloxDetector) -> 
         return
 
     infer_start = time.perf_counter()
-    detections = detector.detect(frame)
+    footprints = detect_vehicle_footprints(detector, frame, camera.large_object_min_area)
     camera.last_infer_ms = (time.perf_counter() - infer_start) * 1000
-
-    footprints = [compute_footprint(normalize_box(d.box, frame_w, frame_h)) for d in detections]
 
     slots = db.scalars(
         select(Slot).where(
@@ -182,9 +179,7 @@ def _process_calib_jobs(db: Session, detector: OnnxYoloxDetector, now: datetime)
         except RuntimeError:
             continue  # ดึงภาพไม่ได้รอบนี้ ข้ามไปก่อน ไม่ถือเป็นความล้มเหลวของ job
 
-        frame_h, frame_w = frame.shape[:2]
-        detections = detector.detect(frame)
-        boxes = [compute_footprint(normalize_box(d.box, frame_w, frame_h)) for d in detections]
+        boxes = detect_vehicle_footprints(detector, frame, camera.large_object_min_area)
         record_calib_sample(db, job, boxes, frame, now)
 
 

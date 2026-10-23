@@ -16,7 +16,8 @@ from web.deps import CurrentUser, require_admin, verify_csrf
 from worker.camera_connection import check_camera_connection
 from worker.capture import grab_frame
 from worker.detector import OnnxYoloxDetector
-from worker.occupancy import compute_footprint, compute_slot_score, is_occupied, normalize_box
+from worker.occupancy import compute_slot_score, is_occupied
+from worker.vehicle_boxes import detect_vehicle_footprints
 
 router = APIRouter(prefix="/api/admin", tags=["layout"])
 
@@ -175,12 +176,7 @@ def preview_slots(
     except RuntimeError as exc:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"ดึงภาพจากกล้องไม่สำเร็จ: {exc}")
 
-    detector = _get_detector()
-    detections = detector.detect(frame)
-    frame_h, frame_w = frame.shape[:2]
-    footprints = [
-        compute_footprint(normalize_box(d.box, frame_w, frame_h)) for d in detections
-    ]
+    footprints = detect_vehicle_footprints(_get_detector(), frame, camera.large_object_min_area)
 
     results = []
     for slot in data.slots:
@@ -194,7 +190,7 @@ def preview_slots(
 
     return {
         "snapshot_url": f"/api/admin/cameras/{camera_id}/snapshot",
-        "detected_vehicle_count": len(detections),
+        "detected_vehicle_count": len(footprints),
         "results": results,
     }
 
