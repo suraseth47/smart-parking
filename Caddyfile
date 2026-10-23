@@ -1,15 +1,50 @@
+# Caddy = ประตูหน้าของระบบ รับคนจากอินเทอร์เน็ตแล้วส่งต่อให้ web
+#
+# ตอนนี้ยังไม่มีโดเมน จึงเปิด 2 ทาง (ตั้งพอร์ตที่ MikroTik ให้ตรง):
+#   หน้าบ้าน  http://125.26.22.145:8008   -> VM :8080  (ปิดหลังบ้านบนทางนี้)
+#   หลังบ้าน  https://125.26.22.145:8010  -> VM :8443  (HTTPS ใบรับรองที่ Caddy ออกเอง)
+#
+# ค่า IP เปลี่ยนได้ใน .env: PUBLIC_IP, LAN_IP (ไม่ตั้งก็ใช้ค่าข้างล่าง)
+# เมื่อมีโดเมนแล้ว ค่อยเพิ่ม site block ของโดเมน (Let's Encrypt) ภายหลัง
+
 {
-	email {$ACME_EMAIL}
+	# IP ไม่มี SNI -> บอก Caddy ว่าให้ใช้ใบรับรองของ IP สาธารณะเป็นค่าเริ่มต้น
+	default_sni {$PUBLIC_IP:125.26.22.145}
+	# ไม่ต้องติดตั้ง root CA ลงในเครื่อง container
+	skip_install_trust
+	# ไม่ต้องทำ redirect http->https อัตโนมัติ (พอร์ต 80 ใช้กับเว็บ NASLINK)
+	auto_https disable_redirects
 }
 
-{$DOMAIN} {
+(common) {
 	encode gzip
-
 	header {
-		Strict-Transport-Security "max-age=31536000"
 		X-Content-Type-Options "nosniff"
 		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+}
+
+# ---------- หน้าบ้าน (HTTP) : ประชาชนทั่วไป ----------
+http://:8080 {
+	import common
+
+	# ห้ามเข้าหลังบ้านผ่าน HTTP (รหัสผ่านจะวิ่งแบบไม่เข้ารหัส)
+	@admin path /admin /admin/* /api/admin /api/admin/*
+	handle @admin {
+		header Content-Type "text/plain; charset=utf-8"
+		respond "หลังบ้านเข้าได้ทาง HTTPS เท่านั้น: https://{$PUBLIC_IP:125.26.22.145}:{$ADMIN_PUBLIC_PORT:8010}/admin" 403
 	}
 
-	reverse_proxy web:8000
+	handle {
+		reverse_proxy {$WEB_UPSTREAM:web:8000}
+	}
+}
+
+# ---------- ทั้งระบบ (HTTPS) : ทีมงานเข้าหลังบ้าน ----------
+https://{$PUBLIC_IP:125.26.22.145}:8443, https://{$LAN_IP:192.168.200.196}:8443 {
+	import common
+	tls internal
+	reverse_proxy {$WEB_UPSTREAM:web:8000}
 }

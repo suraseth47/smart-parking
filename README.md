@@ -99,7 +99,7 @@ sudo usermod -aG docker $USER   # logout/login ใหม่
 
 # 2. ตั้ง timezone และ firewall
 sudo timedatectl set-timezone Asia/Bangkok
-sudo ufw allow 80,443/tcp
+sudo ufw allow 8080,8443/tcp
 sudo ufw allow from 192.168.0.0/16 to any port 22 proto tcp   # SSH เฉพาะ LAN
 sudo ufw enable
 
@@ -109,7 +109,7 @@ cd smart-parking
 
 # 4. ตั้งค่า
 cp .env.example .env
-nano .env          # แก้ DOMAIN, SITE_NAME, สร้าง SECRET_KEY / FERNET_KEY
+nano .env          # แก้ PUBLIC_IP, SITE_NAME, สร้าง SECRET_KEY / FERNET_KEY
 
 # 5. ดาวน์โหลดโมเดล AI ไปไว้ที่ models/ (ดูวิธีใน models/README.md)
 
@@ -120,12 +120,28 @@ docker compose up -d
 docker compose exec web python scripts/create_admin.py
 ```
 
+### ทางเข้าระบบ (ยังไม่มีโดเมน)
+
+| ใช้สำหรับ | ที่อยู่ภายนอก | MikroTik ส่งต่อไปที่ | หมายเหตุ |
+|---|---|---|---|
+| หน้าบ้าน | `http://125.26.22.145:8008` | `192.168.200.196:8080` (Caddy) | หน้า `/admin` ถูกปิดบนทางนี้ |
+| หลังบ้าน | `https://125.26.22.145:8010/admin` | `192.168.200.196:8443` (Caddy) | ใบรับรองที่ Caddy ออกเอง เบราว์เซอร์จะเตือนจนกว่าจะติดตั้ง root CA |
+| หลังบ้าน (สำรอง) | SSH tunnel `open-server-admin.bat` | `127.0.0.1:8000` บน Server | ใช้ในวงแลน |
+
+ติดตั้ง root CA ของ Caddy ในเครื่องทีม (ไม่ให้เบราว์เซอร์เตือน):
+```bash
+docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt ./smart-parking-root.crt
+```
+แล้วคัดลอกไฟล์ไปที่เครื่อง Windows ดับเบิลคลิก -> Install Certificate -> Current User ->
+เลือก "Trusted Root Certification Authorities" (ห้ามส่งต่อไฟล์ `caddy_data` หรือ key ของ CA ให้ใคร)
+
 ### ตัวแปรใน `.env`
 
 | ตัวแปร | ตัวอย่าง | คำอธิบาย |
 |---|---|---|
-| `DOMAIN` | `parking.example.com` | ใช้ออกใบรับรอง HTTPS |
-| `ACME_EMAIL` | `admin@example.com` | อีเมลสำหรับ Let's Encrypt |
+| `PUBLIC_IP` | `125.26.22.145` | IP สาธารณะ (ใส่ในใบรับรอง HTTPS ที่ Caddy ออกเอง) |
+| `LAN_IP` | `192.168.200.196` | IP ของ Server ในวงแลน |
+| `ADMIN_PUBLIC_PORT` | `8010` | พอร์ตภายนอกของหลังบ้าน HTTPS (ใช้แสดงในข้อความแนะนำ) |
 | `SITE_NAME_TH` / `SITE_NAME_EN` | `ลานจอดรถ ...` | ชื่อที่แสดงบนเว็บ |
 | `SECRET_KEY` | (สุ่มยาว) | เซ็น session |
 | `FERNET_KEY` | (สุ่ม) | เข้ารหัสรหัสผ่านกล้องใน DB |
