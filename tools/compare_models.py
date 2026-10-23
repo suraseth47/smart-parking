@@ -21,7 +21,7 @@ from core.db import SessionLocal
 from core.models import Camera, LayoutStatus, Slot
 from worker.detector import OnnxYoloxDetector
 from worker.occupancy import compute_slot_score, is_occupied
-from worker.vehicle_boxes import analyze_vehicle_boxes
+from worker.vehicle_boxes import analyze_vehicle_boxes, camera_roi, effective_roi
 
 RUNS = 3
 
@@ -42,9 +42,18 @@ if frame is None:
     sys.exit(f"ไม่มีภาพล่าสุดของกล้อง ({path})")
 age_s = time.time() - path.stat().st_mtime
 large = camera.large_object_min_area
+roi = camera_roi([slot.polygon for slot in slots], camera.roi_auto_margin)
+used_roi = effective_roi(roi, frame)
 
 print(f"กล้อง: {camera.name} | ภาพ {frame.shape[1]}x{frame.shape[0]} ถ่ายเมื่อ {age_s:.0f} วินาทีก่อน")
 print(f"นับวัตถุขนาดใหญ่เป็นรถ: {'ปิด' if large is None else f'เปิด ≥ {large:.1%}'}")
+if used_roi:
+    w = (used_roi[2] - used_roi[0]) * frame.shape[1]
+    h = (used_roi[3] - used_roi[1]) * frame.shape[0]
+    print(f"ROI: เปิด ขอบ {camera.roi_auto_margin:.0%} -> ตัดภาพเหลือ {w:.0f}x{h:.0f} "
+          f"(x {used_roi[0]:.2f}-{used_roi[2]:.2f}, y {used_roi[1]:.2f}-{used_roi[3]:.2f})")
+else:
+    print("ROI: ปิด (ใช้ภาพเต็ม)" if camera.roi_auto_margin is None else "ROI: เปิด แต่ครอบเกือบทั้งภาพ จึงใช้ภาพเต็ม")
 print(f"โมเดลที่ระบบใช้อยู่ตอนนี้: {get_settings().detector_model}")
 
 model_files = sorted(MODELS_DIR.glob("*.onnx"))
@@ -54,10 +63,10 @@ if not model_files:
 summary = []
 for model_path in model_files:
     detector = OnnxYoloxDetector(model_path)
-    analyze_vehicle_boxes(detector, frame, large)  # รอบแรกช้ากว่าปกติ ไม่นับเวลา
+    analyze_vehicle_boxes(detector, frame, large, roi)  # รอบแรกช้ากว่าปกติ ไม่นับเวลา
     start = time.perf_counter()
     for _ in range(RUNS):
-        boxes = analyze_vehicle_boxes(detector, frame, large)
+        boxes = analyze_vehicle_boxes(detector, frame, large, roi)
     ms = (time.perf_counter() - start) / RUNS * 1000
 
     print(f"\n=== {model_path.name}  ({ms:.0f} ms ต่อภาพ) ===")

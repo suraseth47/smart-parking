@@ -4,26 +4,27 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}หลังบ้าน{% endblock %} - Smart Parking · NASLINK</title>
-  <link rel="stylesheet" href="/static/css/admin.css?v=20261019">
+  <link rel="stylesheet" href="/static/css/admin.css?v=20261023">
   <script defer src="/static/js/vendor/alpine.min.js"></script>
   <script src="/static/js/api.js"></script>
   {% block head %}{% endblock %}
 </head>
 <body>
   {% set path = request.url.path.rstrip('/') %}
+  {# เมนู: (ลิงก์, ชื่อไทย, ชื่ออังกฤษตัวเล็ก, path ที่ให้ไฮไลต์, ไอคอน) #}
   {% set nav_groups = [
-    ("การใช้งาน", [
-      ("/admin/live", "Live view", ["/admin/live"], "live"),
-      ("/admin/cctv", "กล้องวงจรปิด", ["/admin/cctv"], "cctv"),
-      ("/admin/override", "Override", ["/admin/override"], "override"),
-      ("/admin/reports", "รายงาน", ["/admin/reports"], "reports"),
+    ("การใช้งาน · Operations", [
+      ("/admin/live", "สถานะช่องจอดสด", "Live Status", ["/admin/live"], "live"),
+      ("/admin/cctv", "กล้องวงจรปิด", "CCTV Monitor", ["/admin/cctv"], "cctv"),
+      ("/admin/override", "แก้สถานะช่องด้วยมือ", "Manual Override", ["/admin/override"], "override"),
+      ("/admin/reports", "รายงานและสถิติ", "Reports", ["/admin/reports"], "reports"),
     ]),
-    ("ตั้งค่าระบบ", [
-      ("/admin", "กล้องและช่องจอด", ["/admin", "/admin/layout"], "camera"),
-      ("/admin/calibration", "กึ่งออโต้", ["/admin/calibration"], "auto"),
-      ("/admin/validation", "Validation", ["/admin/validation"], "check"),
-      ("/admin/audit", "Audit log", ["/admin/audit"], "audit"),
-      ("/admin/settings", "ตั้งค่า", ["/admin/settings"], "settings"),
+    ("ตั้งค่าระบบ · Settings", [
+      ("/admin", "กล้องและช่องจอด", "Cameras & Slots", ["/admin", "/admin/layout"], "camera"),
+      ("/admin/calibration", "ช่วยวาดช่องอัตโนมัติ", "Auto Slot Setup", ["/admin/calibration"], "auto"),
+      ("/admin/validation", "ทดสอบความแม่นยำ", "Accuracy Test", ["/admin/validation"], "check"),
+      ("/admin/audit", "ประวัติการใช้งาน", "Audit Log", ["/admin/audit"], "audit"),
+      ("/admin/settings", "ตั้งค่าความปลอดภัย", "Security Settings", ["/admin/settings"], "settings"),
     ]),
   ] %}
   {% set icons = {
@@ -58,17 +59,17 @@
       <nav class="side-nav" aria-label="เมนูหลัก">
         {% for group_label, items in nav_groups %}
           <div class="nav-group-label">{{ group_label }}</div>
-          {% for href, label, matches, icon in items %}
+          {% for href, label, label_en, matches, icon in items %}
             <a href="{{ href }}"{% if path in matches %} class="active" aria-current="page"{% endif %}>
               <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">{{ icons[icon] | safe }}</svg>
-              <span>{{ label }}</span>
+              <span class="nav-text"><span>{{ label }}</span><span class="nav-en" lang="en">{{ label_en }}</span></span>
             </a>
           {% endfor %}
         {% endfor %}
         <div class="nav-divider"></div>
         <a href="/" target="_blank" rel="noopener" class="nav-link-accent">
           <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>
-          <span>เปิดหน้าสาธารณะ</span>
+          <span class="nav-text"><span>เปิดหน้าสาธารณะ</span><span class="nav-en" lang="en">Public Page</span></span>
         </a>
       </nav>
 

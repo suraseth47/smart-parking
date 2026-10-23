@@ -29,7 +29,7 @@ from web.deps import CurrentUser, require_admin, verify_csrf
 from worker.capture import grab_frame
 from worker.detector import OnnxYoloxDetector
 from worker.occupancy import compute_slot_score, is_occupied
-from worker.vehicle_boxes import detect_vehicle_footprints
+from worker.vehicle_boxes import camera_roi, detect_vehicle_footprints
 
 router = APIRouter(prefix="/api/admin/validation", tags=["validation"])
 
@@ -103,6 +103,7 @@ def create_job(
     db.flush()
 
     detector = _get_detector()
+    roi = camera_roi([slot.polygon for slot in slots], camera.roi_auto_margin)
     camera_url = build_camera_url(camera)
     job_dir = get_settings().data_dir / "validation" / f"job_{job.id}"
     job_dir.mkdir(parents=True, exist_ok=True)
@@ -117,7 +118,7 @@ def create_job(
                 raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"ดึงภาพจากกล้องไม่สำเร็จ: {exc}")
             break  # ถ่ายได้บ้างแล้ว เก็บผลเท่าที่มีไว้ก่อน
 
-        footprints = detect_vehicle_footprints(detector, frame, camera.large_object_min_area)
+        footprints = detect_vehicle_footprints(detector, frame, camera.large_object_min_area, roi)
 
         slot_results = []
         for slot in slots:

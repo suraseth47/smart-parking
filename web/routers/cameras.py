@@ -55,6 +55,7 @@ class CameraOut(BaseModel):
     conf_threshold: float
     tiling_enabled: bool
     large_object_min_area: float | None = None
+    roi_auto_margin: float | None = None
     roi_polygon: list | None
     status: str
     reference_image_path: str | None
@@ -108,8 +109,11 @@ def update_camera(
 
 
 class DetectionSettingsIn(BaseModel):
-    # None = ปิดโหมด "นับวัตถุขนาดใหญ่เป็นรถ"; ตัวเลข = ขนาดกรอบขั้นต่ำเป็นสัดส่วนพื้นที่ภาพ
+    # ส่งมาเฉพาะค่าที่ต้องการเปลี่ยน (ค่าที่ไม่ได้ส่งจะคงเดิม) — null = ปิดโหมดนั้น
+    # large_object_min_area: ขนาดกรอบขั้นต่ำของ "นับวัตถุขนาดใหญ่เป็นรถ" (สัดส่วนพื้นที่ภาพ)
     large_object_min_area: float | None = Field(default=None, ge=0.005, le=0.5)
+    # roi_auto_margin: ขอบเผื่อรอบช่องจอดของ ROI อัตโนมัติ (สัดส่วนของภาพ, FR-4)
+    roi_auto_margin: float | None = Field(default=None, ge=0.0, le=0.5)
 
 
 @router.patch("/{camera_id}/detection", response_model=CameraOut)
@@ -122,15 +126,10 @@ def update_detection_settings(
 ):
     """ตั้งค่าการตรวจจับรายกล้อง โดยไม่แตะข้อมูลเชื่อมต่อกล้อง (รหัสผ่านกล้องไม่หาย)"""
     camera = _get_camera_or_404(db, camera_id)
-    camera.large_object_min_area = data.large_object_min_area
-    db.add(
-        AuditLog(
-            user_id=admin.id,
-            action="update_camera_detection",
-            target=camera.name,
-            detail={"large_object_min_area": data.large_object_min_area},
-        )
-    )
+    changes = data.model_dump(include=data.model_fields_set)
+    for key, value in changes.items():
+        setattr(camera, key, value)
+    db.add(AuditLog(user_id=admin.id, action="update_camera_detection", target=camera.name, detail=changes))
     db.commit()
     db.refresh(camera)
     return camera

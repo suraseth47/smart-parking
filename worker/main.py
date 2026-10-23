@@ -34,7 +34,7 @@ from worker.calibration.observation import (
 )
 from worker.capture import grab_frame
 from worker.detector import OnnxYoloxDetector
-from worker.vehicle_boxes import detect_vehicle_footprints
+from worker.vehicle_boxes import camera_roi, detect_vehicle_footprints
 from worker.health import detect_camera_moved, is_health_check_due, raise_alert, resolve_alerts
 from worker.stats import maybe_prune_old_stats, maybe_record_minute_stats
 from worker.occupancy import (
@@ -134,10 +134,6 @@ def process_camera(db: Session, camera: Camera, detector: OnnxYoloxDetector) -> 
         db.commit()
         return
 
-    infer_start = time.perf_counter()
-    footprints = detect_vehicle_footprints(detector, frame, camera.large_object_min_area)
-    camera.last_infer_ms = (time.perf_counter() - infer_start) * 1000
-
     slots = db.scalars(
         select(Slot).where(
             Slot.camera_id == camera.id,
@@ -145,6 +141,11 @@ def process_camera(db: Session, camera: Camera, detector: OnnxYoloxDetector) -> 
             Slot.is_active.is_(True),
         )
     ).all()
+
+    roi = camera_roi([slot.polygon for slot in slots], camera.roi_auto_margin)
+    infer_start = time.perf_counter()
+    footprints = detect_vehicle_footprints(detector, frame, camera.large_object_min_area, roi)
+    camera.last_infer_ms = (time.perf_counter() - infer_start) * 1000
 
     for slot in slots:
         _update_slot_state(db, slot, footprints, now)

@@ -22,7 +22,7 @@ class CalibrationPage {
     if (!user) return;
     if (user.role !== "admin") {
       document.querySelector(".page").innerHTML =
-        '<div class="card"><p>หน้านี้ (กึ่งออโต้) สำหรับ Admin เท่านั้น</p></div>';
+        '<div class="card"><p>หน้านี้ (ช่วยวาดช่องอัตโนมัติ) สำหรับ Admin เท่านั้น</p></div>';
       return;
     }
     this.cameras = await apiJson("/api/admin/cameras");

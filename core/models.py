@@ -112,6 +112,8 @@ class Camera(Base):
     tiling_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     # โหมด "นับวัตถุขนาดใหญ่เป็นรถ": None = ปิด, ตัวเลข = ขนาดกรอบขั้นต่ำ (สัดส่วนของพื้นที่ภาพ 0-1)
     large_object_min_area: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # ROI อัตโนมัติจากช่องจอด (FR-4): None = ปิด, ตัวเลข = ขอบเผื่อรอบช่อง (สัดส่วนของภาพ 0-1)
+    roi_auto_margin: Mapped[float | None] = mapped_column(Float, nullable=True)
     roi_polygon: Mapped[list | None] = mapped_column(JSON, nullable=True)
     reference_image_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[CameraStatus] = mapped_column(

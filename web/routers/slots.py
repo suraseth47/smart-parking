@@ -17,7 +17,7 @@ from worker.camera_connection import check_camera_connection
 from worker.capture import grab_frame
 from worker.detector import OnnxYoloxDetector
 from worker.occupancy import compute_slot_score, is_occupied
-from worker.vehicle_boxes import analyze_vehicle_boxes
+from worker.vehicle_boxes import analyze_vehicle_boxes, camera_roi, effective_roi
 
 router = APIRouter(prefix="/api/admin", tags=["layout"])
 
@@ -177,7 +177,10 @@ def preview_slots(
     except RuntimeError as exc:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"ดึงภาพจากกล้องไม่สำเร็จ: {exc}")
 
-    vehicle_boxes = analyze_vehicle_boxes(_get_detector(), frame, camera.large_object_min_area)
+    # ROI คิดจากช่องที่กำลังแก้อยู่บนหน้าจอ (ยังไม่ publish ก็เห็นผลได้)
+    roi = camera_roi([slot.polygon for slot in data.slots], camera.roi_auto_margin)
+    vehicle_boxes = analyze_vehicle_boxes(_get_detector(), frame, camera.large_object_min_area, roi)
+    used_roi = effective_roi(roi, frame)
     footprints = [v.footprint for v in vehicle_boxes]
 
     results = []
@@ -195,6 +198,7 @@ def preview_slots(
     return {
         "snapshot_url": f"/api/admin/cameras/{camera_id}/snapshot",
         "detected_vehicle_count": len(footprints),
+        "roi": [round(v, 4) for v in used_roi] if used_roi else None,
         # กรอบที่ระบบนับเป็นรถ (normalized 0-1) ให้หน้า Preview วาดทับภาพ เพื่อปรับช่อง/threshold
         "detections": [
             {

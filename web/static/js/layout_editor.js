@@ -12,6 +12,7 @@ const DEFAULT_STROKE = "#38bdf8";
 const SELECTED_STROKE = "#f97316";
 // กรอบที่ AI เห็นใน Preview: เขียว = AI ทายว่าเป็นรถ, เหลืองอำพัน = วัตถุใหญ่ที่นับเป็นรถ
 const DETECTION_COLORS = { vehicle: "#22c55e", large: "#f59e0b" };
+const ROI_COLOR = "#0ea5e9";
 
 class LayoutEditor {
   constructor(cameraId) {
@@ -25,6 +26,7 @@ class LayoutEditor {
     this.layer = null;
     this.detLayer = null;
     this.previewDetections = [];
+    this.previewRoi = null;
     this.showDetections = true;
     this.imgWidth = 0;
     this.imgHeight = 0;
@@ -458,6 +460,7 @@ class LayoutEditor {
         slot.previewScore = r ? r.score : null;
       }
       this.previewDetections = result.detections || [];
+      this.previewRoi = result.roi || null;
 
       await this._refreshBackgroundImage();
       this._renderAll();
@@ -478,12 +481,15 @@ class LayoutEditor {
       if (large) text += ` · วัตถุขนาดใหญ่ที่นับเป็นรถ ${large}`;
       text += ")";
     }
+    if (this.previewRoi) text += " · ตรวจเฉพาะในกรอบ ROI";
     document.getElementById("preview-summary").textContent = text;
-    document.getElementById("preview-legend").style.display = this.previewDetections.length ? "" : "none";
+    document.getElementById("preview-legend").style.display =
+      this.previewDetections.length || this.previewRoi ? "" : "none";
   }
 
   _clearPreview() {
     this.previewDetections = [];
+    this.previewRoi = null;
     for (const slot of this.slots) {
       slot.previewState = null;
       slot.previewScore = null;
@@ -500,6 +506,17 @@ class LayoutEditor {
     if (this.showDetections) {
       const w = this.imgWidth;
       const h = this.imgHeight;
+      if (this.previewRoi) {
+        const [rx1, ry1, rx2, ry2] = this.previewRoi;
+        this.detLayer.add(new Konva.Rect({
+          x: rx1 * w, y: ry1 * h, width: (rx2 - rx1) * w, height: (ry2 - ry1) * h,
+          stroke: ROI_COLOR, strokeWidth: 2, dash: [10, 6],
+        }));
+        const roiTag = new Konva.Label({ x: rx1 * w + 2, y: ry1 * h + 2 });
+        roiTag.add(new Konva.Tag({ fill: ROI_COLOR, opacity: 0.9 }));
+        roiTag.add(new Konva.Text({ text: "ROI (AI ตรวจเฉพาะในกรอบนี้)", fontSize: 12, padding: 3, fill: "#fff" }));
+        this.detLayer.add(roiTag);
+      }
       for (const d of this.previewDetections) {
         const color = DETECTION_COLORS[d.kind] || DETECTION_COLORS.vehicle;
         const [x1, y1, x2, y2] = d.box;

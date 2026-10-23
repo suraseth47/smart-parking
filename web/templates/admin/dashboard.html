@@ -1,5 +1,5 @@
 {% extends "admin/base.html" %}
-{% block title %}ภาพรวม · กล้องและช่องจอด{% endblock %}
+{% block title %}กล้องและช่องจอด{% endblock %}
 {% block head %}
 <script src="/static/js/vendor/konva.min.js"></script>
 {% endblock %}
@@ -49,7 +49,7 @@
     </div>
   </div>
   <div class="card" x-show="isOperator" style="margin-bottom:1rem;">
-    <p>หน้านี้ (จัดการกล้อง) สำหรับ Admin เท่านั้น — <a href="/admin/live">ไปหน้า Live view</a> แทน</p>
+    <p>หน้านี้ (จัดการกล้อง) สำหรับ Admin เท่านั้น — <a href="/admin/live">ไปหน้าสถานะช่องจอดสด</a> แทน</p>
   </div>
 
   <template x-if="!isOperator">
@@ -74,6 +74,8 @@
               <span x-text="cam.name"></span>
               <div class="muted" style="font-size:0.8rem;" x-show="cam.large_object_min_area != null"
                    x-text="'นับวัตถุขนาดใหญ่เป็นรถ ≥ ' + formatPct(cam.large_object_min_area)"></div>
+              <div class="muted" style="font-size:0.8rem;" x-show="cam.roi_auto_margin != null"
+                   x-text="'ROI เฉพาะบริเวณช่องจอด (ขอบ ' + formatPct(cam.roi_auto_margin) + ')'"></div>
             </td>
             <td style="padding:0.4rem;" x-text="cam.brand"></td>
             <td style="padding:0.4rem;" x-text="cam.host"></td>
@@ -123,6 +125,24 @@
       <p class="muted" style="margin-top:0.25rem;">
         ค่าแนะนำ 3% · ตั้งต่ำไปอาจนับของชิ้นเล็กเป็นรถ ตั้งสูงไปรถที่อยู่ไกลกล้องจะไม่ถูกนับในโหมดนี้
         (รถที่ AI ทายถูกว่าเป็นรถยังนับตามปกติเสมอ)
+      </p>
+    </div>
+    <hr style="border:0; border-top:1px solid var(--color-border); margin:1rem 0;">
+    <label style="display:flex; gap:0.5rem; align-items:center; font-weight:600;">
+      <input type="checkbox" x-model="detectForm.roiEnabled" style="width:auto; margin:0;">
+      ตัดภาพเฉพาะบริเวณช่องจอด (ROI)
+    </label>
+    <p class="muted">
+      ระบบตัดภาพเฉพาะส่วนที่มีช่องจอด (คำนวณจากช่องที่วาดไว้อัตโนมัติ) ก่อนส่งให้ AI ทิ้งท้องฟ้า ถนน และตึก
+      รถจะใหญ่ขึ้นในสายตา AI โดยใช้ CPU เท่าเดิม ได้ผลมากกับกล้องความละเอียดสูงที่ช่องจอดอยู่ส่วนเดียวของภาพ
+      และช่วยไม่ให้นับรถที่วิ่งบนถนนนอกลาน
+    </p>
+    <div x-show="detectForm.roiEnabled">
+      <label for="detect-roi-margin">ขอบเผื่อรอบช่องจอด (% ของภาพ)</label>
+      <input id="detect-roi-margin" type="number" min="0" max="50" step="1" x-model.number="detectForm.roiMarginPct" style="max-width:160px;">
+      <p class="muted" style="margin-top:0.25rem;">
+        ค่าแนะนำ 10% · ต้องเผื่อให้รถทั้งคันอยู่ในกรอบ ถ้าน้อยไปรถที่จอดเลยเส้นจะโดนตัดครึ่งคันแล้ว AI จำไม่ได้
+        (ดูกรอบ ROI เส้นประสีฟ้าได้ในหน้า Preview)
       </p>
     </div>
     <p class="muted">หลังบันทึก กด "กำหนดช่องจอด" แล้วกด Preview เพื่อดูผลกับภาพปัจจุบันได้ทันที</p>
@@ -270,7 +290,7 @@
         }
       },
       detectTarget: null,
-      detectForm: { enabled: false, minAreaPct: 3 },
+      detectForm: { enabled: false, minAreaPct: 3, roiEnabled: false, roiMarginPct: 10 },
       detectSaving: false,
       detectError: "",
       detectDone: "",
@@ -280,9 +300,12 @@
       openDetect(cam) {
         const current = cam.large_object_min_area;
         this.detectTarget = cam;
+        const roi = cam.roi_auto_margin;
         this.detectForm = {
           enabled: current != null,
           minAreaPct: current != null ? Math.round(current * 1000) / 10 : 3,
+          roiEnabled: roi != null,
+          roiMarginPct: roi != null ? Math.round(roi * 1000) / 10 : 10,
         };
         this.detectError = "";
         this.detectDone = "";
@@ -295,14 +318,24 @@
           this.detectError = "ขนาดกรอบขั้นต่ำต้องอยู่ระหว่าง 0.5 ถึง 50%";
           return;
         }
+        const roiPct = Number(this.detectForm.roiMarginPct);
+        if (this.detectForm.roiEnabled && (!(roiPct >= 0) || roiPct > 50)) {
+          this.detectError = "ขอบเผื่อ ROI ต้องอยู่ระหว่าง 0 ถึง 50%";
+          return;
+        }
         this.detectSaving = true;
         this.detectError = "";
         try {
-          const body = { large_object_min_area: this.detectForm.enabled ? pct / 100 : null };
+          const body = {
+            large_object_min_area: this.detectForm.enabled ? pct / 100 : null,
+            roi_auto_margin: this.detectForm.roiEnabled ? roiPct / 100 : null,
+          };
           await apiJson(`/api/admin/cameras/${cam.id}/detection`, { method: "PATCH", body: JSON.stringify(body) });
-          this.detectDone = this.detectForm.enabled
-            ? `กล้อง ${cam.name}: เปิดนับวัตถุขนาดใหญ่เป็นรถ (ขั้นต่ำ ${pct}%) มีผลในรอบตรวจจับถัดไป`
-            : `กล้อง ${cam.name}: ปิดนับวัตถุขนาดใหญ่เป็นรถแล้ว`;
+          const parts = [
+            this.detectForm.enabled ? `นับวัตถุขนาดใหญ่เป็นรถ ≥ ${pct}%` : "ไม่นับวัตถุขนาดใหญ่",
+            this.detectForm.roiEnabled ? `ROI ขอบ ${roiPct}%` : "ใช้ภาพเต็ม (ปิด ROI)",
+          ];
+          this.detectDone = `กล้อง ${cam.name}: ${parts.join(" · ")} — มีผลในรอบตรวจจับถัดไป`;
           this.detectTarget = null;
           await this.loadCameras();
         } catch (e) {

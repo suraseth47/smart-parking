@@ -140,6 +140,9 @@ h3 { font-size: 1rem; font-weight: 600; }
 .nav-icon { width: 19px; height: 19px; flex-shrink: 0; }
 .nav-divider { height: 1px; background: var(--color-border); margin: 0.75rem 0.4rem; }
 .side-nav a.nav-link-accent { color: var(--color-primary); font-weight: 500; }
+.nav-text { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
+.nav-en { font-size: 0.7rem; font-weight: 400; color: #8a93a6; letter-spacing: 0.01em; }
+.side-nav a:hover .nav-en, .side-nav a.active .nav-en, .side-nav a.nav-link-accent .nav-en { color: inherit; opacity: 0.7; }
 
 .sidebar-footer {
   padding: 1rem 1.25rem;
