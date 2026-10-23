@@ -2,11 +2,11 @@ services:
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
-    # 8080 = หน้าบ้าน HTTP (MikroTik 8008 -> 8080), 8443 = ทั้งระบบ HTTPS (MikroTik 8010 -> 8443)
-    # ไม่ใช้ 80/443 เพราะ IP สาธารณะใช้ 2 พอร์ตนี้กับเว็บ NASLINK แล้ว
+    # FRONT_PORT = หน้าบ้าน HTTP, ADMIN_PORT = ทั้งระบบ HTTPS (พอร์ตบน Server; ตั้งใน .env)
+    # MikroTik ต้อง forward มาที่พอร์ตเดียวกันนี้ / ไม่ใช้ 80,443 เพราะเว็บ NASLINK ใช้อยู่
     ports:
-      - "8080:8080"
-      - "8443:8443"
+      - "${FRONT_PORT:-8080}:8080"
+      - "${ADMIN_PORT:-8443}:8443"
     environment:
       - PUBLIC_IP=${PUBLIC_IP:-125.26.22.145}
       - LAN_IP=${LAN_IP:-192.168.200.196}

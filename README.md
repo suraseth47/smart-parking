@@ -142,6 +142,7 @@ docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt ./smart-parki
 | `PUBLIC_IP` | `125.26.22.145` | IP สาธารณะ (ใส่ในใบรับรอง HTTPS ที่ Caddy ออกเอง) |
 | `LAN_IP` | `192.168.200.196` | IP ของ Server ในวงแลน |
 | `ADMIN_PUBLIC_PORT` | `8010` | พอร์ตภายนอกของหลังบ้าน HTTPS (ใช้แสดงในข้อความแนะนำ) |
+| `FRONT_PORT` / `ADMIN_PORT` | `8080` / `8443` | พอร์ตบน Server ของหน้าบ้าน / หลังบ้าน (MikroTik ต้อง forward มาที่พอร์ตนี้) |
 | `SITE_NAME_TH` / `SITE_NAME_EN` | `ลานจอดรถ ...` | ชื่อที่แสดงบนเว็บ |
 | `SECRET_KEY` | (สุ่มยาว) | เซ็น session |
 | `FERNET_KEY` | (สุ่ม) | เข้ารหัสรหัสผ่านกล้องใน DB |
