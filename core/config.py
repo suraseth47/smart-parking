@@ -15,6 +15,20 @@ DEFAULT_DETECTOR_MODEL = "yolox_s.onnx"
 
 
 @dataclass
+class SmtpSettings:
+    host: str
+    port: int
+    user: str
+    password: str
+    from_address: str
+    security: str  # "starttls" (พอร์ต 587) | "ssl" (พอร์ต 465) | "none"
+
+    @property
+    def configured(self) -> bool:
+        return bool(self.host and self.from_address)
+
+
+@dataclass
 class Settings:
     domain: str
     acme_email: str
@@ -27,6 +41,7 @@ class Settings:
     db_path: Path
     detector_model: str  # ชื่อไฟล์โมเดลในโฟลเดอร์ models/ (ตั้งใน .env: DETECTOR_MODEL)
     public_admin_url: str | None  # ที่อยู่หลังบ้านจากภายนอก ใช้สร้างลิงก์คำเชิญ เช่น https://1.2.3.4:8010
+    smtp: SmtpSettings  # บัญชีอีเมลที่ระบบใช้ส่งคำเชิญ (ไม่ตั้ง = ส่งเองไม่ได้ ใช้โปรแกรมอีเมลในเครื่องแทน)
 
 
 @lru_cache
@@ -47,6 +62,24 @@ def get_settings() -> Settings:
         db_path=DATA_DIR / "app.db",
         detector_model=os.environ.get("DETECTOR_MODEL", DEFAULT_DETECTOR_MODEL),
         public_admin_url=_public_admin_url(),
+        smtp=_smtp_settings(),
+    )
+
+
+def _smtp_settings() -> SmtpSettings:
+    """อ่านค่า SMTP_* จาก .env — SMTP_FROM ไม่ตั้งจะใช้ SMTP_USER แทน"""
+    user = os.environ.get("SMTP_USER", "").strip()
+    port_text = os.environ.get("SMTP_PORT", "587").strip() or "587"
+    security = os.environ.get("SMTP_SECURITY", "").strip().lower()
+    if security not in ("starttls", "ssl", "none"):
+        security = "ssl" if port_text == "465" else "starttls"
+    return SmtpSettings(
+        host=os.environ.get("SMTP_HOST", "").strip(),
+        port=int(port_text) if port_text.isdigit() else 587,
+        user=user,
+        password=os.environ.get("SMTP_PASSWORD", ""),
+        from_address=os.environ.get("SMTP_FROM", "").strip() or user,
+        security=security,
     )
 
 

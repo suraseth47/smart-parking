@@ -100,6 +100,9 @@ class Invitation(Base):
     permissions: Mapped[list | None] = mapped_column(JSON, nullable=True)
     method: Mapped[str] = mapped_column(String(10), default="link")  # "email" | "link" วิธีที่ Admin ส่ง
     message: Mapped[str | None] = mapped_column(String(500), nullable=True)  # ข้อความถึงผู้รับ
+    email_status: Mapped[str | None] = mapped_column(String(10), nullable=True)  # "sent" | "failed" | None=ไม่ได้ส่งเอง
+    email_error: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    email_sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     target_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

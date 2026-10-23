@@ -13,7 +13,6 @@ import secrets
 from datetime import datetime
 
 TOKEN_BYTES = 32
-ALLOWED_EXPIRY_HOURS = (24, 72, 168)  # 1 วัน, 3 วัน, 7 วัน
 MIN_PASSWORD_LENGTH = 8
 USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9._-]{3,30}$")
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")

@@ -20,10 +20,27 @@
       </div>
     </div>
 
+    <!-- การส่งอีเมล -->
+    <div class="card" style="margin-bottom:1rem;">
+      <div style="display:flex; flex-wrap:wrap; gap:0.75rem; align-items:center; justify-content:space-between;">
+        <div>
+          <strong>การส่งอีเมลโดยระบบ</strong>
+          <span class="state-tag" :class="mail.configured ? 'active' : 'inactive'" style="margin-left:0.4rem;"
+                x-text="mail.configured ? 'พร้อมใช้งาน' : 'ยังไม่ได้ตั้งค่า'"></span>
+          <p class="hint" x-show="mail.configured" x-text="'ส่งจาก ' + mail.from_address + ' ผ่าน ' + mail.host + ':' + mail.port"></p>
+          <p class="hint" x-show="!mail.configured">
+            ยังไม่ได้ตั้งค่า SMTP — ปุ่ม "ส่งคำเชิญ" จะเปิดโปรแกรมอีเมลในเครื่องของคุณแทน
+          </p>
+        </div>
+        <a class="btn btn-secondary" href="/admin/settings#mail" x-text="mail.configured ? 'ตั้งค่า / ทดสอบส่งอีเมล' : 'ตั้งค่าการส่งอีเมล'"></a>
+      </div>
+    </div>
+
     <!-- ผลลัพธ์: ลิงก์ (แสดงครั้งเดียว) -->
     <div class="card" x-show="created" style="margin-bottom:1rem; border-color:#bbf7d0;">
       <h2 style="margin-top:0;" x-text="created && created.title"></h2>
       <p class="muted" style="margin-top:0;" x-text="created && created.subtitle"></p>
+      <p class="notice warn" x-show="created && created.mailError" x-text="created && created.mailError" style="margin-top:0;"></p>
       <div class="link-box">
         <input type="text" readonly :value="created && created.url" @focus="$event.target.select()" aria-label="ลิงก์คำเชิญ">
         <button @click="copy(created.url, 'คัดลอกลิงก์แล้ว')">คัดลอกลิงก์</button>
@@ -102,7 +119,11 @@
                   <span x-text="inv.purpose === 'reset' ? 'ตั้งรหัสผ่านใหม่: ' + (inv.target_username || '-') : (inv.email || inv.full_name || '(ไม่ระบุ)')"></span>
                   <span class="sub-text" x-text="inv.purpose !== 'reset' && inv.email && inv.full_name ? inv.full_name : ''"></span>
                 </td>
-                <td x-text="inv.method === 'email' ? '✉ อีเมล' : '🔗 ลิงก์'"></td>
+                <td>
+                  <span x-text="inv.method === 'email' ? '✉ อีเมล' : '🔗 ลิงก์'"></span>
+                  <span class="sub-text" x-show="inv.email_status === 'sent'" style="color:#15803d;">ระบบส่งแล้ว</span>
+                  <span class="sub-text" x-show="inv.email_status === 'failed'" style="color:var(--color-danger);" :title="inv.email_error">ส่งไม่สำเร็จ</span>
+                </td>
                 <td><span class="role-tag" :class="inv.role" x-text="roleShort(inv.role)"></span></td>
                 <td :title="permNames(inv.permissions)" x-text="permSummary(inv.role, inv.permissions)"></td>
                 <td>
@@ -146,7 +167,9 @@
                 <input type="radio" value="email" x-model="form.method">
                 <div>
                   <div class="choice-title">✉ ส่งทางอีเมล</div>
-                  <div class="choice-desc">สร้างลิงก์แล้วเปิดโปรแกรมอีเมลในเครื่องพร้อมข้อความเชิญให้กดส่ง ผู้รับกดลิงก์ในอีเมลเพื่อตั้งบัญชี</div>
+                  <div class="choice-desc" x-text="mail.configured
+                    ? 'ระบบส่งอีเมลคำเชิญถึงผู้รับให้อัตโนมัติ ผู้รับกดลิงก์ในอีเมลเพื่อตั้งบัญชี'
+                    : 'เปิดโปรแกรมอีเมลในเครื่องพร้อมข้อความเชิญให้กดส่ง (ระบบยังไม่ได้ตั้งค่าส่งอีเมลเอง)'"></div>
                 </div>
               </label>
               <label class="choice-card" :class="form.method === 'link' && 'selected'">
@@ -226,9 +249,9 @@
             <div>
               <div class="section-title">ลิงก์ใช้ได้</div>
               <select x-model.number="form.expires_hours" aria-label="อายุลิงก์">
-                <option value="24">1 วัน</option>
-                <option value="72">3 วัน</option>
-                <option value="168">7 วัน</option>
+                <template x-for="d in expiryOptions()" :key="d">
+                  <option :value="d * 24" x-text="d + ' วัน' + (d === mail.default_expiry_days ? ' (ค่าเริ่มต้น)' : '')" :selected="d * 24 === form.expires_hours"></option>
+                </template>
               </select>
               <div class="section-title">ข้อความถึงผู้รับ (ไม่บังคับ)</div>
               <textarea x-model="form.message" rows="3" maxlength="500" placeholder="เช่น สำหรับดูแลลานจอดวัดปากคลองฯ ช่วงงานประจำปี" style="width:100%;"></textarea>
@@ -261,6 +284,7 @@
       users: [], invitations: [], permissionList: [], roleMax: {},
       roleCards: ROLE_CARDS,
       panel: null, form: {}, formError: "", busy: false,
+      mail: { configured: false }, testTo: "", testing: false, testResult: "", testOk: false,
       created: null, copied: "", flash: "", userError: "", confirmDisable: null,
 
       async init() {
@@ -271,6 +295,7 @@
         const perms = await apiJson("/api/admin/permissions");
         this.permissionList = perms.permissions;
         this.roleMax = perms.role_max;
+        this.mail = await apiJson("/api/admin/mail/status");
         await this.reload();
         this.ready = true;
       },
@@ -282,6 +307,7 @@
 
       // ---------- แสดงผล ----------
       roleShort(role) { return ROLE_SHORT[role] || role; },
+      expiryOptions() { return [...new Set([1, 3, 7, 15, 30, this.mail.default_expiry_days || 3])].sort((a, b) => a - b); },
       permLabel(key) { const p = this.permissionList.find((x) => x.key === key); return p ? p.label : key; },
       permNames(keys) { return (keys || []).map((k) => this.permLabel(k)).join(", "); },
       permSummary(role, keys) {
@@ -301,7 +327,7 @@
 
       // ---------- แผงด้านข้าง ----------
       openInvite() {
-        this.form = { method: "email", email: "", full_name: "", role: "operator", perms: [...this.roleMax.operator], expires_hours: 72, message: "" };
+        this.form = { method: "email", email: "", full_name: "", role: "operator", perms: [...this.roleMax.operator], expires_hours: (this.mail.default_expiry_days || 3) * 24, message: "" };
         this.formError = ""; this.panel = "invite";
       },
       openCreate() {
@@ -364,7 +390,8 @@
           permissions: f.perms, expires_hours: f.expires_hours, message: f.message,
         }) });
         this.showCreated(res, false);
-        if (f.method === "email") window.location.href = this.created.mailto;  // เปิดโปรแกรมอีเมลพร้อมข้อความ
+        // ระบบไม่ได้ส่งเอง (ยังไม่ตั้ง SMTP) -> เปิดโปรแกรมอีเมลในเครื่องพร้อมข้อความแทน
+        if (f.method === "email" && res.email_sent === null) window.location.href = this.created.mailto;
       },
       async submitCreate() {
         const f = this.form;
@@ -400,8 +427,15 @@
         const inv = res.invitation;
         const name = isReset ? (user.full_name || user.username) : inv.full_name;
         const share = this.buildShare(res.url, name, inv.email, inv.role, inv.permissions, inv.expires_at, isReset, inv.message);
+        const to = inv.email || "";
+        let title;
+        if (res.email_sent === true) title = isReset ? `ส่งลิงก์ตั้งรหัสผ่านใหม่ถึง ${to} แล้ว` : `ส่งอีเมลคำเชิญถึง ${to} แล้ว`;
+        else if (res.email_sent === false) title = "ส่งอีเมลไม่สำเร็จ — ส่งลิงก์ด้วยวิธีอื่นแทนได้";
+        else if (isReset) title = `ลิงก์ตั้งรหัสผ่านใหม่ของ ${user.username}`;
+        else title = inv.method === "email" ? "สร้างคำเชิญแล้ว (เปิดโปรแกรมอีเมลให้แล้ว)" : "สร้างลิงก์คำเชิญแล้ว";
         this.created = {
-          title: isReset ? `ลิงก์ตั้งรหัสผ่านใหม่ของ ${user.username}` : (inv.method === "email" ? "สร้างคำเชิญแล้ว (เปิดโปรแกรมอีเมลให้แล้ว)" : "สร้างลิงก์คำเชิญแล้ว"),
+          title,
+          mailError: res.email_sent === false ? res.email_error : "",
           subtitle: isReset
             ? `ส่งให้เจ้าของบัญชีตั้งรหัสผ่านเอง · ใช้ได้ถึง ${this.fmt(inv.expires_at)} · รหัสผ่านเดิมยังใช้ได้จนกว่าจะตั้งใหม่`
             : `สำหรับ ${inv.email || inv.full_name || "ผู้ใช้ใหม่"} · ${this.roleShort(inv.role)} · ${this.permSummary(inv.role, inv.permissions)} · ใช้ได้ถึง ${this.fmt(inv.expires_at)}`,
@@ -429,6 +463,16 @@
         try { await apiJson(`/api/admin/invitations/${inv.id}`, { method: "DELETE" }); }
         catch (e) { this.userError = e.message; }
         await this.reload();
+      },
+      async testMail() {
+        this.testing = true; this.testResult = "";
+        try {
+          await apiJson("/api/admin/mail/test", { method: "POST", body: JSON.stringify({ to: this.testTo }) });
+          this.testOk = true;
+          this.testResult = `ส่งอีเมลทดสอบถึง ${this.testTo} แล้ว ตรวจกล่องจดหมาย (และโฟลเดอร์สแปม)`;
+        } catch (e) {
+          this.testOk = false; this.testResult = e.message;
+        } finally { this.testing = false; }
       },
       async copy(text, okMessage) {
         try { await navigator.clipboard.writeText(text); this.copied = okMessage; }

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}หลังบ้าน{% endblock %} - Smart Parking · NASLINK</title>
-  <link rel="stylesheet" href="/static/css/admin.css?v=20261023b">
+  <link rel="stylesheet" href="/static/css/admin.css?v=20261023c">
   <script defer src="/static/js/vendor/alpine.min.js"></script>
   <script src="/static/js/api.js"></script>
   {% block head %}{% endblock %}
@@ -26,7 +26,7 @@
       ("/admin/validation", "ทดสอบความแม่นยำ", "Accuracy Test", ["/admin/validation"], "check", "validation"),
       ("/admin/users", "ผู้ใช้และสิทธิ์", "Users & Access", ["/admin/users"], "users", "users"),
       ("/admin/audit", "ประวัติการใช้งาน", "Audit Log", ["/admin/audit"], "audit", "audit"),
-      ("/admin/settings", "ตั้งค่าความปลอดภัย", "Security Settings", ["/admin/settings"], "settings", "settings"),
+      ("/admin/settings", "ตั้งค่าระบบ", "System Settings", ["/admin/settings"], "settings", "settings"),
     ]),
   ] %}
   {% set icons = {

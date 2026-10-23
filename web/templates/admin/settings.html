@@ -1,5 +1,5 @@
 {% extends "admin/base.html" %}
-{% block title %}ตั้งค่าความปลอดภัย{% endblock %}
+{% block title %}ตั้งค่าระบบ{% endblock %}
 {% block content %}
 <div x-data="settingsPage()" x-init="init()">
   <div class="card" x-show="isOperator">
@@ -7,7 +7,93 @@
   </div>
 
   <template x-if="!isOperator">
-    <div class="card">
+  <div>
+    <div class="tab-bar" role="tablist">
+      <button type="button" role="tab" :class="tab === 'mail' && 'active'" :aria-selected="tab === 'mail'" @click="go('mail')">✉ อีเมลและลิงก์คำเชิญ</button>
+      <button type="button" role="tab" :class="tab === 'security' && 'active'" :aria-selected="tab === 'security'" @click="go('security')">🛡 ความปลอดภัย (จำกัด IP)</button>
+    </div>
+
+    <!-- ================= อีเมลและลิงก์คำเชิญ ================= -->
+    <div class="card" x-show="tab === 'mail'">
+      <h2 style="margin-top:0;">อีเมลและลิงก์คำเชิญ</h2>
+      <div class="form-grid">
+        <div>
+          <label for="m-base">URL ของระบบ (ใช้สร้างลิงก์คำเชิญ)</label>
+          <input id="m-base" type="text" x-model="mail.base_url" placeholder="https://125.26.22.145:8010" style="font-family:ui-monospace,Consolas,monospace;">
+          <p class="hint">ที่อยู่ที่ผู้รับคำเชิญใช้เปิดระบบได้ — ว่าง = ใช้ <span x-text="mail.effective_base_url"></span></p>
+        </div>
+        <div>
+          <label for="m-days">ลิงก์คำเชิญหมดอายุใน (วัน)</label>
+          <input id="m-days" type="number" min="1" max="30" x-model.number="mail.default_expiry_days">
+          <p class="hint">ค่าเริ่มต้นตอนสร้างคำเชิญ (1–30 วัน) ลิงก์ตั้งรหัสผ่านใหม่ใช้ 1 วันเสมอ</p>
+        </div>
+      </div>
+
+      <hr style="border:0; border-top:1px solid var(--color-border); margin:1rem 0;">
+      <h3 style="margin:0 0 0.25rem;">การส่งอีเมล (SMTP)</h3>
+      <p class="hint" style="margin-bottom:0.5rem;">ใช้ส่งคำเชิญและลิงก์ตั้งรหัสผ่านใหม่ทางอีเมล ถ้าไม่ตั้งค่า ยังสร้างลิงก์คำเชิญไปส่งทาง LINE ได้ตามปกติ</p>
+      <p class="notice warn" x-show="mail.source === 'env'" style="margin:0 0 0.5rem;">ตอนนี้ใช้ค่า SMTP จากไฟล์ .env อยู่ ถ้ากรอกและบันทึกในหน้านี้ ระบบจะใช้ค่าจากหน้านี้แทน</p>
+      <div style="display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap; margin-bottom:0.5rem;">
+        <span class="hint" style="margin:0;">ตั้งค่าด่วน:</span>
+        <button type="button" class="chip" @click="preset('gmail')">Gmail</button>
+        <button type="button" class="chip" @click="preset('outlook')">Outlook / Microsoft 365</button>
+        <button type="button" class="chip" @click="preset('ssl')">SSL (พอร์ต 465)</button>
+      </div>
+      <div class="form-grid" style="grid-template-columns: 2fr 1fr;">
+        <div>
+          <label for="m-host">SMTP Host</label>
+          <input id="m-host" type="text" x-model="mail.host" placeholder="smtp.gmail.com" style="font-family:ui-monospace,Consolas,monospace;">
+        </div>
+        <div>
+          <label for="m-port">Port</label>
+          <input id="m-port" type="number" min="1" max="65535" x-model.number="mail.port">
+        </div>
+      </div>
+      <div class="form-grid">
+        <div>
+          <label for="m-user">Username</label>
+          <input id="m-user" type="text" x-model="mail.user" autocomplete="off" placeholder="you@gmail.com">
+        </div>
+        <div>
+          <label for="m-pass">Password</label>
+          <input id="m-pass" type="password" x-model="password" autocomplete="new-password" :placeholder="mail.has_password ? '••••••••' : ''">
+          <p class="hint" x-show="mail.has_password">มีรหัสผ่านบันทึกไว้แล้ว (เว้นว่าง = คงเดิม)
+            <a href="#" @click.prevent="clearPassword = !clearPassword" x-text="clearPassword ? '· ยกเลิกการลบ' : '· ลบรหัสที่บันทึกไว้'"></a></p>
+          <p class="hint" x-show="clearPassword" style="color:var(--color-danger);">จะลบรหัสผ่านที่บันทึกไว้เมื่อกดบันทึก</p>
+          <p class="hint">Gmail ต้องใช้ "รหัสผ่านสำหรับแอป" (App Password) 16 ตัว ไม่ใช่รหัส Gmail ปกติ</p>
+        </div>
+        <div>
+          <label for="m-sec">การเข้ารหัส</label>
+          <select id="m-sec" x-model="mail.security">
+            <option value="starttls">STARTTLS (587)</option>
+            <option value="ssl">SSL/TLS (465)</option>
+            <option value="none">ไม่เข้ารหัส (ไม่แนะนำ)</option>
+          </select>
+        </div>
+      </div>
+      <label for="m-from">ชื่อผู้ส่ง (From)</label>
+      <input id="m-from" type="text" x-model="mail.from_address" placeholder="NASLINK Smart Parking <you@gmail.com>">
+      <p class="hint">เช่น "NASLINK Smart Parking &lt;you@gmail.com&gt;" — ว่าง = ใช้ Username</p>
+
+      <div style="display:flex; gap:0.5rem; margin-top:1rem; flex-wrap:wrap;">
+        <button @click="saveMail()" :disabled="saving" x-text="saving ? 'กำลังบันทึก...' : 'บันทึก'"></button>
+      </div>
+      <p class="notice ok" x-show="mailSaved" x-text="mailSaved" style="margin-top:0.75rem;"></p>
+      <p class="error-text" x-show="mailError" x-text="mailError"></p>
+
+      <hr style="border:0; border-top:1px solid var(--color-border); margin:1rem 0;">
+      <label for="m-test">ส่งอีเมลทดสอบไปที่</label>
+      <div class="link-box">
+        <input id="m-test" type="email" x-model="testTo" placeholder="your@email.com" style="font-family:inherit;">
+        <button class="btn-secondary" @click="testMail()" :disabled="testing" x-text="testing ? 'กำลังส่ง...' : 'ส่งอีเมลทดสอบ'"></button>
+      </div>
+      <p class="hint">กดบันทึกก่อนทดสอบ ระบบใช้ค่าที่บันทึกไว้ล่าสุด</p>
+      <p class="notice ok" x-show="testResult && testOk" x-text="testResult" style="margin-top:0.5rem;"></p>
+      <p class="notice warn" x-show="testResult && !testOk" x-text="testResult" style="margin-top:0.5rem;"></p>
+    </div>
+
+    <!-- ================= ความปลอดภัย ================= -->
+    <div class="card" x-show="tab === 'security'">
       <h2 style="margin-top:0;">จำกัด IP เข้าหลังบ้าน (NFR-12)</h2>
       <p class="muted">
         หน้า login เข้าได้จากทุก IP เสมอ (ป้องกันล็อกตัวเองออกจากระบบ) แต่การทำงานอื่นๆ ทั้งหมด
@@ -17,7 +103,7 @@
         <button class="btn-secondary" @click="addMyIp()" type="button">+ เพิ่ม IP ของฉัน</button>
       </p>
 
-      <label><input type="checkbox" x-model="enabled"> เปิดใช้การจำกัด IP</label>
+      <label><input type="checkbox" x-model="enabled" style="width:auto;"> เปิดใช้การจำกัด IP</label>
 
       <label style="margin-top:0.5rem;">รายการ IP หรือ CIDR (บรรทัดละ 1 รายการ เช่น 203.0.113.5 หรือ 192.168.1.0/24)</label>
       <textarea x-model="ipsText" rows="6" style="width:100%; font-family:monospace;"></textarea>
@@ -26,26 +112,68 @@
       <p class="error-text" x-show="error" x-text="error"></p>
       <p class="muted" x-show="savedMessage" x-text="savedMessage"></p>
     </div>
+  </div>
   </template>
 </div>
 
 <script>
+  const SMTP_PRESETS = {
+    gmail: { host: "smtp.gmail.com", port: 587, security: "starttls" },
+    outlook: { host: "smtp.office365.com", port: 587, security: "starttls" },
+    ssl: { port: 465, security: "ssl" },
+  };
+
   function settingsPage() {
     return {
       isOperator: false,
-      enabled: false,
-      ipsText: "",
-      yourIp: "",
-      loading: false,
-      error: "",
-      savedMessage: "",
+      tab: "mail",
+      // ความปลอดภัย
+      enabled: false, ipsText: "", yourIp: "", loading: false, error: "", savedMessage: "",
+      // อีเมล
+      mail: { base_url: "", default_expiry_days: 3, host: "", port: 587, user: "", from_address: "", security: "starttls", has_password: false, source: "none", effective_base_url: "" },
+      password: "", clearPassword: false, saving: false, mailSaved: "", mailError: "",
+      testTo: "", testing: false, testResult: "", testOk: false,
+
       async init() {
         const user = await requireAuth();
         if (!user) return;
         this.isOperator = user.role !== "admin";
         if (this.isOperator) return;
-        await this.load();
+        if (location.hash === "#security") this.tab = "security";
+        await Promise.all([this.load(), this.loadMail()]);
       },
+      go(tab) { this.tab = tab; history.replaceState(null, "", "#" + tab); },
+
+      // ---------- อีเมล ----------
+      async loadMail() {
+        this.mail = await apiJson("/api/admin/settings/mail");
+        this.password = ""; this.clearPassword = false;
+      },
+      preset(name) { Object.assign(this.mail, SMTP_PRESETS[name]); },
+      async saveMail() {
+        this.saving = true; this.mailSaved = ""; this.mailError = "";
+        try {
+          const body = { ...this.mail, clear_password: this.clearPassword };
+          if (this.password) body.password = this.password;
+          this.mail = await apiJson("/api/admin/settings/mail", { method: "PUT", body: JSON.stringify(body) });
+          this.password = ""; this.clearPassword = false;
+          this.mailSaved = this.mail.host ? "บันทึกแล้ว ลองกด \"ส่งอีเมลทดสอบ\" เพื่อตรวจว่าใช้งานได้" : "บันทึกแล้ว (ไม่ได้ใส่ SMTP Host = ระบบไม่ส่งอีเมลเอง)";
+        } catch (e) {
+          this.mailError = "บันทึกไม่สำเร็จ: " + e.message;
+        } finally { this.saving = false; }
+      },
+      async testMail() {
+        this.testing = true; this.testResult = "";
+        try {
+          await apiJson("/api/admin/mail/test", { method: "POST", body: JSON.stringify({ to: this.testTo }) });
+          this.testOk = true;
+          this.testResult = `ส่งอีเมลทดสอบถึง ${this.testTo} แล้ว ตรวจกล่องจดหมาย (และโฟลเดอร์สแปม)`;
+        } catch (e) {
+          this.testOk = false; this.testResult = e.message;
+        } finally { this.testing = false; }
+      },
+
+      // ---------- ความปลอดภัย ----------
       async load() {
         const data = await apiJson("/api/admin/settings");
         this.enabled = data.ip_allowlist.enabled;
@@ -58,21 +186,14 @@
         this.ipsText = lines.join("\n");
       },
       async save() {
-        this.loading = true;
-        this.error = "";
-        this.savedMessage = "";
+        this.loading = true; this.error = ""; this.savedMessage = "";
         const ips = this.ipsText.split("\n").map((s) => s.trim()).filter(Boolean);
         try {
-          await apiJson("/api/admin/settings/ip-allowlist", {
-            method: "PUT",
-            body: JSON.stringify({ enabled: this.enabled, ips }),
-          });
+          await apiJson("/api/admin/settings/ip-allowlist", { method: "PUT", body: JSON.stringify({ enabled: this.enabled, ips }) });
           this.savedMessage = "บันทึกแล้ว";
         } catch (e) {
           this.error = "บันทึกไม่สำเร็จ: " + e.message;
-        } finally {
-          this.loading = false;
-        }
+        } finally { this.loading = false; }
       },
     };
   }

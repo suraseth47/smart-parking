@@ -6,8 +6,9 @@
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Literal
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import HTMLResponse
@@ -17,8 +18,8 @@ from sqlalchemy.orm import Session
 
 from core.config import get_settings
 from core.db import get_db
+from core.mailer import MailError, build_invite_email, build_test_email, send_email
 from core.invitations import (
-    ALLOWED_EXPIRY_HOURS,
     ROLE_LABELS_TH,
     can_change_admin,
     generate_token,
@@ -32,6 +33,7 @@ from core.models import AuditLog, Invitation, InvitationPurpose, User, UserRole
 from core.permissions import PERMISSIONS, ROLE_MAX, effective_permissions, normalize_permissions
 from core.security import hash_password
 from web.deps import CurrentUser, require_admin, verify_csrf
+from web.mail_config import MAX_EXPIRY_DAYS, get_default_expiry_days, get_invite_base_url, get_smtp, smtp_source
 from web.templates_env import templates
 
 admin_router = APIRouter(prefix="/api/admin", tags=["users"])
@@ -39,6 +41,7 @@ public_router = APIRouter(prefix="/api/invite", tags=["invite"])
 page_router = APIRouter(tags=["invite-page"])
 
 PERMISSION_LABELS = {key: th for key, th, _ in PERMISSIONS}
+THAI_MONTHS = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."]
 
 
 @page_router.get("/invite/{token}", response_class=HTMLResponse)
@@ -91,7 +94,7 @@ class InvitationIn(BaseModel):
     email: str | None = None
     permissions: list[str] | None = None
     message: str | None = None
-    expires_hours: int = 72
+    expires_hours: int | None = None  # ไม่ส่ง = ใช้ค่าเริ่มต้นจากหน้าตั้งค่าระบบ
 
 
 class InvitationOut(BaseModel):
@@ -111,11 +114,19 @@ class InvitationOut(BaseModel):
     accepted_at: datetime | None
     status: str
     accepted_username: str | None
+    email_status: str | None  # "sent" | "failed" | None = ระบบไม่ได้ส่งเอง
+    email_error: str | None
 
 
 class InvitationCreatedOut(BaseModel):
     invitation: InvitationOut
     url: str  # แสดงครั้งเดียวตอนสร้าง — ระบบไม่ได้เก็บ token จริงไว้
+    email_sent: bool | None  # True ส่งแล้ว, False ส่งไม่สำเร็จ, None ไม่ได้ส่ง (ไม่ได้ตั้ง SMTP / ไม่มีอีเมล)
+    email_error: str | None = None
+
+
+class MailTestIn(BaseModel):
+    to: str
 
 
 class InviteInfoOut(BaseModel):
@@ -185,12 +196,51 @@ def _invitation_out(db: Session, inv: Invitation, now: datetime) -> InvitationOu
         accepted_at=inv.accepted_at,
         status=invitation_status(inv.accepted_at, inv.revoked_at, inv.expires_at, now),
         accepted_username=username_of(inv.accepted_user_id),
+        email_status=inv.email_status,
+        email_error=inv.email_error,
     )
 
 
-def _invite_url(request: Request, token: str) -> str:
-    """ลิงก์ที่ส่งให้ผู้รับ — ใช้ที่อยู่หลังบ้านจากภายนอกเสมอ (เปิดจากที่ไหนก็ได้)"""
-    base = get_settings().public_admin_url or str(request.base_url).rstrip("/")
+def _thai_datetime(utc_naive: datetime) -> str:
+    """เวลาตามเขตเวลาของระบบ แบบไทย เช่น 26 ต.ค. 2569 16:34 น."""
+    try:
+        tz = ZoneInfo(get_settings().tz)
+    except Exception:  # noqa: BLE001 — ตั้ง TZ ผิดก็ยังส่งเมลได้
+        tz = timezone(timedelta(hours=7))
+    local = utc_naive.replace(tzinfo=timezone.utc).astimezone(tz)
+    return f"{local.day} {THAI_MONTHS[local.month - 1]} {local.year + 543} {local:%H:%M} น."
+
+
+def _send_invitation_email(db: Session, inv: Invitation, url: str, username: str | None = None) -> tuple[bool | None, str | None]:
+    """ส่งอีเมลคำเชิญ/ลิงก์ตั้งรหัสใหม่ แล้วบันทึกผลไว้ที่คำเชิญ — ไม่ได้ตั้ง SMTP หรือไม่มีอีเมล = ไม่ส่ง"""
+    smtp = get_smtp(db)
+    if not inv.email or not smtp.configured:
+        return None, None
+    role = inv.role.value
+    content = build_invite_email(
+        url=url,
+        recipient_name=inv.full_name,
+        role_label=ROLE_LABELS_TH.get(role, role),
+        permission_labels=[PERMISSION_LABELS[k] for k in effective_permissions(role, inv.permissions)],
+        expires_text=_thai_datetime(inv.expires_at),
+        message=inv.message,
+        is_reset=inv.purpose == InvitationPurpose.RESET,
+        username=username,
+    )
+    try:
+        send_email(smtp, inv.email, content)
+    except MailError as exc:
+        inv.email_status, inv.email_error = "failed", str(exc)[:255]
+        db.commit()
+        return False, str(exc)
+    inv.email_status, inv.email_error, inv.email_sent_at = "sent", None, datetime.utcnow()
+    db.commit()
+    return True, None
+
+
+def _invite_url(db: Session, request: Request, token: str) -> str:
+    """ลิงก์ที่ส่งให้ผู้รับ — ใช้ "URL ของระบบ" ในหน้าตั้งค่า (หรือ .env) ไม่มีค่อยใช้ที่อยู่ที่เปิดอยู่"""
+    base = get_invite_base_url(db) or str(request.base_url).rstrip("/")
     return f"{base}/invite/{token}"
 
 
@@ -223,11 +273,13 @@ def _check_new_username(db: Session, username: str) -> None:
 
 def _new_invitation(
     db: Session, request: Request, admin: CurrentUser, *, purpose: InvitationPurpose, role: UserRole,
-    full_name: str | None, email: str | None, target_user_id: int | None, expires_hours: int,
+    full_name: str | None, email: str | None, target_user_id: int | None, expires_hours: int | None,
     method: str = "link", permissions: list[str] | None = None, message: str | None = None,
 ) -> InvitationCreatedOut:
-    if expires_hours not in ALLOWED_EXPIRY_HOURS:
-        raise HTTPException(422, "อายุลิงก์ต้องเป็น 24, 72 หรือ 168 ชั่วโมง")
+    if expires_hours is None:
+        expires_hours = get_default_expiry_days(db) * 24
+    if not 1 <= expires_hours <= MAX_EXPIRY_DAYS * 24:
+        raise HTTPException(422, f"อายุลิงก์ต้องอยู่ระหว่าง 1 ชั่วโมง ถึง {MAX_EXPIRY_DAYS} วัน")
     now = datetime.utcnow()
     token = generate_token()
     inv = Invitation(
@@ -257,7 +309,16 @@ def _new_invitation(
     )
     db.commit()
     db.refresh(inv)
-    return InvitationCreatedOut(invitation=_invitation_out(db, inv, now), url=_invite_url(request, token))
+
+    url = _invite_url(db, request, token)
+    email_sent, email_error = None, None
+    if method == "email":
+        target = db.get(User, target_user_id) if target_user_id else None
+        email_sent, email_error = _send_invitation_email(db, inv, url, target.username if target else None)
+        db.refresh(inv)
+    return InvitationCreatedOut(
+        invitation=_invitation_out(db, inv, now), url=url, email_sent=email_sent, email_error=email_error,
+    )
 
 
 def _usable_invitation(db: Session, token: str) -> Invitation:
@@ -273,6 +334,43 @@ def _usable_invitation(db: Session, token: str) -> Invitation:
     if state in messages:
         raise HTTPException(status.HTTP_410_GONE, messages[state])
     return inv
+
+
+# ---------- Admin: การส่งอีเมล ----------
+
+@admin_router.get("/mail/status")
+def mail_status(db: Session = Depends(get_db), _admin: CurrentUser = Depends(require_admin)) -> dict:
+    """สถานะการตั้งค่าส่งอีเมล (ไม่ส่งรหัสผ่านออกไปเด็ดขาด)"""
+    smtp = get_smtp(db)
+    return {
+        "configured": smtp.configured,
+        "source": smtp_source(db),
+        "default_expiry_days": get_default_expiry_days(db),
+        "host": smtp.host or None,
+        "port": smtp.port,
+        "security": smtp.security,
+        "from_address": smtp.from_address or None,
+    }
+
+
+@admin_router.post("/mail/test")
+def mail_test(
+    data: MailTestIn,
+    db: Session = Depends(get_db),
+    admin: CurrentUser = Depends(require_admin),
+    _csrf: None = Depends(verify_csrf),
+) -> dict:
+    to = (data.to or "").strip()
+    error = validate_email(to) if to else "กรุณาใส่อีเมลผู้รับ"
+    if error:
+        raise HTTPException(422, error)
+    try:
+        send_email(get_smtp(db), to, build_test_email())
+    except MailError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
+    db.add(AuditLog(user_id=admin.id, action="mail_test", target=to[:100]))
+    db.commit()
+    return {"ok": True}
 
 
 # ---------- Admin: รายการสิทธิ์ (ให้หน้าเว็บใช้สร้างช่องติ๊ก) ----------
@@ -384,7 +482,7 @@ def update_user(
 def create_password_reset(
     user_id: int,
     request: Request,
-    expires_hours: int = 24,
+    expires_hours: int | None = None,
     db: Session = Depends(get_db),
     admin: CurrentUser = Depends(require_admin),
     _csrf: None = Depends(verify_csrf),

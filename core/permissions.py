@@ -19,7 +19,7 @@ PERMISSIONS: list[tuple[str, str, str]] = [
     ("validation", "ทดสอบความแม่นยำ", "Accuracy Test"),
     ("users", "ผู้ใช้และสิทธิ์", "Users & Access"),
     ("audit", "ประวัติการใช้งาน", "Audit Log"),
-    ("settings", "ตั้งค่าความปลอดภัย", "Security Settings"),
+    ("settings", "ตั้งค่าระบบ", "System Settings"),
 ]
 ALL_KEYS: tuple[str, ...] = tuple(key for key, _, _ in PERMISSIONS)
 
