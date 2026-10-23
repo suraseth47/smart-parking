@@ -26,6 +26,7 @@ class Settings:
     data_dir: Path
     db_path: Path
     detector_model: str  # ชื่อไฟล์โมเดลในโฟลเดอร์ models/ (ตั้งใน .env: DETECTOR_MODEL)
+    public_admin_url: str | None  # ที่อยู่หลังบ้านจากภายนอก ใช้สร้างลิงก์คำเชิญ เช่น https://1.2.3.4:8010
 
 
 @lru_cache
@@ -45,7 +46,19 @@ def get_settings() -> Settings:
         data_dir=DATA_DIR,
         db_path=DATA_DIR / "app.db",
         detector_model=os.environ.get("DETECTOR_MODEL", DEFAULT_DETECTOR_MODEL),
+        public_admin_url=_public_admin_url(),
     )
+
+
+def _public_admin_url() -> str | None:
+    """PUBLIC_ADMIN_URL ถ้าตั้งไว้ ไม่งั้นประกอบจาก PUBLIC_IP + ADMIN_PUBLIC_PORT (ค่าเดียวกับที่ Caddy ใช้)"""
+    explicit = os.environ.get("PUBLIC_ADMIN_URL", "").strip().rstrip("/")
+    if explicit:
+        return explicit
+    public_ip = os.environ.get("PUBLIC_IP", "").strip()
+    if not public_ip:
+        return None
+    return f"https://{public_ip}:{os.environ.get('ADMIN_PUBLIC_PORT', '8010').strip()}"
 
 
 def get_detector_model_path() -> Path:

@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from core.config import get_settings
 from core.db import get_db
 from core.models import Alert, Camera
-from web.deps import CurrentUser, get_current_user, verify_csrf
+from web.deps import CurrentUser, get_current_user, require_permission, verify_csrf
 
 router = APIRouter(prefix="/api/admin", tags=["health"])
 
@@ -75,7 +75,7 @@ def list_alerts(
 def resolve_alert(
     alert_id: int,
     db: Session = Depends(get_db),
-    _user: CurrentUser = Depends(get_current_user),
+    _user: CurrentUser = Depends(require_permission("override", "cameras")),
     _csrf: None = Depends(verify_csrf),
 ):
     alert = db.get(Alert, alert_id)

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from core.db import get_db
 from core.models import AuditLog, LayoutStatus, OccupancyState, Slot, SlotEvent, SlotState, Zone
-from web.deps import CurrentUser, get_current_user, verify_csrf
+from web.deps import CurrentUser, require_permission, verify_csrf
 
 router = APIRouter(prefix="/api/admin/slots", tags=["override"])
 
@@ -40,7 +40,7 @@ class OverrideIn(BaseModel):
 def list_slots_for_override(
     zone_id: int | None = None,
     db: Session = Depends(get_db),
-    _user: CurrentUser = Depends(get_current_user),
+    _user: CurrentUser = Depends(require_permission("override")),
 ):
     """รายการช่อง (ข้ามกล้อง/โซน) สำหรับเลือกทำ override — กรองตามโซนได้ (FR-34 'ทั้งโซน')"""
     query = (
@@ -75,7 +75,7 @@ def set_override(
     slot_id: int,
     data: OverrideIn,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_permission("override")),
     _csrf: None = Depends(verify_csrf),
 ):
     if data.state not in OVERRIDABLE_STATES:
@@ -121,7 +121,7 @@ def set_override(
 def clear_override(
     slot_id: int,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_permission("override")),
     _csrf: None = Depends(verify_csrf),
 ):
     slot = db.get(Slot, slot_id)

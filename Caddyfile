@@ -31,7 +31,7 @@ http://:8080 {
 	import common
 
 	# ห้ามเข้าหลังบ้านผ่าน HTTP (รหัสผ่านจะวิ่งแบบไม่เข้ารหัส)
-	@admin path /admin /admin/* /api/admin /api/admin/*
+	@admin path /admin /admin/* /api/admin /api/admin/* /invite /invite/* /api/invite /api/invite/*
 	handle @admin {
 		header Content-Type "text/plain; charset=utf-8"
 		respond "หลังบ้านเข้าได้ทาง HTTPS เท่านั้น: https://{$PUBLIC_IP:125.26.22.145}:{$ADMIN_PUBLIC_PORT:8010}/admin" 403

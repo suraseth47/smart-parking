@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from core.db import get_db
 from core.models import AuditLog, LayoutStatus, Slot, Zone
-from web.deps import CurrentUser, get_current_user, require_admin, verify_csrf
+from web.deps import CurrentUser, get_current_user, require_admin, require_permission, verify_csrf
 
 router = APIRouter(prefix="/api/admin/zones", tags=["zones"])
 
@@ -142,7 +142,7 @@ def close_zone(
     zone_id: int,
     data: ZoneCloseIn,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
+    user: CurrentUser = Depends(require_permission("override", "cameras")),
     _csrf: None = Depends(verify_csrf),
 ):
     """ปิด/เปิดโซนชั่วคราว (Admin และ Operator ทำได้ ตาม SPEC ข้อ 7.2)"""

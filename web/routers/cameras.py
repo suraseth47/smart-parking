@@ -15,7 +15,7 @@ from core.db import get_db
 from core.models import AuditLog, Camera, CameraBrand, CameraStatus, CameraStream, LayoutStatus, Slot
 from core.security import encrypt_camera_password
 from core.camera_utils import build_camera_url, snapshot_path as get_snapshot_path
-from web.deps import CurrentUser, get_current_user, require_admin, verify_csrf
+from web.deps import CurrentUser, require_admin, require_permission, verify_csrf
 from worker.camera_connection import check_camera_connection
 from worker.capture import grab_frame
 from worker.health import apply_transform_to_polygon, compute_camera_transform, resolve_alerts
@@ -173,7 +173,7 @@ def test_camera_connection(
 
 @router.get("/{camera_id}/snapshot")
 def get_camera_snapshot(
-    camera_id: int, db: Session = Depends(get_db), _user: CurrentUser = Depends(get_current_user)
+    camera_id: int, db: Session = Depends(get_db), _user: CurrentUser = Depends(require_permission("live", "cameras"))
 ):
     _get_camera_or_404(db, camera_id)
     path = get_snapshot_path(camera_id)

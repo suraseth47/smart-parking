@@ -4,27 +4,29 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}หลังบ้าน{% endblock %} - Smart Parking · NASLINK</title>
-  <link rel="stylesheet" href="/static/css/admin.css?v=20261023">
+  <link rel="stylesheet" href="/static/css/admin.css?v=20261023b">
   <script defer src="/static/js/vendor/alpine.min.js"></script>
   <script src="/static/js/api.js"></script>
   {% block head %}{% endblock %}
 </head>
 <body>
   {% set path = request.url.path.rstrip('/') %}
-  {# เมนู: (ลิงก์, ชื่อไทย, ชื่ออังกฤษตัวเล็ก, path ที่ให้ไฮไลต์, ไอคอน) #}
+  {# เมนู: (ลิงก์, ชื่อไทย, ชื่ออังกฤษตัวเล็ก, path ที่ให้ไฮไลต์, ไอคอน, คีย์สิทธิ์ใน core/permissions.py)
+     การซ่อนเมนูเป็นแค่ความสะดวก — สิทธิ์จริงตรวจที่ API ทุกครั้ง #}
   {% set nav_groups = [
     ("การใช้งาน · Operations", [
-      ("/admin/live", "สถานะช่องจอดสด", "Live Status", ["/admin/live"], "live"),
-      ("/admin/cctv", "กล้องวงจรปิด", "CCTV Monitor", ["/admin/cctv"], "cctv"),
-      ("/admin/override", "แก้สถานะช่องด้วยมือ", "Manual Override", ["/admin/override"], "override"),
-      ("/admin/reports", "รายงานและสถิติ", "Reports", ["/admin/reports"], "reports"),
+      ("/admin/live", "สถานะช่องจอดสด", "Live Status", ["/admin/live"], "live", "live"),
+      ("/admin/cctv", "กล้องวงจรปิด", "CCTV Monitor", ["/admin/cctv"], "cctv", "cctv"),
+      ("/admin/override", "แก้สถานะช่องด้วยมือ", "Manual Override", ["/admin/override"], "override", "override"),
+      ("/admin/reports", "รายงานและสถิติ", "Reports", ["/admin/reports"], "reports", "reports"),
     ]),
     ("ตั้งค่าระบบ · Settings", [
-      ("/admin", "กล้องและช่องจอด", "Cameras & Slots", ["/admin", "/admin/layout"], "camera"),
-      ("/admin/calibration", "ช่วยวาดช่องอัตโนมัติ", "Auto Slot Setup", ["/admin/calibration"], "auto"),
-      ("/admin/validation", "ทดสอบความแม่นยำ", "Accuracy Test", ["/admin/validation"], "check"),
-      ("/admin/audit", "ประวัติการใช้งาน", "Audit Log", ["/admin/audit"], "audit"),
-      ("/admin/settings", "ตั้งค่าความปลอดภัย", "Security Settings", ["/admin/settings"], "settings"),
+      ("/admin", "กล้องและช่องจอด", "Cameras & Slots", ["/admin", "/admin/layout"], "camera", "cameras"),
+      ("/admin/calibration", "ช่วยวาดช่องอัตโนมัติ", "Auto Slot Setup", ["/admin/calibration"], "auto", "calibration"),
+      ("/admin/validation", "ทดสอบความแม่นยำ", "Accuracy Test", ["/admin/validation"], "check", "validation"),
+      ("/admin/users", "ผู้ใช้และสิทธิ์", "Users & Access", ["/admin/users"], "users", "users"),
+      ("/admin/audit", "ประวัติการใช้งาน", "Audit Log", ["/admin/audit"], "audit", "audit"),
+      ("/admin/settings", "ตั้งค่าความปลอดภัย", "Security Settings", ["/admin/settings"], "settings", "settings"),
     ]),
   ] %}
   {% set icons = {
@@ -36,6 +38,7 @@
     "auto": '<path d="M12 3l2.5 5 5.5.8-4 3.9.9 5.5L12 15.6 7.1 18.2l.9-5.5-4-3.9 5.5-.8z"/>',
     "check": '<path d="M9 12l2 2 4-4"/><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/>',
     "audit": '<path d="M8 4h11v16H8zM5 7v13h11"/><path d="M11 9h5M11 13h5"/>',
+    "users": '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.3-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18.5 14.8c1.7.8 2.7 2.6 3 5.2"/>',
     "settings": '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
   } %}
 
@@ -58,13 +61,15 @@
 
       <nav class="side-nav" aria-label="เมนูหลัก">
         {% for group_label, items in nav_groups %}
+          <div class="nav-group" data-nav-group>
           <div class="nav-group-label">{{ group_label }}</div>
-          {% for href, label, label_en, matches, icon in items %}
-            <a href="{{ href }}"{% if path in matches %} class="active" aria-current="page"{% endif %}>
+          {% for href, label, label_en, matches, icon, perm in items %}
+            <a href="{{ href }}" data-perm="{{ perm }}"{% if path in matches %} class="active" aria-current="page"{% endif %}>
               <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">{{ icons[icon] | safe }}</svg>
               <span class="nav-text"><span>{{ label }}</span><span class="nav-en" lang="en">{{ label_en }}</span></span>
             </a>
           {% endfor %}
+          </div>
         {% endfor %}
         <div class="nav-divider"></div>
         <a href="/" target="_blank" rel="noopener" class="nav-link-accent">
@@ -116,7 +121,15 @@
         document.getElementById("user-name").textContent = user.username;
         document.getElementById("user-avatar").textContent = (user.username || "?").charAt(0).toUpperCase();
         const role = document.getElementById("user-role");
-        role.textContent = user.role === "admin" ? "Admin" : "Operator";
+        role.textContent = { admin: "ผู้ดูแลระบบ", operator: "เจ้าหน้าที่", viewer: "ผู้ชม" }[user.role] || user.role;
+        // ซ่อนเมนูที่บัญชีนี้ไม่มีสิทธิ์ (สิทธิ์จริงตรวจที่ API อยู่แล้ว ส่วนนี้แค่ไม่ให้กดแล้วเจอหน้าว่าง)
+        const perms = user.permissions || [];
+        document.querySelectorAll("[data-perm]").forEach((link) => {
+          link.hidden = !perms.includes(link.dataset.perm);
+        });
+        document.querySelectorAll("[data-nav-group]").forEach((group) => {
+          group.hidden = !group.querySelector("[data-perm]:not([hidden])");
+        });
         window.currentUser = user;
         document.dispatchEvent(new CustomEvent("user-loaded", { detail: user }));
       } catch (e) {

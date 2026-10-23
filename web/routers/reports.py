@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from core.db import get_db
 from core.models import Zone, ZoneStatHour
 from core.reports import build_daily_report, build_heatmap_report, build_hourly_report
-from web.deps import CurrentUser, get_current_user
+from web.deps import CurrentUser, require_permission
 
 router = APIRouter(prefix="/api/admin/reports", tags=["reports"])
 
@@ -21,7 +21,7 @@ def get_hourly_report(
     zone: int,
     date: date_type,
     db: Session = Depends(get_db),
-    _user: CurrentUser = Depends(get_current_user),
+    _user: CurrentUser = Depends(require_permission("reports")),
 ):
     _require_zone(db, zone)
     day_start = datetime(date.year, date.month, date.day)
@@ -43,7 +43,7 @@ def get_daily_report(
     from_: date_type = Query(..., alias="from"),
     to: date_type = Query(...),
     db: Session = Depends(get_db),
-    _user: CurrentUser = Depends(get_current_user),
+    _user: CurrentUser = Depends(require_permission("reports")),
 ):
     _require_zone(db, zone)
     start = datetime(from_.year, from_.month, from_.day)
@@ -60,7 +60,7 @@ def get_heatmap_report(
     zone: int,
     weeks: int = 4,
     db: Session = Depends(get_db),
-    _user: CurrentUser = Depends(get_current_user),
+    _user: CurrentUser = Depends(require_permission("reports")),
 ):
     _require_zone(db, zone)
     start = datetime.utcnow() - timedelta(weeks=weeks)

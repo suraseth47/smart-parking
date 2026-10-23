@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from core.db import get_db
 from core.models import User
+from core.permissions import effective_permissions
 from web.session import CSRF_COOKIE_NAME, SESSION_COOKIE_NAME, read_session_cookie
 
 
@@ -17,6 +18,7 @@ class CurrentUser:
     id: int
     username: str
     role: str
+    permissions: list[str]  # เมนูที่ใช้ได้จริง (บทบาท ∩ ที่ Admin ติ๊กไว้)
 
 
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> CurrentUser:
@@ -29,7 +31,11 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> Current
     if user is None or not user.is_active:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "กรุณาเข้าสู่ระบบ")
 
-    return CurrentUser(id=user.id, username=user.username, role=user.role.value)
+    role = user.role.value
+    return CurrentUser(
+        id=user.id, username=user.username, role=role,
+        permissions=effective_permissions(role, user.permissions),
+    )
 
 
 def require_admin(user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
@@ -37,6 +43,19 @@ def require_admin(user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
     if user.role != "admin":
         raise HTTPException(status.HTTP_403_FORBIDDEN, "ต้องเป็น Admin เท่านั้น")
     return user
+
+
+def require_permission(*keys: str):
+    """dependency: ต้องมีสิทธิ์เมนูอย่างน้อยหนึ่งใน keys (ดูรายการคีย์ที่ core/permissions.py)
+
+    ใช้แบบ: _user: CurrentUser = Depends(require_permission("cctv"))
+    """
+    def checker(user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
+        if not any(key in user.permissions for key in keys):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "บัญชีนี้ไม่มีสิทธิ์ใช้งานเมนูนี้ กรุณาติดต่อผู้ดูแลระบบ")
+        return user
+
+    return checker
 
 
 def verify_csrf(request: Request) -> None:

@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>ตั้งค่าบัญชี - Smart Parking</title>
+  <link rel="stylesheet" href="/static/css/admin.css?v=20261023b">
+  <script defer src="/static/js/vendor/alpine.min.js"></script>
+</head>
+<body>
+  <div class="login-wrap">
+    <div class="login-box card" x-data="inviteForm()" x-init="init()">
+      <div class="brand" style="padding:0 0 1rem; margin-bottom:0.5rem;">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round"><rect x="3" y="8" width="18" height="8" rx="4"/><circle cx="8" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="16" cy="12" r="1.3" fill="currentColor" stroke="none"/></svg>
+        </span>
+        <span class="brand-text">NASLINK<small>Smart Parking</small></span>
+      </div>
+
+      <p class="muted" x-show="loading">กำลังตรวจสอบลิงก์...</p>
+
+      <template x-if="fatal">
+        <div>
+          <h1>ใช้ลิงก์นี้ไม่ได้</h1>
+          <p class="notice warn" x-text="fatal"></p>
+        </div>
+      </template>
+
+      <template x-if="done">
+        <div>
+          <h1 x-text="info.purpose === 'reset' ? 'ตั้งรหัสผ่านใหม่แล้ว' : 'สร้างบัญชีเรียบร้อย'"></h1>
+          <p class="notice ok">บัญชี <strong x-text="done"></strong> พร้อมใช้งาน เข้าสู่ระบบด้วยชื่อผู้ใช้และรหัสผ่านที่เพิ่งตั้ง</p>
+          <a class="btn" href="/admin/login" style="display:block; text-align:center; margin-top:1rem;">ไปหน้าเข้าสู่ระบบ</a>
+        </div>
+      </template>
+
+      <template x-if="info && !done && !fatal">
+        <form @submit.prevent="submit">
+          <h1 x-text="info.purpose === 'reset' ? 'ตั้งรหัสผ่านใหม่' : 'ตั้งค่าบัญชีของคุณ'"></h1>
+          <p class="muted" style="margin-top:0;">
+            <span x-show="info.full_name" x-text="'สำหรับ ' + info.full_name + ' · '"></span>
+            บทบาท <strong x-text="info.role_label"></strong> · ลิงก์ใช้ได้ถึง <span x-text="fmt(info.expires_at)"></span>
+          </p>
+          <p class="muted" style="margin-top:-0.25rem; font-size:0.85rem;" x-show="info.permission_labels && info.permission_labels.length">
+            เมนูที่ใช้ได้: <span x-text="info.permission_labels.join(', ')"></span>
+          </p>
+          <p class="notice ok" x-show="info.message" style="white-space:pre-line;" x-text="'ข้อความจากผู้ดูแลระบบ: ' + (info.message || '')"></p>
+          <p class="muted" style="font-size:0.85rem;" x-show="info.email && info.purpose !== 'reset'">
+            เข้าสู่ระบบด้วยชื่อผู้ใช้ หรืออีเมล <strong x-text="info.email"></strong> ก็ได้
+          </p>
+
+          <template x-if="info.purpose === 'reset'">
+            <div>
+              <label>ชื่อผู้ใช้</label>
+              <input type="text" :value="info.username" readonly>
+            </div>
+          </template>
+          <template x-if="info.purpose !== 'reset'">
+            <div>
+              <label for="username">ตั้งชื่อผู้ใช้ (Username)</label>
+              <input id="username" type="text" x-model="username" autocomplete="username" required
+                     minlength="3" maxlength="30" pattern="[A-Za-z0-9._\-]{3,30}" placeholder="เช่น somchai.j">
+              <p class="muted" style="margin:0.25rem 0 0; font-size:0.82rem;">3–30 ตัว ใช้ a-z, 0-9 และ . _ - (ใช้ตอนเข้าสู่ระบบ)</p>
+            </div>
+          </template>
+
+          <label for="password">ตั้งรหัสผ่าน</label>
+          <input id="password" type="password" x-model="password" autocomplete="new-password" minlength="8" required>
+          <label for="password2">ยืนยันรหัสผ่าน</label>
+          <input id="password2" type="password" x-model="password2" autocomplete="new-password" minlength="8" required>
+          <p class="muted" style="margin:0.25rem 0 0; font-size:0.82rem;">อย่างน้อย 8 ตัว แนะนำ 12 ตัวขึ้นไป ผสมตัวอักษรและตัวเลข ห้ามใช้ซ้ำกับระบบอื่น</p>
+
+          <button type="submit" :disabled="saving" style="margin-top:1rem; width:100%">
+            <span x-text="saving ? 'กำลังบันทึก...' : (info.purpose === 'reset' ? 'บันทึกรหัสผ่านใหม่' : 'สร้างบัญชี')"></span>
+          </button>
+          <p class="error-text" x-show="error" x-text="error"></p>
+        </form>
+      </template>
+    </div>
+  </div>
+
+  <script>
+    function inviteForm() {
+      // อ่าน token จากที่อยู่ในเบราว์เซอร์โดยตรง (ไม่ฝังค่าจาก URL ลงใน HTML กัน script injection)
+      const token = location.pathname.split("/").filter(Boolean).pop() || "";
+      return {
+        token,
+        loading: true,
+        info: null,
+        fatal: "",
+        done: "",
+        username: "",
+        password: "",
+        password2: "",
+        error: "",
+        saving: false,
+        fmt(iso) {
+          const d = new Date(iso.endsWith("Z") ? iso : iso + "Z");
+          return d.toLocaleString("th-TH", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+        },
+        async init() {
+          try {
+            const resp = await fetch(`/api/invite/${encodeURIComponent(this.token)}`);
+            const data = await resp.json().catch(() => ({}));
+            if (!resp.ok) this.fatal = data.detail || "ลิงก์ไม่ถูกต้อง";
+            else this.info = data;
+          } catch (e) {
+            this.fatal = "เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ ลองใหม่อีกครั้ง";
+          } finally {
+            this.loading = false;
+          }
+        },
+        async submit() {
+          this.error = "";
+          if (this.password !== this.password2) { this.error = "รหัสผ่านทั้งสองช่องไม่ตรงกัน"; return; }
+          this.saving = true;
+          try {
+            const resp = await fetch(`/api/invite/${encodeURIComponent(this.token)}/accept`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ username: this.username.trim(), password: this.password, password_confirm: this.password2 }),
+            });
+            const data = await resp.json().catch(() => ({}));
+            if (resp.status === 410 || resp.status === 404) { this.fatal = data.detail; return; }
+            if (!resp.ok) { this.error = data.detail || "บันทึกไม่สำเร็จ"; return; }
+            this.done = data.username;
+          } catch (e) {
+            this.error = "เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ ลองใหม่อีกครั้ง";
+          } finally {
+            this.saving = false;
+          }
+        },
+      };
+    }
+  </script>
+</body>
+</html>

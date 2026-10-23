@@ -5,11 +5,12 @@ from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from core.db import get_db
 from core.models import AuditLog, User
+from core.permissions import effective_permissions
 from core.security import verify_password
 from web.deps import CurrentUser, get_current_user
 from web.session import (
@@ -33,7 +34,12 @@ class LoginRequest(BaseModel):
 
 @router.post("/login")
 def login(data: LoginRequest, response: Response, db: Session = Depends(get_db)) -> dict:
-    user = db.scalar(select(User).where(User.username == data.username))
+    login_name = data.username.strip()
+    if "@" in login_name:
+        # เข้าสู่ระบบด้วยอีเมลแทนชื่อผู้ใช้ได้ (อีเมลไม่ซ้ำกันในระบบ)
+        user = db.scalar(select(User).where(func.lower(User.email) == login_name.lower()))
+    else:
+        user = db.scalar(select(User).where(User.username == login_name))
     invalid_credentials = HTTPException(
         status.HTTP_401_UNAUTHORIZED, "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง"
     )
@@ -53,7 +59,8 @@ def login(data: LoginRequest, response: Response, db: Session = Depends(get_db))
 
     _register_successful_login(db, user)
     _set_auth_cookies(response, user_id=user.id, role=user.role.value)
-    return {"username": user.username, "role": user.role.value}
+    role = user.role.value
+    return {"username": user.username, "role": role, "permissions": effective_permissions(role, user.permissions)}
 
 
 @router.post("/logout")
@@ -65,7 +72,7 @@ def logout(response: Response, _user: CurrentUser = Depends(get_current_user)) -
 
 @router.get("/whoami")
 def whoami(user: CurrentUser = Depends(get_current_user)) -> dict:
-    return {"username": user.username, "role": user.role}
+    return {"id": user.id, "username": user.username, "role": user.role, "permissions": user.permissions}
 
 
 def _register_failed_login(db: Session, user: User) -> None:

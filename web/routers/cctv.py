@@ -15,7 +15,7 @@ from core.camera_utils import build_camera_url, snapshot_path
 from core.db import get_db
 from core.models import Camera
 from web.cctv_stream import live_frames, prefer_substream
-from web.deps import CurrentUser, get_current_user
+from web.deps import CurrentUser, require_permission
 
 router = APIRouter(prefix="/api/admin/cctv", tags=["cctv"])
 
@@ -29,13 +29,13 @@ class CctvCameraOut(BaseModel):
 
 
 @router.get("/cameras", response_model=list[CctvCameraOut])
-def list_cctv_cameras(db: Session = Depends(get_db), _user: CurrentUser = Depends(get_current_user)):
+def list_cctv_cameras(db: Session = Depends(get_db), _user: CurrentUser = Depends(require_permission("cctv"))):
     cameras = db.scalars(select(Camera).where(Camera.enabled.is_(True)).order_by(Camera.id)).all()
     return [{"id": c.id, "name": c.name, "status": c.status.value} for c in cameras]
 
 
 @router.get("/{camera_id}/frame")
-def get_cctv_frame(camera_id: int, db: Session = Depends(get_db), _user: CurrentUser = Depends(get_current_user)):
+def get_cctv_frame(camera_id: int, db: Session = Depends(get_db), _user: CurrentUser = Depends(require_permission("cctv"))):
     """ภาพล่าสุดของกล้อง (JPEG) — ถ้าดึงภาพสดไม่ได้จะใช้ภาพล่าสุดที่ worker เก็บไว้แทน"""
     camera = db.get(Camera, camera_id)
     if camera is None or not camera.enabled:

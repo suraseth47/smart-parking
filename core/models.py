@@ -20,8 +20,14 @@ from core.db import Base
 
 
 class UserRole(str, enum.Enum):
-    ADMIN = "admin"
-    OPERATOR = "operator"
+    ADMIN = "admin"        # ผู้ดูแลระบบ: ทุกอย่าง รวมถึงจัดการผู้ใช้และคำเชิญ
+    OPERATOR = "operator"  # เจ้าหน้าที่: สถานะสด, กล้องวงจรปิด, แก้สถานะช่อง, รายงาน
+    VIEWER = "viewer"      # ผู้ชม: สถานะสดและรายงานเท่านั้น (ดูอย่างเดียว)
+
+
+class InvitationPurpose(str, enum.Enum):
+    INVITE = "invite"  # เชิญผู้ใช้ใหม่ (ตั้ง username + รหัสผ่านเอง)
+    RESET = "reset"    # ลิงก์ตั้งรหัสผ่านใหม่ให้ผู้ใช้เดิม
 
 
 class CameraBrand(str, enum.Enum):
@@ -72,6 +78,35 @@ class User(Base):
     locked_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    full_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # สิทธิ์รายเมนู: None = ทุกเมนูตามบทบาท, list = เฉพาะเมนูที่ติ๊ก (ดู core/permissions.py)
+    permissions: Mapped[list | None] = mapped_column(JSON, nullable=True)
+
+
+class Invitation(Base):
+    """คำเชิญ/ลิงก์ตั้งรหัสผ่าน — เก็บเฉพาะ hash ของ token (ตัว token อยู่ในลิงก์เท่านั้น)"""
+
+    __tablename__ = "invitations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    purpose: Mapped[InvitationPurpose] = mapped_column(
+        SAEnum(InvitationPurpose, native_enum=False, length=10), default=InvitationPurpose.INVITE
+    )
+    role: Mapped[UserRole] = mapped_column(SAEnum(UserRole, native_enum=False, length=20))
+    full_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    permissions: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    method: Mapped[str] = mapped_column(String(10), default="link")  # "email" | "link" วิธีที่ Admin ส่ง
+    message: Mapped[str | None] = mapped_column(String(500), nullable=True)  # ข้อความถึงผู้รับ
+    target_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    accepted_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class Zone(Base):

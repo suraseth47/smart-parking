@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from core.db import get_db
 from core.models import Camera, LayoutStatus, Slot, SlotState
-from web.deps import CurrentUser, get_current_user
+from web.deps import CurrentUser, require_permission
 
 router = APIRouter(prefix="/api/admin/live", tags=["live"])
 
@@ -42,7 +42,7 @@ class LiveOut(BaseModel):
 
 
 @router.get("/cameras", response_model=list[LiveCameraPickerOut])
-def list_live_cameras(db: Session = Depends(get_db), _user: CurrentUser = Depends(get_current_user)):
+def list_live_cameras(db: Session = Depends(get_db), _user: CurrentUser = Depends(require_permission("live"))):
     """รายชื่อกล้องแบบย่อ ใช้เป็นตัวเลือกในหน้า Live (Operator เข้าได้ ต่างจาก /cameras ที่ Admin เท่านั้น)"""
     cameras = db.scalars(select(Camera).where(Camera.enabled.is_(True)).order_by(Camera.name)).all()
     return [{"id": c.id, "name": c.name, "status": c.status.value} for c in cameras]
@@ -50,7 +50,7 @@ def list_live_cameras(db: Session = Depends(get_db), _user: CurrentUser = Depend
 
 @router.get("/{camera_id}", response_model=LiveOut)
 def get_live(
-    camera_id: int, db: Session = Depends(get_db), _user: CurrentUser = Depends(get_current_user)
+    camera_id: int, db: Session = Depends(get_db), _user: CurrentUser = Depends(require_permission("live"))
 ):
     camera = db.get(Camera, camera_id)
     if camera is None:

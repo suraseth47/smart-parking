@@ -19,6 +19,7 @@ from web.routers import (
     reports,
     settings,
     slots,
+    users,
     validation,
     zones,
 )
@@ -38,6 +39,9 @@ app.include_router(audit.router)
 app.include_router(validation.router)
 app.include_router(calibration.router)
 app.include_router(settings.router)
+app.include_router(users.admin_router)
+app.include_router(users.public_router)
+app.include_router(users.page_router)
 app.include_router(admin_pages.router)
 app.include_router(public.router)
 

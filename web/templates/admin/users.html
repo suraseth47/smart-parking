@@ -1,0 +1,440 @@
+{% extends "admin/base.html" %}
+{% block title %}ผู้ใช้และสิทธิ์{% endblock %}
+{% block content %}
+<div x-data="usersPage()" x-init="init()" @keydown.escape.window="closePanel()">
+  <div class="card" x-show="forbidden" style="margin-bottom:1rem;">
+    <p style="margin:0;">หน้านี้สำหรับผู้ดูแลระบบเท่านั้น</p>
+  </div>
+
+  <template x-if="ready">
+  <div>
+    <!-- หัวหน้า + ปุ่ม -->
+    <div class="card" style="margin-bottom:1rem; display:flex; flex-wrap:wrap; gap:0.75rem; align-items:center; justify-content:space-between;">
+      <div>
+        <h2 style="margin:0;">ผู้ใช้และสิทธิ์การเข้าถึง</h2>
+        <p class="muted" style="margin:0.25rem 0 0;">เชิญทีมงานด้วยลิงก์หรืออีเมลให้ตั้งบัญชีเอง หรือเพิ่มผู้ใช้โดยตรง กำหนดบทบาทและเมนูที่ใช้ได้รายคน</p>
+      </div>
+      <div class="toolbar-actions">
+        <button class="btn-secondary" @click="openCreate()">+ เพิ่มผู้ใช้โดยตรง</button>
+        <button @click="openInvite()">สร้างคำเชิญ</button>
+      </div>
+    </div>
+
+    <!-- ผลลัพธ์: ลิงก์ (แสดงครั้งเดียว) -->
+    <div class="card" x-show="created" style="margin-bottom:1rem; border-color:#bbf7d0;">
+      <h2 style="margin-top:0;" x-text="created && created.title"></h2>
+      <p class="muted" style="margin-top:0;" x-text="created && created.subtitle"></p>
+      <div class="link-box">
+        <input type="text" readonly :value="created && created.url" @focus="$event.target.select()" aria-label="ลิงก์คำเชิญ">
+        <button @click="copy(created.url, 'คัดลอกลิงก์แล้ว')">คัดลอกลิงก์</button>
+        <a class="btn btn-secondary" :href="created && created.mailto">ส่งทางอีเมล</a>
+        <button class="btn-secondary" @click="copy(created.message, 'คัดลอกข้อความแล้ว วางใน LINE หรือแชตได้เลย')">คัดลอกข้อความเชิญ (LINE)</button>
+      </div>
+      <p class="notice ok" x-show="copied" x-text="copied" style="margin-top:0.75rem;"></p>
+      <p class="notice warn" style="margin-top:0.75rem;">
+        ลิงก์นี้แสดงครั้งเดียว ระบบเก็บเฉพาะรหัสที่เข้ารหัสแล้ว จึงดูลิงก์เดิมซ้ำไม่ได้ ถ้าลิงก์หายให้ยกเลิกแล้วสร้างใหม่ ·
+        ส่งให้เฉพาะเจ้าของบัญชี ใครได้ลิงก์ไปก็ใช้ได้จนกว่าจะหมดอายุหรือถูกใช้
+      </p>
+      <button class="btn-secondary" @click="created = null; copied = ''" style="margin-top:0.5rem;">ปิด</button>
+    </div>
+    <div class="notice ok" x-show="flash" x-text="flash" style="margin-bottom:1rem;"></div>
+
+    <!-- ผู้ใช้ -->
+    <div class="card" style="margin-bottom:1rem;">
+      <h2 style="margin-top:0;">ผู้ใช้ทั้งหมด (<span x-text="users.length"></span>)</h2>
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead><tr><th>ผู้ใช้</th><th>อีเมล</th><th>บทบาท</th><th>เมนู</th><th>สถานะ</th><th>เข้าระบบล่าสุด</th><th></th></tr></thead>
+          <tbody>
+            <template x-for="u in users" :key="u.id">
+              <tr>
+                <td>
+                  <strong x-text="u.username"></strong><span class="muted" x-show="u.id === me.id"> (คุณ)</span>
+                  <span class="sub-text" x-text="u.full_name || ''"></span>
+                </td>
+                <td x-text="u.email || '-'"></td>
+                <td><span class="role-tag" :class="u.role" x-text="roleShort(u.role)"></span></td>
+                <td :title="permNames(u.permissions)" x-text="permSummary(u.role, u.permissions)"></td>
+                <td>
+                  <span class="state-tag" :class="u.locked ? 'locked' : (u.is_active ? 'active' : 'inactive')"
+                        x-text="u.locked ? 'ถูกล็อกชั่วคราว' : (u.is_active ? 'ใช้งานได้' : 'ปิดบัญชี')"></span>
+                </td>
+                <td x-text="fmt(u.last_login_at)"></td>
+                <td>
+                  <div class="cell-actions">
+                    <button class="btn-secondary" @click="openEdit(u)">แก้ไขสิทธิ์</button>
+                    <button class="btn-secondary" @click="resetPassword(u)">ลิงก์ตั้งรหัสผ่านใหม่</button>
+                    <template x-if="u.id !== me.id && u.is_active && confirmDisable !== u.id">
+                      <button class="btn-secondary" style="color:var(--color-danger);" @click="confirmDisable = u.id">ปิดบัญชี</button>
+                    </template>
+                    <template x-if="confirmDisable === u.id">
+                      <span style="display:flex; gap:0.4rem;">
+                        <button class="btn-danger" @click="setActive(u, false)">ยืนยันปิด</button>
+                        <button class="btn-secondary" @click="confirmDisable = null">ยกเลิก</button>
+                      </span>
+                    </template>
+                    <template x-if="!u.is_active || u.locked">
+                      <button class="btn-secondary" @click="setActive(u, true)" x-text="u.is_active ? 'ปลดล็อก' : 'เปิดบัญชี'"></button>
+                    </template>
+                  </div>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+      <p class="error-text" x-show="userError" x-text="userError"></p>
+    </div>
+
+    <!-- คำเชิญ -->
+    <div class="card" style="margin-bottom:1rem;">
+      <h2 style="margin-top:0;">คำเชิญ</h2>
+      <p class="muted" style="margin-top:0;">ลิงก์คำเชิญใช้ได้ครั้งเดียว ระบบเก็บเฉพาะรหัสที่เข้ารหัสแล้ว จึงดูลิงก์เดิมซ้ำไม่ได้ ถ้าลิงก์หายให้ยกเลิกแล้วสร้างใหม่</p>
+      <p class="muted" x-show="invitations.length === 0">ยังไม่มีคำเชิญ</p>
+      <div class="table-scroll" x-show="invitations.length > 0">
+        <table class="data-table">
+          <thead><tr><th>สถานะ</th><th>ผู้รับ</th><th>วิธี</th><th>บทบาท</th><th>เมนู</th><th>สร้างโดย</th><th>หมดอายุ</th><th></th></tr></thead>
+          <tbody>
+            <template x-for="inv in invitations" :key="inv.id">
+              <tr>
+                <td><span class="state-tag" :class="inv.status" x-text="statusLabel(inv)"></span></td>
+                <td>
+                  <span x-text="inv.purpose === 'reset' ? 'ตั้งรหัสผ่านใหม่: ' + (inv.target_username || '-') : (inv.email || inv.full_name || '(ไม่ระบุ)')"></span>
+                  <span class="sub-text" x-text="inv.purpose !== 'reset' && inv.email && inv.full_name ? inv.full_name : ''"></span>
+                </td>
+                <td x-text="inv.method === 'email' ? '✉ อีเมล' : '🔗 ลิงก์'"></td>
+                <td><span class="role-tag" :class="inv.role" x-text="roleShort(inv.role)"></span></td>
+                <td :title="permNames(inv.permissions)" x-text="permSummary(inv.role, inv.permissions)"></td>
+                <td>
+                  <span x-text="inv.created_by || '-'"></span>
+                  <span class="sub-text" x-text="fmt(inv.created_at)"></span>
+                </td>
+                <td>
+                  <span x-show="inv.status === 'accepted'" style="color:#15803d;" x-text="'ใช้เมื่อ ' + fmt(inv.accepted_at)"></span>
+                  <span x-show="inv.status !== 'accepted'" x-text="fmt(inv.expires_at)"></span>
+                </td>
+                <td>
+                  <div class="cell-actions">
+                    <button class="btn-secondary" x-show="inv.status === 'pending'" @click="revoke(inv)">ยกเลิกลิงก์</button>
+                  </div>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  </template>
+
+  <!-- ================= แผงด้านข้าง ================= -->
+  <template x-if="panel">
+    <div>
+      <div class="drawer-backdrop" @click="closePanel()"></div>
+      <aside class="drawer" role="dialog" aria-modal="true" :aria-label="panelTitle()">
+        <div class="drawer-head">
+          <h2 x-text="panelTitle()"></h2>
+          <p x-text="panelSubtitle()"></p>
+        </div>
+
+        <div class="drawer-body">
+          <!-- วิธีส่ง (เฉพาะคำเชิญ) -->
+          <template x-if="panel === 'invite'">
+            <div>
+              <div class="section-title">วิธีส่งคำเชิญ</div>
+              <label class="choice-card" :class="form.method === 'email' && 'selected'">
+                <input type="radio" value="email" x-model="form.method">
+                <div>
+                  <div class="choice-title">✉ ส่งทางอีเมล</div>
+                  <div class="choice-desc">สร้างลิงก์แล้วเปิดโปรแกรมอีเมลในเครื่องพร้อมข้อความเชิญให้กดส่ง ผู้รับกดลิงก์ในอีเมลเพื่อตั้งบัญชี</div>
+                </div>
+              </label>
+              <label class="choice-card" :class="form.method === 'link' && 'selected'">
+                <input type="radio" value="link" x-model="form.method">
+                <div>
+                  <div class="choice-title">🔗 สร้างลิงก์คำเชิญ</div>
+                  <div class="choice-desc">ได้ลิงก์ไปส่งเอง (LINE / แชต) ผู้รับตั้งชื่อผู้ใช้และรหัสผ่านเอง (ไม่บังคับอีเมล)</div>
+                </div>
+              </label>
+            </div>
+          </template>
+
+          <!-- ข้อมูลผู้ใช้ -->
+          <div class="section-title" x-text="panel === 'invite' ? 'ผู้รับคำเชิญ' : 'ข้อมูลผู้ใช้'"></div>
+          <template x-if="panel === 'create'">
+            <div>
+              <label for="f-username">ชื่อผู้ใช้ *</label>
+              <input id="f-username" type="text" x-model="form.username" autocomplete="off" placeholder="เช่น somchai.j">
+              <p class="hint">3–30 ตัว ใช้ a-z, 0-9 และ . _ -</p>
+            </div>
+          </template>
+          <template x-if="panel === 'edit'">
+            <div>
+              <label>ชื่อผู้ใช้</label>
+              <input type="text" :value="form.username" readonly>
+            </div>
+          </template>
+          <label for="f-name">ชื่อที่แสดง</label>
+          <input id="f-name" type="text" x-model="form.full_name" placeholder="เช่น สมชาย ใจดี">
+          <label for="f-email" x-text="panel === 'invite' && form.method === 'email' ? 'อีเมลผู้รับ *' : 'อีเมล'"></label>
+          <input id="f-email" type="email" x-model="form.email" placeholder="example@email.com">
+          <p class="hint" x-text="panel === 'invite' ? 'ผู้รับใช้อีเมลนี้เข้าสู่ระบบแทนชื่อผู้ใช้ได้' : 'ใช้เข้าสู่ระบบแทนชื่อผู้ใช้ได้'"></p>
+          <template x-if="panel === 'create'">
+            <div>
+              <label for="f-pw">รหัสผ่าน *</label>
+              <input id="f-pw" type="password" x-model="form.password" autocomplete="new-password">
+              <label for="f-pw2">ยืนยันรหัสผ่าน *</label>
+              <input id="f-pw2" type="password" x-model="form.password_confirm" autocomplete="new-password">
+              <p class="hint">อย่างน้อย 8 ตัวอักษร · ส่งรหัสผ่านให้เจ้าของบัญชีทางช่องทางส่วนตัว และแนะนำให้ใช้ "ลิงก์ตั้งรหัสผ่านใหม่" ให้เขาตั้งเองภายหลัง</p>
+            </div>
+          </template>
+
+          <!-- บทบาท -->
+          <div class="section-title">กำหนดบทบาท</div>
+          <p class="hint" x-show="panel === 'edit' && form.id === me.id" style="margin-bottom:0.5rem;">เปลี่ยนบทบาทของตัวเองไม่ได้</p>
+          <template x-for="r in roleCards" :key="r.value">
+            <label class="choice-card" :class="{ selected: form.role === r.value, disabled: panel === 'edit' && form.id === me.id }">
+              <input type="radio" :value="r.value" :checked="form.role === r.value" @change="setRole(r.value)"
+                     :disabled="panel === 'edit' && form.id === me.id">
+              <div>
+                <span class="role-tag" :class="r.value" x-text="r.label"></span>
+                <div class="choice-desc" x-text="r.desc"></div>
+              </div>
+            </label>
+          </template>
+
+          <!-- สิทธิ์เมนู -->
+          <div class="section-title">สิทธิ์การเข้าถึงเมนู</div>
+          <div class="perm-box">
+            <p class="hint" style="margin:0 0 0.5rem;" x-text="form.role === 'admin'
+              ? 'ผู้ดูแลระบบใช้ได้ทุกเมนูเสมอ'
+              : 'ติ๊กออกเพื่อซ่อนเมนูจากผู้ใช้คนนี้ · เมนูสีจางเกินสิทธิ์ของบทบาท เลือกไม่ได้'"></p>
+            <div class="perm-grid">
+              <template x-for="p in permissionList" :key="p.key">
+                <label class="perm-item" :class="!roleAllows(p.key) && 'off'">
+                  <input type="checkbox" :checked="isChecked(p.key)" :disabled="form.role === 'admin' || !roleAllows(p.key)"
+                         @change="togglePerm(p.key, $event.target.checked)">
+                  <span><span x-text="p.label"></span><small x-text="p.label_en"></small></span>
+                </label>
+              </template>
+            </div>
+            <p class="hint" style="margin-top:0.5rem;" x-text="'ใช้ได้ ' + selectedCount() + ' จาก ' + allowedCount() + ' เมนูของบทบาทนี้'"></p>
+          </div>
+
+          <!-- อายุลิงก์ + ข้อความ (เฉพาะคำเชิญ) -->
+          <template x-if="panel === 'invite'">
+            <div>
+              <div class="section-title">ลิงก์ใช้ได้</div>
+              <select x-model.number="form.expires_hours" aria-label="อายุลิงก์">
+                <option value="24">1 วัน</option>
+                <option value="72">3 วัน</option>
+                <option value="168">7 วัน</option>
+              </select>
+              <div class="section-title">ข้อความถึงผู้รับ (ไม่บังคับ)</div>
+              <textarea x-model="form.message" rows="3" maxlength="500" placeholder="เช่น สำหรับดูแลลานจอดวัดปากคลองฯ ช่วงงานประจำปี" style="width:100%;"></textarea>
+            </div>
+          </template>
+
+          <p class="error-text" x-show="formError" x-text="formError"></p>
+        </div>
+
+        <div class="drawer-foot">
+          <button class="btn-secondary" @click="closePanel()" :disabled="busy">ยกเลิก</button>
+          <button @click="submitPanel()" :disabled="busy" x-text="busy ? 'กำลังบันทึก...' : submitLabel()"></button>
+        </div>
+      </aside>
+    </div>
+  </template>
+</div>
+
+<script>
+  const ROLE_CARDS = [
+    { value: "admin", label: "ผู้ดูแลระบบ", desc: "จัดการได้ทุกอย่าง รวมถึงกล้อง ช่องจอด การตรวจจับ ผู้ใช้ คำเชิญ และการตั้งค่าระบบ" },
+    { value: "operator", label: "เจ้าหน้าที่", desc: "ดูสถานะช่องจอดสด กล้องวงจรปิด แก้สถานะช่องด้วยมือ และดูรายงาน ตั้งค่าระบบไม่ได้" },
+    { value: "viewer", label: "ผู้ชม", desc: "ดูอย่างเดียว: สถานะช่องจอดสดและรายงาน เหมาะกับผู้บริหารหรือหน่วยงานที่ขอดูข้อมูล" },
+  ];
+  const ROLE_SHORT = { admin: "ผู้ดูแลระบบ", operator: "เจ้าหน้าที่", viewer: "ผู้ชม" };
+
+  function usersPage() {
+    return {
+      ready: false, forbidden: false, me: {},
+      users: [], invitations: [], permissionList: [], roleMax: {},
+      roleCards: ROLE_CARDS,
+      panel: null, form: {}, formError: "", busy: false,
+      created: null, copied: "", flash: "", userError: "", confirmDisable: null,
+
+      async init() {
+        const user = await requireAuth();
+        if (!user) return;
+        if (user.role !== "admin") { this.forbidden = true; return; }
+        this.me = user;
+        const perms = await apiJson("/api/admin/permissions");
+        this.permissionList = perms.permissions;
+        this.roleMax = perms.role_max;
+        await this.reload();
+        this.ready = true;
+      },
+      async reload() {
+        [this.users, this.invitations] = await Promise.all([
+          apiJson("/api/admin/users"), apiJson("/api/admin/invitations"),
+        ]);
+      },
+
+      // ---------- แสดงผล ----------
+      roleShort(role) { return ROLE_SHORT[role] || role; },
+      permLabel(key) { const p = this.permissionList.find((x) => x.key === key); return p ? p.label : key; },
+      permNames(keys) { return (keys || []).map((k) => this.permLabel(k)).join(", "); },
+      permSummary(role, keys) {
+        const max = (this.roleMax[role] || []).length;
+        const n = (keys || []).length;
+        return n >= max ? "ทุกเมนูของบทบาท" : `${n} จาก ${max} เมนู`;
+      },
+      statusLabel(inv) {
+        if (inv.status === "accepted") return inv.accepted_username ? "ตอบรับแล้ว (" + inv.accepted_username + ")" : "ตอบรับแล้ว";
+        return { pending: "รอเปิดลิงก์", expired: "หมดอายุ", revoked: "ยกเลิกแล้ว" }[inv.status] || inv.status;
+      },
+      fmt(iso) {
+        if (!iso) return "-";
+        const d = new Date(iso.endsWith("Z") ? iso : iso + "Z");
+        return d.toLocaleString("th-TH", { day: "numeric", month: "short", year: "2-digit", hour: "2-digit", minute: "2-digit" });
+      },
+
+      // ---------- แผงด้านข้าง ----------
+      openInvite() {
+        this.form = { method: "email", email: "", full_name: "", role: "operator", perms: [...this.roleMax.operator], expires_hours: 72, message: "" };
+        this.formError = ""; this.panel = "invite";
+      },
+      openCreate() {
+        this.form = { username: "", full_name: "", email: "", password: "", password_confirm: "", role: "operator", perms: [...this.roleMax.operator] };
+        this.formError = ""; this.panel = "create";
+      },
+      openEdit(u) {
+        this.form = { id: u.id, username: u.username, full_name: u.full_name || "", email: u.email || "", role: u.role, perms: [...u.permissions] };
+        this.formError = ""; this.panel = "edit";
+      },
+      closePanel() { if (!this.busy) this.panel = null; },
+      panelTitle() {
+        return { invite: "สร้างคำเชิญ", create: "เพิ่มผู้ใช้โดยตรง", edit: "แก้ไขสิทธิ์ผู้ใช้" }[this.panel] || "";
+      },
+      panelSubtitle() {
+        return {
+          invite: "สร้างลิงก์คำเชิญให้ผู้ใช้ใหม่ตั้งชื่อผู้ใช้และรหัสผ่านเอง",
+          create: "กำหนดชื่อผู้ใช้และรหัสผ่านให้เอง (ถ้าต้องการให้ผู้ใช้ตั้งเอง ใช้ \"สร้างคำเชิญ\")",
+          edit: "เปลี่ยนบทบาท เมนูที่ใช้ได้ และข้อมูลติดต่อ มีผลทันทีโดยไม่ต้องเข้าสู่ระบบใหม่",
+        }[this.panel] || "";
+      },
+      submitLabel() {
+        if (this.panel === "invite") return this.form.method === "email" ? "ส่งคำเชิญ" : "สร้างลิงก์";
+        return this.panel === "create" ? "เพิ่มผู้ใช้" : "บันทึก";
+      },
+      roleAllows(key) { return (this.roleMax[this.form.role] || []).includes(key); },
+      isChecked(key) { return this.form.role === "admin" || (this.roleAllows(key) && this.form.perms.includes(key)); },
+      setRole(role) { this.form.role = role; this.form.perms = [...(this.roleMax[role] || [])]; },
+      togglePerm(key, on) {
+        this.form.perms = on ? [...new Set([...this.form.perms, key])] : this.form.perms.filter((k) => k !== key);
+      },
+      allowedCount() { return (this.roleMax[this.form.role] || []).length; },
+      selectedCount() { return (this.roleMax[this.form.role] || []).filter((k) => this.isChecked(k)).length; },
+
+      async submitPanel() {
+        this.formError = "";
+        if (this.form.role !== "admin" && this.selectedCount() === 0) {
+          this.formError = "ต้องเลือกอย่างน้อย 1 เมนู"; return;
+        }
+        if (this.panel === "create" && this.form.password !== this.form.password_confirm) {
+          this.formError = "รหัสผ่านทั้งสองช่องไม่ตรงกัน"; return;
+        }
+        this.busy = true;
+        try {
+          if (this.panel === "invite") await this.submitInvite();
+          else if (this.panel === "create") await this.submitCreate();
+          else await this.submitEdit();
+          this.panel = null;
+          await this.reload();
+        } catch (e) {
+          this.formError = e.message;
+        } finally {
+          this.busy = false;
+        }
+      },
+      async submitInvite() {
+        const f = this.form;
+        const res = await apiJson("/api/admin/invitations", { method: "POST", body: JSON.stringify({
+          method: f.method, email: f.email, full_name: f.full_name, role: f.role,
+          permissions: f.perms, expires_hours: f.expires_hours, message: f.message,
+        }) });
+        this.showCreated(res, false);
+        if (f.method === "email") window.location.href = this.created.mailto;  // เปิดโปรแกรมอีเมลพร้อมข้อความ
+      },
+      async submitCreate() {
+        const f = this.form;
+        const u = await apiJson("/api/admin/users", { method: "POST", body: JSON.stringify({
+          username: f.username, full_name: f.full_name, email: f.email, password: f.password,
+          password_confirm: f.password_confirm, role: f.role, permissions: f.perms,
+        }) });
+        this.created = null;
+        this.flash = `เพิ่มผู้ใช้ ${u.username} (${this.roleShort(u.role)}) แล้ว`;
+      },
+      async submitEdit() {
+        const f = this.form;
+        const body = { full_name: f.full_name, email: f.email, permissions: f.perms };
+        if (f.id !== this.me.id) body.role = f.role;
+        const u = await apiJson(`/api/admin/users/${f.id}`, { method: "PATCH", body: JSON.stringify(body) });
+        this.flash = `บันทึกสิทธิ์ของ ${u.username} แล้ว (${this.permSummary(u.role, u.permissions)})`;
+      },
+
+      // ---------- ลิงก์ / ข้อความเชิญ ----------
+      buildShare(url, name, email, role, perms, expiresAt, isReset, note) {
+        const greet = name ? `เรียน คุณ${name}` : "สวัสดีครับ/ค่ะ";
+        const what = isReset
+          ? "ลิงก์สำหรับตั้งรหัสผ่านใหม่ของบัญชีระบบ Smart Parking (หลังบ้าน)"
+          : `คำเชิญเข้าใช้งานระบบ Smart Parking (หลังบ้าน) ในบทบาท ${this.roleShort(role)}\nเมนูที่ใช้ได้: ${this.permNames(perms)}`;
+        const extra = note ? `\n\nหมายเหตุ: ${note}` : "";
+        const message = `${greet}\n\n${what}${extra}\n\n${url}\n\nลิงก์ใช้ได้ครั้งเดียว ถึง ${this.fmt(expiresAt)}\n` +
+          "ครั้งแรกเบราว์เซอร์อาจเตือนเรื่องใบรับรอง ให้กด \"ขั้นสูง\" แล้ว \"ดำเนินการต่อ\"\n\nNASLINK Smart Parking";
+        const subject = isReset ? "ลิงก์ตั้งรหัสผ่านใหม่ - Smart Parking" : "คำเชิญเข้าใช้งานระบบ Smart Parking";
+        const mailto = `mailto:${encodeURIComponent(email || "")}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
+        return { message, mailto };
+      },
+      showCreated(res, isReset, user) {
+        const inv = res.invitation;
+        const name = isReset ? (user.full_name || user.username) : inv.full_name;
+        const share = this.buildShare(res.url, name, inv.email, inv.role, inv.permissions, inv.expires_at, isReset, inv.message);
+        this.created = {
+          title: isReset ? `ลิงก์ตั้งรหัสผ่านใหม่ของ ${user.username}` : (inv.method === "email" ? "สร้างคำเชิญแล้ว (เปิดโปรแกรมอีเมลให้แล้ว)" : "สร้างลิงก์คำเชิญแล้ว"),
+          subtitle: isReset
+            ? `ส่งให้เจ้าของบัญชีตั้งรหัสผ่านเอง · ใช้ได้ถึง ${this.fmt(inv.expires_at)} · รหัสผ่านเดิมยังใช้ได้จนกว่าจะตั้งใหม่`
+            : `สำหรับ ${inv.email || inv.full_name || "ผู้ใช้ใหม่"} · ${this.roleShort(inv.role)} · ${this.permSummary(inv.role, inv.permissions)} · ใช้ได้ถึง ${this.fmt(inv.expires_at)}`,
+          url: res.url, ...share,
+        };
+        this.copied = ""; this.flash = "";
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      },
+      async resetPassword(u) {
+        this.userError = "";
+        try {
+          const res = await apiJson(`/api/admin/users/${u.id}/password-reset`, { method: "POST" });
+          this.showCreated(res, true, u);
+          await this.reload();
+        } catch (e) { this.userError = e.message; }
+      },
+      async setActive(u, active) {
+        this.userError = ""; this.confirmDisable = null;
+        try {
+          await apiJson(`/api/admin/users/${u.id}`, { method: "PATCH", body: JSON.stringify({ is_active: active }) });
+        } catch (e) { this.userError = e.message; }
+        await this.reload();
+      },
+      async revoke(inv) {
+        try { await apiJson(`/api/admin/invitations/${inv.id}`, { method: "DELETE" }); }
+        catch (e) { this.userError = e.message; }
+        await this.reload();
+      },
+      async copy(text, okMessage) {
+        try { await navigator.clipboard.writeText(text); this.copied = okMessage; }
+        catch (e) { this.copied = "คัดลอกอัตโนมัติไม่ได้ ให้ลากเลือกลิงก์ในช่องแล้วกด Ctrl+C"; }
+      },
+    };
+  }
+</script>
+{% endblock %}
