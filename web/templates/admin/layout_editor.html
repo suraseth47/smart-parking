@@ -16,7 +16,15 @@
     <button id="btn-save" class="btn-secondary">บันทึก Draft</button>
     <button id="btn-preview" class="btn-secondary">Preview</button>
     <button id="btn-publish">Publish</button>
+    <button id="btn-clear-all" class="btn-secondary" style="color:var(--color-danger);">ล้างช่องทั้งหมด</button>
     <span id="status-text" class="muted"></span>
+  </div>
+  <div id="clear-all-confirm" class="card" style="display:none; margin-bottom:1rem; border-color:#fecaca; background:#fef2f2;">
+    <p class="error-text" id="clear-all-text" style="margin-top:0;"></p>
+    <div style="display:flex; gap:0.5rem;">
+      <button id="btn-clear-all-confirm" class="btn-danger">ยืนยันลบทั้งหมด</button>
+      <button id="btn-clear-all-cancel" class="btn-secondary">ยกเลิก</button>
+    </div>
   </div>
   <p id="unpublished-banner" class="muted" style="display:none; color:#ca8a04;">
     มีการแก้ไขที่ยังไม่ได้ Publish

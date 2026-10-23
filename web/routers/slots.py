@@ -4,13 +4,13 @@ from __future__ import annotations
 import cv2
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from core.config import PROJECT_ROOT, get_settings
 from core.db import get_db
-from core.models import AuditLog, Camera, LayoutStatus, Slot, SlotType, Zone
+from core.models import AuditLog, Camera, LayoutStatus, Slot, SlotEvent, SlotState, SlotType, Zone
 from core.camera_utils import build_camera_url, snapshot_path
 from web.deps import CurrentUser, require_admin, verify_csrf
 from worker.camera_connection import check_camera_connection
@@ -107,9 +107,13 @@ def save_draft_slots(
 
     keep_ids = {s.id for s in data.slots if s.id is not None}
     existing = db.scalars(select(Slot).where(Slot.camera_id == camera_id)).all()
-    for slot in existing:
-        if slot.id not in keep_ids:
-            db.delete(slot)
+    removed_ids = [slot.id for slot in existing if slot.id not in keep_ids]
+    if removed_ids:
+        # ลบสถานะและประวัติของช่องที่ถูกลบก่อน ไม่งั้น foreign key ทำให้ลบช่องที่เคย publish ไม่ได้
+        db.execute(delete(SlotEvent).where(SlotEvent.slot_id.in_(removed_ids)))
+        db.execute(delete(SlotState).where(SlotState.slot_id.in_(removed_ids)))
+        db.execute(delete(Slot).where(Slot.id.in_(removed_ids)))
+        db.expire_all()
     db.flush()
 
     saved: list[Slot] = []
@@ -136,15 +140,17 @@ def save_draft_slots(
             user_id=admin.id,
             action="save_draft_layout",
             target=f"camera:{camera_id}",
-            detail={"slot_count": len(saved)},
+            detail={"slot_count": len(saved), "removed_count": len(removed_ids)},
         )
     )
 
     try:
         db.commit()
-    except IntegrityError:
+    except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(status.HTTP_409_CONFLICT, "มีรหัสช่องซ้ำกับช่องจอดอื่นในระบบ")
+        if "UNIQUE" in str(exc.orig).upper():
+            raise HTTPException(status.HTTP_409_CONFLICT, "มีรหัสช่องซ้ำกับช่องจอดอื่นในระบบ")
+        raise HTTPException(status.HTTP_409_CONFLICT, f"บันทึกไม่สำเร็จ: {exc.orig}")
 
     for slot in saved:
         db.refresh(slot)

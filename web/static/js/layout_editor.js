@@ -321,6 +321,28 @@ class LayoutEditor {
     this._markUnpublished();
   }
 
+  requestClearAll() {
+    document.getElementById("clear-all-text").textContent =
+      `ต้องการลบช่องทั้งหมด ${this.slots.length} ช่องของกล้องนี้ใช่ไหม (ใช้เมื่อย้ายกล้องแล้วจะวาดใหม่ทั้งหมด)`;
+    document.getElementById("clear-all-confirm").style.display = "block";
+  }
+
+  cancelClearAll() {
+    document.getElementById("clear-all-confirm").style.display = "none";
+  }
+
+  async clearAll() {
+    document.getElementById("clear-all-confirm").style.display = "none";
+    const removed = this.slots.length;
+    this.slots = [];
+    this.selected = null;
+    document.getElementById("selected-slot-card").style.display = "none";
+    this._renderAll();
+    if (await this.saveDraft()) {
+      this._setStatus(`ลบช่องเดิมแล้ว ${removed} ช่อง · กด "ดึงภาพล่าสุด" แล้ววาดช่องใหม่ เสร็จแล้วกด Publish`);
+    }
+  }
+
   copySelected() {
     if (!this.selected) return;
     const prefix = document.getElementById("code-prefix").value || "A-";
@@ -395,8 +417,10 @@ class LayoutEditor {
       this._renderAll();
       this._setStatus(`บันทึก draft สำเร็จ (${saved.length} ช่อง)`);
       this._markUnpublished();
+      return true;
     } catch (e) {
       this._setStatus("บันทึกไม่สำเร็จ: " + e.message, true);
+      return false;
     }
   }
 
@@ -436,6 +460,8 @@ class LayoutEditor {
 
   async publish() {
     if (!confirm("ยืนยัน publish layout นี้? ช่องทั้งหมดของกล้องนี้จะถูกใช้งานจริงทันที")) return;
+    // บันทึกสิ่งที่แก้ในหน้าจอก่อนเสมอ (รวมช่องที่ลบ) ไม่งั้น publish จะใช้ชุดเก่าในฐานข้อมูล
+    if (!(await this.saveDraft())) return;
     this._setStatus("กำลัง publish...");
     try {
       const result = await apiJson(`/api/admin/cameras/${this.cameraId}/slots/publish`, { method: "POST" });
@@ -484,6 +510,9 @@ class LayoutEditor {
     document.getElementById("btn-delete-confirm").addEventListener("click", () => this.deleteSelected());
     document.getElementById("btn-delete-cancel").addEventListener("click", () => this.cancelDeleteSelected());
     document.getElementById("btn-copy").addEventListener("click", () => this.copySelected());
+    document.getElementById("btn-clear-all").addEventListener("click", () => this.requestClearAll());
+    document.getElementById("btn-clear-all-confirm").addEventListener("click", () => this.clearAll());
+    document.getElementById("btn-clear-all-cancel").addEventListener("click", () => this.cancelClearAll());
     document.getElementById("btn-repeat").addEventListener("click", () => {
       const count = Number(document.getElementById("repeat-count").value) || 1;
       const direction = document.getElementById("repeat-direction").value;

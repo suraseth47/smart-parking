@@ -77,11 +77,28 @@
             <td style="padding:0.4rem;">
               <a class="btn" :href="'/admin/layout?camera_id=' + cam.id">กำหนดช่องจอด</a>
               <button x-show="cam.status === 'moved'" class="btn-secondary" @click="openRealign(cam)">Re-align</button>
+              <button class="btn-secondary" style="color:var(--color-danger);" @click="askClearSlots(cam)">ลบช่องจอดทั้งหมด</button>
             </td>
           </tr>
         </template>
       </tbody>
     </table>
+  </div>
+
+  <div class="card" x-show="clearTarget" style="margin-bottom:1rem; border-color:#fecaca; background:#fef2f2;">
+    <h2 style="margin-top:0; color:var(--color-danger);">ลบช่องจอดทั้งหมดของกล้อง <span x-text="clearTarget && clearTarget.name"></span></h2>
+    <p>ช่องจอดที่วาดไว้ทั้งหมดของกล้องนี้ รวมประวัติสถานะของแต่ละช่อง จะถูกลบถาวร ใช้เมื่อย้ายกล้องหรือเปลี่ยนมุมกล้องแล้วต้องการวาดใหม่ทั้งหมด</p>
+    <p class="muted">ช่องจอดของกล้องอื่นไม่ถูกลบ หลังลบแล้วกด "กำหนดช่องจอด" เพื่อวาดใหม่ แล้วกด Publish</p>
+    <div style="display:flex; gap:0.5rem; margin-top:0.75rem;">
+      <button class="btn-danger" @click="confirmClearSlots()" :disabled="clearing">
+        <span x-text="clearing ? 'กำลังลบ...' : 'ยืนยันลบทั้งหมด'"></span>
+      </button>
+      <button class="btn-secondary" @click="clearTarget = null" :disabled="clearing">ยกเลิก</button>
+    </div>
+    <p class="error-text" x-show="clearError" x-text="clearError"></p>
+  </div>
+  <div class="card" x-show="clearDone" style="margin-bottom:1rem; border-color:#bbf7d0; background:#ecfdf3;">
+    <p style="margin:0;" x-text="clearDone"></p>
   </div>
 
   <div class="card" x-show="realign" style="margin-bottom:1rem;">
@@ -189,6 +206,32 @@
       loading: false,
       error: "",
       realign: null,
+      clearTarget: null,
+      clearing: false,
+      clearError: "",
+      clearDone: "",
+      askClearSlots(cam) {
+        this.clearTarget = cam;
+        this.clearError = "";
+        this.clearDone = "";
+      },
+      async confirmClearSlots() {
+        const cam = this.clearTarget;
+        if (!cam) return;
+        this.clearing = true;
+        this.clearError = "";
+        try {
+          // ส่งรายการว่าง = ลบช่องจอดทั้งหมดของกล้องนี้ (พร้อมสถานะและประวัติของช่อง)
+          await apiJson(`/api/admin/cameras/${cam.id}/slots`, { method: "PUT", body: JSON.stringify({ slots: [] }) });
+          this.clearDone = `ลบช่องจอดทั้งหมดของกล้อง ${cam.name} แล้ว กด "กำหนดช่องจอด" เพื่อวาดใหม่`;
+          this.clearTarget = null;
+          this.loadOverview();
+        } catch (e) {
+          this.clearError = "ลบไม่สำเร็จ: " + e.message;
+        } finally {
+          this.clearing = false;
+        }
+      },
       realignLoading: false,
       realignError: "",
       form: { name: "", brand: "hikvision", host: "", username: "", password: "", channel: 1, rtsp_url_custom: "" },
