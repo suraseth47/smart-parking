@@ -8,13 +8,23 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
+from core.app_settings import (
+    DISPLAY_SETTING_KEY,
+    HEALTH_LIMITS,
+    HEALTH_SETTING_KEY,
+    PUBLIC_TOGGLES,
+    load_display,
+    load_health,
+    save_setting,
+)
 from core.backup import backup_hour, backup_keep, copy_dir, days_covered, list_backups, read_status, run_backup
 from core.config import get_settings as get_app_settings
 from core.config import local_utc_offset_hours
 from core.db import get_db
-from core.models import AuditLog, Setting
+from core.models import AuditLog, Camera, Setting
 from core.security import encrypt_camera_password
 from web.deps import CurrentUser, require_admin, verify_csrf
 from web.ip_allowlist import IP_ALLOWLIST_SETTING_KEY
@@ -269,3 +279,77 @@ def security_status(
               if last.get("ok") else f"ล่าสุด: {last.get('message', 'ยังไม่เคยสำรอง')}"),
              warn=bool(last.get("ok"))),
     ]
+
+
+# ---------- ระบบและการแสดงผล (ชื่อหน่วยงาน, สวิตช์แสดง/ซ่อน, การตรวจสถานะกล้อง) ----------
+
+class PublicDisplayIn(BaseModel):
+    lang_switch: bool = True
+    directions: bool = True
+    nearby_sort: bool = True
+    free_list: bool = True
+    slot_map: bool = True
+    peak_chart: bool = True
+
+
+class DisplayIn(BaseModel):
+    org_name: str = Field("", max_length=120)
+    system_title: str = Field("", max_length=200)
+    show_system_title: bool = True
+    show_server_address: bool = True
+    show_sidebar_footer: bool = True
+    public: PublicDisplayIn = PublicDisplayIn()
+
+
+class HealthIn(BaseModel):
+    moved_check_enabled: bool = True
+    moved_check_interval_min: int = Field(10, ge=HEALTH_LIMITS["moved_check_interval_min"][0], le=HEALTH_LIMITS["moved_check_interval_min"][1])
+    moved_threshold_px: int = Field(50, ge=HEALTH_LIMITS["moved_threshold_px"][0], le=HEALTH_LIMITS["moved_threshold_px"][1])
+
+
+class SystemSettingsIn(BaseModel):
+    display: DisplayIn
+    health: HealthIn
+
+
+def _system_out(db: Session) -> dict:
+    return {"display": load_display(db), "health": load_health(db), "public_keys": list(PUBLIC_TOGGLES)}
+
+
+@router.get("/system")
+def get_system_settings(db: Session = Depends(get_db), _admin: CurrentUser = Depends(require_admin)) -> dict:
+    return _system_out(db)
+
+
+@router.put("/system")
+def update_system_settings(
+    data: SystemSettingsIn,
+    db: Session = Depends(get_db),
+    admin: CurrentUser = Depends(require_admin),
+    _csrf: None = Depends(verify_csrf),
+) -> dict:
+    display = data.display.model_dump()
+    display["org_name"] = display["org_name"].strip()
+    display["system_title"] = display["system_title"].strip()
+    health = data.health.model_dump()
+    before = _system_out(db)
+    save_setting(db, DISPLAY_SETTING_KEY, display)
+    save_setting(db, HEALTH_SETTING_KEY, health)
+    changed = [k for k in display if before["display"].get(k) != display[k]]
+    changed += [k for k in health if before["health"].get(k) != health[k]]
+    db.add(AuditLog(user_id=admin.id, action="update_system_settings", target="settings:system", detail={"fields": changed}))
+    db.commit()
+    return _system_out(db)
+
+
+@router.post("/system/check-now")
+def check_cameras_now(
+    db: Session = Depends(get_db),
+    admin: CurrentUser = Depends(require_admin),
+    _csrf: None = Depends(verify_csrf),
+) -> dict:
+    """ให้ worker ตรวจกล้องถูกขยับทุกตัวในรอบตรวจจับถัดไป (ไม่ต้องรอครบรอบปกติ)"""
+    result = db.execute(update(Camera).where(Camera.enabled.is_(True)).values(last_health_check_at=None))
+    db.add(AuditLog(user_id=admin.id, action="check_cameras_now", target="cameras", detail={"rows": result.rowcount}))
+    db.commit()
+    return {"ok": True, "cameras": result.rowcount}

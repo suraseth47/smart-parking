@@ -3,15 +3,14 @@ from pathlib import Path
 
 from fastapi.templating import Jinja2Templates
 
-from core.config import get_settings
+from core.app_settings import cached_display
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
 
 def branding() -> dict:
-    """ชื่อระบบ/หน่วยงานที่แสดงในแถบเมนูและหัวเว็บหลังบ้าน (ตั้งใน .env: SYSTEM_TITLE, ORG_NAME)"""
-    settings = get_settings()
-    return {"system_title": settings.system_title, "org_name": settings.org_name}
+    """ชื่อระบบ/หน่วยงาน + สวิตช์แสดง/ซ่อน (ตั้งที่หน้า ตั้งค่าระบบ → ระบบและการแสดงผล)"""
+    return cached_display()
 
 
 templates.env.globals["branding"] = branding

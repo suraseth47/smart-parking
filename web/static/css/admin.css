@@ -657,3 +657,26 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
 .report-controls > *, .form-grid > * { min-width: 0; }
 /* โลโก้ + ชื่อหน่วยงาน + ที่อยู่ server ค้างด้านบนแถบเมนูเสมอ เวลาเลื่อนเมนูขึ้นลง */
 .sidebar > .brand { position: sticky; top: 0; z-index: 3; background: var(--color-surface); }
+
+/* ---------- หน้า ตั้งค่าระบบ แบบ CCTV Manager ---------- */
+.tab-bar button { display: inline-flex; align-items: center; gap: 0.45rem; }
+.tab-icon, .btn-icon { width: 17px; height: 17px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+button .btn-icon { margin-right: 0.35rem; vertical-align: -3px; }
+.card-title { display: flex; align-items: center; gap: 0.55rem; margin-top: 0; }
+.title-icon { width: 22px; height: 22px; flex-shrink: 0; fill: none; stroke: var(--color-primary); stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.toggle-list { margin-top: 0.5rem; border-top: 1px solid var(--color-border); }
+.toggle-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  margin: 0; padding: 0.7rem 0.25rem; border-bottom: 1px solid var(--color-border);
+  font-weight: 400; cursor: pointer;
+}
+.toggle-row:last-child { border-bottom: 0; }
+.toggle-row > span:first-child { min-width: 0; }
+.toggle-row .sub-text { display: block; }
+.toggle-row .switch { flex-shrink: 0; }
+.save-bar {
+  position: sticky; bottom: 0; z-index: 5;
+  display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: center;
+  padding: 0.75rem 1rem; border: 1px solid var(--color-border); border-radius: var(--radius-lg, 14px);
+  background: rgba(255, 255, 255, 0.96); box-shadow: 0 -4px 14px rgba(15, 23, 42, 0.06);
+}

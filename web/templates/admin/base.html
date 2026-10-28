@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}หลังบ้าน{% endblock %} - Smart Parking · NASLINK</title>
-  <link rel="stylesheet" href="/static/css/admin.css?v=20261028u">
+  <link rel="stylesheet" href="/static/css/admin.css?v=20261028v">
   <script defer src="/static/js/vendor/alpine.min.js"></script>
   <script src="/static/js/api.js"></script>
   <script src="/static/js/export.js?v=20261028"></script>
@@ -65,7 +65,7 @@
         <button type="button" class="brand-refresh" onclick="location.reload()" aria-label="โหลดหน้าใหม่" title="โหลดหน้าใหม่">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg>
         </button>
-        <div class="brand-host" id="brand-host"></div>
+        {% if brand.show_server_address %}<div class="brand-host" id="brand-host"></div>{% endif %}
       </div>
 
       <div class="user-card">
@@ -100,10 +100,12 @@
         </a>
       </nav>
 
+      {% if brand.show_sidebar_footer %}
       <div class="sidebar-footer">
         <div>NASLINK Solutions</div>
         <div>Smart Parking · v1.0</div>
       </div>
+      {% endif %}
     </aside>
     <div class="sidebar-backdrop" id="sidebar-backdrop" onclick="toggleSidebar(false)"></div>
 
@@ -113,7 +115,7 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
         </button>
         <h1 class="main-title">{% block page_title %}{{ self.title() }}{% endblock %}</h1>
-        <div class="system-title" title="{{ brand.system_title }} {{ brand.org_name }}">{{ brand.system_title }}{% if brand.org_name %} {{ brand.org_name }}{% endif %}</div>
+        {% if brand.show_system_title and brand.system_title %}<div class="system-title" title="{{ brand.system_title }}">{{ brand.system_title }}</div>{% endif %}
         <div class="header-actions">
           <a href="/admin/alerts" class="link-btn bell-btn" id="alert-bell" hidden aria-label="การแจ้งเตือน">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16V11a6 6 0 1 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>

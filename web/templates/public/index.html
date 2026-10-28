@@ -18,12 +18,12 @@
           <div class="subtitle" x-text="t('subtitle')"></div>
           <h1 class="site-name" x-text="t('allSites')"></h1>
         </div>
-        <button type="button" class="pill-btn" @click="toggleLang()" x-text="lang === 'th' ? 'EN' : 'ไทย'"></button>
+        <button type="button" class="pill-btn" x-show="show.lang_switch" @click="toggleLang()" x-text="lang === 'th' ? 'EN' : 'ไทย'"></button>
       </header>
 
       <div class="sites-tools">
         <span class="muted-sm" x-text="t('sitesCount').replace('{n}', sites.length) + ' · ' + t('freeTotal') + ' ' + sites.reduce((n, s) => n + (s.status === 'stale' ? 0 : s.free), 0)"></span>
-        <button type="button" class="link-btn-sm" @click="sortByDistance()" x-show="sites.some((s) => s.latitude !== null)"
+        <button type="button" class="link-btn-sm" @click="sortByDistance()" x-show="show.nearby_sort && sites.some((s) => s.latitude !== null)"
                 x-text="distances ? t('sortedNear') : t('nearMe')"></button>
       </div>
       <div class="muted-sm" x-show="geoError" x-text="geoError" style="margin-bottom:10px;"></div>
@@ -55,7 +55,7 @@
           </div>
           <div class="site-actions">
             <button type="button" class="primary-btn" @click="openSite(s.code)"><span x-text="t('viewDetail')"></span></button>
-            <a class="nav-btn" x-show="s.maps_url" :href="s.maps_url" target="_blank" rel="noopener noreferrer">
+            <a class="nav-btn" x-show="show.directions && s.maps_url" :href="s.maps_url" target="_blank" rel="noopener noreferrer">
               <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l18-8-8 18-2-8z"/></svg>
               <span x-text="t('navigate')"></span>
             </a>
@@ -79,13 +79,13 @@
           <div class="subtitle" x-text="t('subtitle')"></div>
           <h1 class="site-name" x-text="lang === 'th' ? site.name_th : site.name_en">Smart Parking</h1>
         </div>
-        <button type="button" class="pill-btn" @click="toggleLang()" x-text="lang === 'th' ? 'EN' : 'ไทย'"></button>
+        <button type="button" class="pill-btn" x-show="show.lang_switch" @click="toggleLang()" x-text="lang === 'th' ? 'EN' : 'ไทย'"></button>
       </header>
       <div class="site-sub" x-show="site.address || site.opening_hours">
         <div class="muted-sm" x-show="site.address" x-text="site.address"></div>
         <div class="muted-sm" x-show="site.opening_hours" x-text="t('openHours') + ' ' + site.opening_hours"></div>
       </div>
-      <a class="nav-btn nav-btn-wide" x-show="site.maps_url" :href="site.maps_url" target="_blank" rel="noopener noreferrer">
+      <a class="nav-btn nav-btn-wide" x-show="show.directions && site.maps_url" :href="site.maps_url" target="_blank" rel="noopener noreferrer">
         <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l18-8-8 18-2-8z"/></svg>
         <span x-text="t('navigateHere')"></span>
       </a>
@@ -175,11 +175,11 @@
                   <div class="strip-cell" :class="'s-' + slotKind(slot)"></div>
                 </template>
               </div>
-              <div class="free-list" x-show="zone.status === 'ok' || zone.status === 'partial'">
+              <div class="free-list" x-show="show.free_list && (zone.status === 'ok' || zone.status === 'partial')">
                 <span class="free-list-label" x-text="freeCodes(zone).length ? t('availableSlots') : t('noAvailableSlots')"></span>
                 <span class="free-list-codes" x-text="freeCodes(zone).map(noBreak).join(', ')"></span>
               </div>
-              <button type="button" class="primary-btn" x-show="zone.slots && zone.slots.length" @click="openMap(zone.code)">
+              <button type="button" class="primary-btn" x-show="show.slot_map && zone.slots && zone.slots.length" @click="openMap(zone.code)">
                 <span x-text="t('viewMap')"></span>
                 <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
               </button>
@@ -189,7 +189,7 @@
       </template>
 
       <!-- ช่วงเวลาที่คนหนาแน่น -->
-      <section class="card" x-show="peak.points.length > 0">
+      <section class="card" x-show="show.peak_chart && peak.points.length > 0">
         <div class="zone-head">
           <h2 class="zone-title" x-text="t('peakTitle')"></h2>
           <span class="muted-sm" x-text="dayName(peak.weekday)"></span>
@@ -303,6 +303,7 @@
     </svg>
   </div>
 
+  <script>window.PUBLIC_DISPLAY = {{ branding().public | tojson }};</script>
   <script>
     const STRINGS = {
       th: {
@@ -442,6 +443,8 @@
     function publicPage() {
       return {
         lang: "th",
+        // ส่วนที่แสดง/ซ่อนได้ ตั้งที่หลังบ้าน: ตั้งค่าระบบ → ระบบและการแสดงผล
+        show: window.PUBLIC_DISPLAY || {},
         view: "",  // กำหนดใน route() หลังโหลดรายการสถานที่ (กันหน้ากระพริบ)
         sites: [],
         siteCode: null,
@@ -458,7 +461,7 @@
         peak: { weekday: 0, now_hour: 0, weeks: 4, points: [] },
 
         async init() {
-          this.lang = this._resolveLang();
+          this.lang = this.show.lang_switch ? this._resolveLang() : "th";
           document.documentElement.lang = this.lang;
           await this.fetchSites();
           this.route();
@@ -472,7 +475,8 @@
           const m = location.hash.match(/^#site-([^/]+)(?:\/map-(.+))?$/);
           const legacyMap = location.hash.match(/^#map-(.+)$/);  // ลิงก์รูปแบบเดิม (สถานที่เดียว)
           let code = m ? decodeURIComponent(m[1]) : null;
-          const zone = m && m[2] ? decodeURIComponent(m[2]) : legacyMap ? decodeURIComponent(legacyMap[1]) : null;
+          let zone = m && m[2] ? decodeURIComponent(m[2]) : legacyMap ? decodeURIComponent(legacyMap[1]) : null;
+          if (!this.show.slot_map) zone = null;  // ปิดผังช่องจอดไว้ ลิงก์เก่าเปิดแค่หน้าสถานที่
           if (code && !this.sites.some((s) => s.code === code)) code = null;
           if (!code && !this.multiSite && this.sites.length) code = this.sites[0].code;
           if (!code) {
@@ -604,7 +608,7 @@
 
         async fetchPeak() {
           try {
-            if (!this.siteCode) return;
+            if (!this.siteCode || !this.show.peak_chart) return;
             const requested = this.siteCode;
             const resp = await fetch("/api/public/peak?site=" + encodeURIComponent(requested));
             if (resp.ok && requested === this.siteCode) this.peak = await resp.json();

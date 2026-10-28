@@ -37,6 +37,7 @@ from worker.calibration.observation import (
 from worker.capture import grab_frame
 from worker.detector import OnnxYoloxDetector
 from worker.vehicle_boxes import camera_roi, detect_vehicle_footprints
+from core.app_settings import load_health
 from worker.health import detect_camera_moved, is_health_check_due, raise_alert, resolve_alerts
 from worker.stats import maybe_prune_old_stats, maybe_record_minute_stats
 from worker.occupancy import (
@@ -136,9 +137,14 @@ def process_camera(db: Session, camera: Camera, detector: OnnxYoloxDetector) -> 
     path.parent.mkdir(parents=True, exist_ok=True)
     cv2.imencode(".jpg", frame)[1].tofile(str(path))  # FR-5: เก็บภาพล่าสุด 1 ภาพ (เขียนทับ)
 
-    if camera.reference_image_path and is_health_check_due(camera, now):
+    health = load_health(db)  # ตั้งได้ที่หน้า ตั้งค่าระบบ → ระบบและการแสดงผล
+    if not health["moved_check_enabled"]:
+        if camera.status == CameraStatus.MOVED:
+            camera.status = CameraStatus.ONLINE  # ปิดการตรวจแล้ว ไม่ค้างสถานะ "ถูกขยับ"
+        resolve_alerts(db, moved_alert_source)
+    elif camera.reference_image_path and is_health_check_due(camera, now, health["moved_check_interval_min"]):
         camera.last_health_check_at = now
-        if _check_camera_moved(camera, frame):
+        if _check_camera_moved(camera, frame, health["moved_threshold_px"]):
             camera.status = CameraStatus.MOVED
             raise_alert(
                 db, AlertLevel.WARNING, moved_alert_source,
@@ -206,13 +212,13 @@ def _process_calib_jobs(db: Session, detector: OnnxYoloxDetector, now: datetime)
         record_calib_sample(db, job, boxes, frame, now)
 
 
-def _check_camera_moved(camera: Camera, frame) -> bool:
+def _check_camera_moved(camera: Camera, frame, threshold_px: float) -> bool:
     """อ่านภาพอ้างอิงแล้วเทียบกับภาพปัจจุบัน; อ่านภาพอ้างอิงไม่ได้ถือว่ายังไม่ขยับ (ข้ามรอบนี้ไปก่อน)"""
     try:
         reference = grab_frame(camera.reference_image_path)
     except RuntimeError:
         return False
-    return detect_camera_moved(reference, frame)
+    return detect_camera_moved(reference, frame, threshold_px)
 
 
 def _update_slot_state(db: Session, slot: Slot, footprints: list, now: datetime) -> None:

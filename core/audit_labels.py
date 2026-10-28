@@ -13,6 +13,8 @@ ACTION_LABELS: dict[str, str] = {
     "mail_test": "ทดสอบส่งอีเมล",
     "update_mail_settings": "แก้ตั้งค่าอีเมล",
     "update_ip_allowlist": "แก้รายการ IP ที่อนุญาต",
+    "update_system_settings": "แก้ตั้งค่าระบบและการแสดงผล",
+    "check_cameras_now": "สั่งตรวจสถานะกล้องทันที",
     "create_camera": "เพิ่มกล้อง",
     "update_camera": "แก้ไขกล้อง",
     "update_camera_detection": "แก้ตั้งค่าตรวจจับของกล้อง",
