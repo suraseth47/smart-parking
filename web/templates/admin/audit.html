@@ -3,53 +3,83 @@
 {% block content %}
 <div x-data="auditPage()" x-init="init()">
   <div class="card" x-show="isOperator" style="margin-bottom:0.75rem;">
-    <p>หน้านี้ (Audit log) สำหรับ Admin เท่านั้น</p>
+    <p style="margin:0;">หน้านี้ (ประวัติการใช้งาน) สำหรับ Admin เท่านั้น</p>
   </div>
 
-  <template x-if="!isOperator">
+  <template x-if="ready && !isOperator">
   <div>
   <div class="card" style="margin-bottom:0.75rem;">
-    <div class="toolbar">
-      <label class="muted" style="margin:0;">กรองตาม action:</label>
-      <input type="text" x-model="actionFilter" placeholder="เช่น login, publish_layout" @change="reload()">
-      <button class="btn-secondary" @click="actionFilter=''; reload()">ล้างตัวกรอง</button>
+    <p class="muted" style="margin:0 0 0.75rem; font-size:0.88rem;">
+      บันทึกทุกการเปลี่ยนแปลงที่สำคัญ พร้อมผู้ใช้และเวลา เช่น เข้าสู่ระบบ (รวมครั้งที่ไม่สำเร็จ) แก้ไขกล้อง/ช่องจอด/โซน
+      บังคับสถานะช่อง เปลี่ยนสิทธิ์ผู้ใช้ และการส่งออกรายงาน · เวลาเป็นเวลาประเทศไทย
+    </p>
+    <div class="form-grid" style="grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); align-items:end;">
+      <div>
+        <label for="a-from">ตั้งแต่วันที่</label>
+        <input id="a-from" type="date" x-model="f.from" @change="reload()">
+      </div>
+      <div>
+        <label for="a-to">ถึงวันที่</label>
+        <input id="a-to" type="date" x-model="f.to" @change="reload()">
+      </div>
+      <div>
+        <label for="a-action">การกระทำ</label>
+        <select id="a-action" x-model="f.action" @change="reload()">
+          <option value="">ทั้งหมด</option>
+          <template x-for="a in actions" :key="a.action">
+            <option :value="a.action" x-text="a.label"></option>
+          </template>
+        </select>
+      </div>
+      <div>
+        <label for="a-user">ผู้ใช้</label>
+        <input id="a-user" type="text" x-model="f.username" @change="reload()" placeholder="ชื่อผู้ใช้ (ว่าง = ทุกคน)">
+      </div>
     </div>
+    <div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-top:0.75rem; align-items:center;">
+      <button class="btn-secondary" @click="clearFilters()">ล้างตัวกรอง</button>
+      <span style="flex:1;"></span>
+      <button @click="download('xlsx')" :disabled="!!downloading" x-text="downloading === 'xlsx' ? 'กำลังสร้างไฟล์...' : 'ส่งออก Excel'"></button>
+      <button class="btn-secondary" @click="download('csv')" :disabled="!!downloading">CSV</button>
+    </div>
+    <p class="hint">ส่งออกตามตัวกรองที่เลือก (สูงสุด 50,000 รายการต่อไฟล์)</p>
+    <p class="notice warn" x-show="error" x-text="error" style="margin:0.5rem 0 0;"></p>
   </div>
 
   <div class="card">
-    <table style="width:100%; border-collapse:collapse; font-size:0.85rem;">
+    <p class="muted" style="margin:0 0 0.5rem;" x-text="'ทั้งหมด ' + total.toLocaleString('th-TH') + ' รายการ'"></p>
+    <div class="table-scroll">
+    <table class="data-table stack-table">
       <thead>
-        <tr style="text-align:left; border-bottom:1px solid var(--color-border);">
-          <th style="padding:0.4rem;">เวลา</th>
-          <th style="padding:0.4rem;">ผู้ใช้</th>
-          <th style="padding:0.4rem;">การกระทำ</th>
-          <th style="padding:0.4rem;">เป้าหมาย</th>
-          <th style="padding:0.4rem;">รายละเอียด</th>
-        </tr>
+        <tr><th style="width:11rem;">เวลา</th><th>ผู้ใช้</th><th>การกระทำ</th><th>เป้าหมาย</th><th>รายละเอียด</th></tr>
       </thead>
       <tbody>
         <template x-for="entry in entries" :key="entry.id">
-          <tr style="border-bottom:1px solid var(--color-border);">
-            <td style="padding:0.4rem; white-space:nowrap;" x-text="formatTime(entry.ts)"></td>
-            <td style="padding:0.4rem;" x-text="entry.username || '-'"></td>
-            <td style="padding:0.4rem;" x-text="entry.action"></td>
-            <td style="padding:0.4rem;" x-text="entry.target || '-'"></td>
-            <td style="padding:0.4rem; font-family:monospace; font-size:0.75rem;" x-text="entry.detail ? JSON.stringify(entry.detail) : ''"></td>
+          <tr :style="entry.action === 'login_failed' && 'background:#fff8f1;'">
+            <td data-label="เวลา" style="white-space:nowrap;" x-text="formatTime(entry.ts)"></td>
+            <td data-label="ผู้ใช้" x-text="entry.username || '-'"></td>
+            <td data-label="การกระทำ">
+              <span x-text="entry.action_label"></span>
+              <span class="sub-text" style="font-family:ui-monospace,Consolas,monospace;" x-text="entry.action"></span>
+            </td>
+            <td data-label="เป้าหมาย" style="overflow-wrap:anywhere;" x-text="entry.target || '-'"></td>
+            <td data-label="รายละเอียด" style="font-size:0.8rem; color:var(--color-muted); overflow-wrap:anywhere;" x-text="detailText(entry.detail)"></td>
           </tr>
         </template>
       </tbody>
     </table>
+    </div>
     <p class="muted" x-show="entries.length === 0">ไม่มีรายการ</p>
 
     <div class="toolbar" style="margin-top:0.75rem;">
       <button class="btn-secondary" @click="prevPage()" :disabled="offset === 0">ก่อนหน้า</button>
-      <button class="btn-secondary" @click="nextPage()" :disabled="entries.length < limit">ถัดไป</button>
-      <span class="muted">แสดง <span x-text="offset + 1"></span>-<span x-text="offset + entries.length"></span></span>
+      <button class="btn-secondary" @click="nextPage()" :disabled="offset + entries.length >= total">ถัดไป</button>
+      <span class="muted" x-show="entries.length" x-text="'แสดง ' + (offset + 1) + '–' + (offset + entries.length)"></span>
     </div>
   </div>
   </div>
   </template>
 </div>
 
-<script src="/static/js/audit.js"></script>
+<script src="/static/js/audit.js?v=20261028"></script>
 {% endblock %}

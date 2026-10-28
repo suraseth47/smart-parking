@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from core.db import get_db
 from core.models import AuditLog, LayoutStatus, OccupancyState, Slot, SlotEvent, SlotState, Zone
+from web.site_access import ensure_slot, restrict
 from web.deps import CurrentUser, require_permission, verify_csrf
 
 router = APIRouter(prefix="/api/admin/slots", tags=["override"])
@@ -40,9 +41,10 @@ class OverrideIn(BaseModel):
 def list_slots_for_override(
     zone_id: int | None = None,
     db: Session = Depends(get_db),
-    _user: CurrentUser = Depends(require_permission("override")),
+    user: CurrentUser = Depends(require_permission("override")),
 ):
-    """รายการช่อง (ข้ามกล้อง/โซน) สำหรับเลือกทำ override — กรองตามโซนได้ (FR-34 'ทั้งโซน')"""
+    """รายการช่อง (ข้ามกล้อง/โซน) สำหรับเลือกทำ override — กรองตามโซนได้ (FR-34 'ทั้งโซน')
+    เฉพาะช่องของสถานที่ที่ผู้ใช้ดูแล"""
     query = (
         select(Slot, SlotState, Zone.code)
         .join(Zone, Zone.id == Slot.zone_id)
@@ -51,6 +53,7 @@ def list_slots_for_override(
     )
     if zone_id is not None:
         query = query.where(Slot.zone_id == zone_id)
+    query = restrict(query, Zone.site_id, user)
     rows = db.execute(query.order_by(Zone.code, Slot.code)).all()
 
     return [
@@ -81,9 +84,7 @@ def set_override(
     if data.state not in OVERRIDABLE_STATES:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "state ต้องเป็น free หรือ occupied เท่านั้น")
 
-    slot = db.get(Slot, slot_id)
-    if slot is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "ไม่พบช่องนี้")
+    slot = ensure_slot(db, user, db.get(Slot, slot_id))
 
     now = datetime.utcnow()
     state_row = db.get(SlotState, slot_id)
@@ -124,9 +125,7 @@ def clear_override(
     user: CurrentUser = Depends(require_permission("override")),
     _csrf: None = Depends(verify_csrf),
 ):
-    slot = db.get(Slot, slot_id)
-    if slot is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "ไม่พบช่องนี้")
+    slot = ensure_slot(db, user, db.get(Slot, slot_id))
 
     state_row = db.get(SlotState, slot_id)
     if state_row is None or state_row.override_state is None:

@@ -3,11 +3,12 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from core.config import local_utc_offset_hours
 from core.db import get_db
 from core.models import AuditLog, User
 from core.permissions import effective_permissions
@@ -33,7 +34,7 @@ class LoginRequest(BaseModel):
 
 
 @router.post("/login")
-def login(data: LoginRequest, response: Response, db: Session = Depends(get_db)) -> dict:
+def login(data: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)) -> dict:
     login_name = data.username.strip()
     if "@" in login_name:
         # เข้าสู่ระบบด้วยอีเมลแทนชื่อผู้ใช้ได้ (อีเมลไม่ซ้ำกันในระบบ)
@@ -44,16 +45,22 @@ def login(data: LoginRequest, response: Response, db: Session = Depends(get_db))
         status.HTTP_401_UNAUTHORIZED, "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง"
     )
 
+    client_ip = request.client.host if request.client else None
+
     if user is None or not user.is_active:
+        _audit_failed_login(db, None, login_name, client_ip, "unknown_or_inactive")
         raise invalid_credentials
 
     if user.locked_until and user.locked_until > datetime.utcnow():
+        _audit_failed_login(db, user.id, login_name, client_ip, "locked")
+        local_unlock = user.locked_until + timedelta(hours=local_utc_offset_hours())
         raise HTTPException(
             status.HTTP_423_LOCKED,
-            f"บัญชีถูกล็อกชั่วคราว กรุณาลองใหม่หลัง {user.locked_until.strftime('%H:%M')}",
+            f"บัญชีถูกล็อกชั่วคราว กรุณาลองใหม่หลัง {local_unlock.strftime('%H:%M')} น.",
         )
 
     if not verify_password(data.password, user.password_hash):
+        _audit_failed_login(db, user.id, login_name, client_ip, "wrong_password", commit=False)
         _register_failed_login(db, user)
         raise invalid_credentials
 
@@ -72,7 +79,15 @@ def logout(response: Response, _user: CurrentUser = Depends(get_current_user)) -
 
 @router.get("/whoami")
 def whoami(user: CurrentUser = Depends(get_current_user)) -> dict:
-    return {"id": user.id, "username": user.username, "role": user.role, "permissions": user.permissions}
+    return {"id": user.id, "username": user.username, "role": user.role, "permissions": user.permissions,
+            "site_ids": user.site_ids}
+
+
+def _audit_failed_login(db: Session, user_id: int | None, login_name: str, ip: str | None, reason: str, commit: bool = True) -> None:
+    """บันทึกการเข้าสู่ระบบไม่สำเร็จ (ตรวจย้อนหลังได้ว่ามีคนพยายามเดารหัสหรือไม่) — ไม่เก็บรหัสผ่านที่พิมพ์"""
+    db.add(AuditLog(user_id=user_id, action="login_failed", target=login_name[:100], detail={"ip": ip, "reason": reason}))
+    if commit:
+        db.commit()
 
 
 def _register_failed_login(db: Session, user: User) -> None:

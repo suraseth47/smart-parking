@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="referrer" content="no-referrer">
   <title>ตั้งค่าบัญชี - Smart Parking</title>
-  <link rel="stylesheet" href="/static/css/admin.css?v=20261023c">
+  <link rel="stylesheet" href="/static/css/admin.css?v=20261028c">
   <script defer src="/static/js/vendor/alpine.min.js"></script>
 </head>
 <body>
@@ -44,6 +44,9 @@
           </p>
           <p class="muted" style="margin-top:-0.25rem; font-size:0.85rem;" x-show="info.permission_labels && info.permission_labels.length">
             เมนูที่ใช้ได้: <span x-text="info.permission_labels.join(', ')"></span>
+          </p>
+          <p class="muted" style="margin-top:-0.25rem; font-size:0.85rem;" x-show="info.site_labels && info.site_labels.length">
+            สถานที่ที่ดูแล: <span x-text="info.site_labels.join(', ')"></span>
           </p>
           <p class="notice ok" x-show="info.message" style="white-space:pre-line;" x-text="'ข้อความจากผู้ดูแลระบบ: ' + (info.message || '')"></p>
           <p class="muted" style="font-size:0.85rem;" x-show="info.email && info.purpose !== 'reset'">

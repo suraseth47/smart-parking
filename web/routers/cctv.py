@@ -16,6 +16,7 @@ from core.db import get_db
 from core.models import Camera
 from web.cctv_stream import live_frames, prefer_substream
 from web.deps import CurrentUser, require_permission
+from web.site_access import ensure_camera, restrict
 
 router = APIRouter(prefix="/api/admin/cctv", tags=["cctv"])
 
@@ -29,16 +30,17 @@ class CctvCameraOut(BaseModel):
 
 
 @router.get("/cameras", response_model=list[CctvCameraOut])
-def list_cctv_cameras(db: Session = Depends(get_db), _user: CurrentUser = Depends(require_permission("cctv"))):
-    cameras = db.scalars(select(Camera).where(Camera.enabled.is_(True)).order_by(Camera.id)).all()
+def list_cctv_cameras(db: Session = Depends(get_db), user: CurrentUser = Depends(require_permission("cctv"))):
+    query = restrict(select(Camera).where(Camera.enabled.is_(True)), Camera.site_id, user)
+    cameras = db.scalars(query.order_by(Camera.id)).all()
     return [{"id": c.id, "name": c.name, "status": c.status.value} for c in cameras]
 
 
 @router.get("/{camera_id}/frame")
-def get_cctv_frame(camera_id: int, db: Session = Depends(get_db), _user: CurrentUser = Depends(require_permission("cctv"))):
+def get_cctv_frame(camera_id: int, db: Session = Depends(get_db), user: CurrentUser = Depends(require_permission("cctv"))):
     """ภาพล่าสุดของกล้อง (JPEG) — ถ้าดึงภาพสดไม่ได้จะใช้ภาพล่าสุดที่ worker เก็บไว้แทน"""
-    camera = db.get(Camera, camera_id)
-    if camera is None or not camera.enabled:
+    camera = ensure_camera(user, db.get(Camera, camera_id))
+    if not camera.enabled:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "ไม่พบกล้องนี้")
 
     try:

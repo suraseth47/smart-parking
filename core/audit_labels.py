@@ -1,0 +1,48 @@
+"""ชื่อภาษาไทยของการกระทำใน Audit log (ใช้ทั้งหน้าเว็บและไฟล์ส่งออก)"""
+from __future__ import annotations
+
+ACTION_LABELS: dict[str, str] = {
+    "login": "เข้าสู่ระบบ",
+    "login_failed": "เข้าสู่ระบบไม่สำเร็จ",
+    "create_user": "เพิ่มผู้ใช้",
+    "update_user": "แก้ไขผู้ใช้/สิทธิ์",
+    "create_invitation": "สร้างคำเชิญ",
+    "revoke_invitation": "ยกเลิกคำเชิญ",
+    "accept_invitation": "ตอบรับคำเชิญ (สร้างบัญชี)",
+    "password_reset_done": "ตั้งรหัสผ่านใหม่",
+    "mail_test": "ทดสอบส่งอีเมล",
+    "update_mail_settings": "แก้ตั้งค่าอีเมล",
+    "update_ip_allowlist": "แก้รายการ IP ที่อนุญาต",
+    "create_camera": "เพิ่มกล้อง",
+    "update_camera": "แก้ไขกล้อง",
+    "update_camera_detection": "แก้ตั้งค่าตรวจจับของกล้อง",
+    "enable_camera": "เปิดใช้งานกล้อง",
+    "disable_camera": "ปิดใช้งานกล้อง",
+    "delete_camera": "ลบกล้อง",
+    "realign_camera": "Re-align ช่องจอดของกล้อง",
+    "save_draft_layout": "บันทึกร่างผังช่องจอด",
+    "publish_layout": "Publish ผังช่องจอด",
+    "create_site": "เพิ่มสถานที่",
+    "update_site": "แก้ไขสถานที่",
+    "delete_site": "ลบสถานที่",
+    "create_password_reset": "ออกลิงก์ตั้งรหัสผ่านใหม่",
+    "create_zone": "เพิ่มโซน",
+    "update_zone": "แก้ไขโซน",
+    "delete_zone": "ลบโซน",
+    "close_zone": "ปิดโซนชั่วคราว",
+    "reopen_zone": "เปิดโซนคืน",
+    "override_slot": "บังคับสถานะช่อง (Override)",
+    "cancel_override_slot": "ยกเลิก Override",
+    "create_calib_job": "เริ่มช่วยวาดช่องอัตโนมัติ",
+    "cancel_calib_job": "ยกเลิกช่วยวาดช่องอัตโนมัติ",
+    "accept_proposal": "รับช่องที่ระบบเสนอ",
+    "reject_proposal": "ไม่รับช่องที่ระบบเสนอ",
+    "resolve_alert": "รับทราบการแจ้งเตือน",
+    "export_report": "ส่งออกรายงาน",
+    "backup_now": "สำรองฐานข้อมูลทันที",
+    "export_audit": "ส่งออกประวัติการใช้งาน",
+}
+
+
+def action_label(action: str) -> str:
+    return ACTION_LABELS.get(action, action)

@@ -36,7 +36,8 @@ class LayoutEditor {
     const camera = await apiJson(`/api/admin/cameras/${this.cameraId}`);
     document.getElementById("camera-name").textContent = `กล้อง: ${camera.name}`;
 
-    this.zones = await apiJson("/api/admin/zones");
+    // เฉพาะโซนของสถานที่เดียวกับกล้อง (TOR 4.6: ช่องจอดผูกข้ามสถานที่ไม่ได้)
+    this.zones = await apiJson(camera.site_id ? `/api/admin/zones?site_id=${camera.site_id}` : "/api/admin/zones");
     this._fillZoneSelect(document.getElementById("default-zone"));
     this._fillZoneSelect(document.getElementById("sel-zone"));
 

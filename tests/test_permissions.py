@@ -4,7 +4,7 @@ from core.permissions import ALL_KEYS, effective_permissions, has_any_permission
 
 def test_role_defaults():
     assert effective_permissions("admin", None) == list(ALL_KEYS)
-    assert effective_permissions("operator", None) == ["live", "cctv", "override", "reports"]
+    assert effective_permissions("operator", None) == ["live", "cctv", "override", "alerts", "reports", "zones"]
     assert effective_permissions("viewer", None) == ["live", "reports"]
     assert effective_permissions("unknown", None) == []
 
@@ -20,7 +20,7 @@ def test_admin_always_full():
 
 
 def test_normalize_stores_none_when_full():
-    assert normalize_permissions("operator", ["live", "cctv", "override", "reports"]) is None
+    assert normalize_permissions("operator", ["live", "cctv", "override", "alerts", "reports", "zones"]) is None
     assert normalize_permissions("operator", ["reports", "live", "users"]) == ["live", "reports"]
     assert normalize_permissions("viewer", None) is None
 

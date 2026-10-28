@@ -104,6 +104,7 @@
 | กึ่งออโต้ (เส้นช่อง) | OpenCV (CLAHE, Canny, HoughLinesP) | |
 | Reverse proxy | Caddy 2 | HTTPS อัตโนมัติ |
 | Deploy | Docker Compose | ติดตั้งซ้ำหลาย site ง่าย |
+| ส่งออกรายงาน Excel | openpyxl (MIT) | สร้างไฟล์ .xlsx ตาม TOR 4.5 (เพิ่ม 2026-10-28) |
 | Test | pytest | |
 
 > ⚠️ **License โมเดล:** Ultralytics YOLO (v8/11) ใช้ง่ายที่สุดแต่เป็น **AGPL-3.0** — ถ้านำระบบไปขาย/ติดตั้งให้ลูกค้าโดยไม่เปิดซอร์สทั้งระบบ ต้องซื้อ Enterprise License จึงออกแบบให้ใช้โมเดล License แบบ Apache-2.0 (เช่น YOLOX) ผ่าน ONNX และแยก `Detector` เป็น interface เพื่อสลับโมเดลได้ภายหลัง (**ต้องตัดสินใจ D-1**)

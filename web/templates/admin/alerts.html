@@ -1,0 +1,161 @@
+{% extends "admin/base.html" %}
+{% block title %}การแจ้งเตือน{% endblock %}
+{% block content %}
+<div x-data="alertsPage()" x-init="init()">
+  <div class="card" x-show="forbidden" style="margin-bottom:1rem;">
+    <p style="margin:0;">บัญชีนี้ไม่มีสิทธิ์ดูการแจ้งเตือน ติดต่อผู้ดูแลระบบ</p>
+  </div>
+
+  <template x-if="ready && !forbidden">
+  <div>
+    <div class="card" style="margin-bottom:1rem; display:flex; flex-wrap:wrap; gap:0.75rem; align-items:center; justify-content:space-between;">
+      <div style="flex:1 1 320px;">
+        <h2 style="margin:0 0 0.25rem;">การแจ้งเตือน</h2>
+        <p class="muted" style="margin:0; font-size:0.88rem;">
+          ระบบแจ้งเตือนอัตโนมัติเมื่อกล้องขาดการเชื่อมต่อ กล้องถูกขยับ หรือระบบทำงานผิดปกติ
+          และปิดแจ้งเตือนให้เองเมื่อกลับมาปกติ · รีเฟรชทุก 30 วินาที
+        </p>
+      </div>
+      <div class="tab-bar" role="tablist" style="margin:0;">
+        <button type="button" role="tab" :class="tab === 'open' && 'active'" @click="go('open')">
+          ยังไม่แก้ไข <span x-text="'(' + (openAlerts.length + system.length) + ')'"></span>
+        </button>
+        <button type="button" role="tab" :class="tab === 'history' && 'active'" @click="go('history')">ประวัติ 30 วัน</button>
+      </div>
+    </div>
+
+    <p class="notice warn" x-show="pageError" x-text="pageError" style="margin:0 0 1rem;"></p>
+
+    <!-- ปัญหาของระบบ (คำนวณสด ไม่ต้องกดรับทราบ) -->
+    <template x-if="tab === 'open'">
+      <div>
+        <template x-for="w in system" :key="w.key">
+          <div class="alert-row" :class="w.level">
+            <span class="alert-icon" aria-hidden="true" x-text="w.level === 'error' ? '⛔' : '⚠'"></span>
+            <div style="flex:1;">
+              <div class="alert-title">ระบบทำงานผิดปกติ</div>
+              <div x-text="w.message"></div>
+              <div class="sub-text">ข้อความนี้หายเองเมื่อแก้ไขแล้ว — ตรวจด้วยคำสั่ง <code>docker compose ps</code> และ <code>docker compose logs worker</code></div>
+            </div>
+          </div>
+        </template>
+
+        <div class="card" x-show="!openAlerts.length && !system.length" style="text-align:center; padding:2rem 1rem;">
+          <div style="font-size:2rem;" aria-hidden="true">✅</div>
+          <p style="margin:0.25rem 0 0; font-weight:600;">ทุกกล้องและระบบทำงานปกติ</p>
+          <p class="muted" style="margin:0.25rem 0 0; font-size:0.88rem;" x-text="'ตรวจล่าสุด ' + checkedAt"></p>
+        </div>
+
+        <template x-for="a in openAlerts" :key="a.id">
+          <div class="alert-row" :class="a.level">
+            <span class="alert-icon" aria-hidden="true" x-text="icon(a)"></span>
+            <div style="flex:1; min-width:0;">
+              <div class="alert-title" x-text="kindLabel(a)"></div>
+              <div x-text="a.message" style="overflow-wrap:anywhere;"></div>
+              <div class="sub-text" x-text="'เริ่ม ' + fmt(a.created_at) + ' · ' + ago(a.created_at)"></div>
+              <div class="sub-text" x-show="a.kind === 'connection'">ตรวจไฟเลี้ยงกล้อง สาย LAN/PoE และ IP กล้อง — ช่องจอดของกล้องนี้แสดงเป็น "ไม่ทราบสถานะ" จนกว่าจะเชื่อมต่อได้</div>
+              <div class="sub-text" x-show="a.kind === 'moved'">ช่องจอดของกล้องนี้แสดงเป็น "ไม่ทราบสถานะ" จนกว่าจะ Re-align หรือยืนยันว่ากล้องกลับมาตำแหน่งเดิม</div>
+            </div>
+            <div class="cell-actions" style="align-self:center;">
+              <a class="btn btn-secondary" x-show="isAdmin && a.camera_id" :href="'/admin#camera-' + a.camera_id"
+                 x-text="a.kind === 'moved' ? 'ไป Re-align' : 'ดูกล้อง'"></a>
+              <button class="btn-secondary" x-show="canResolve" @click="resolve(a)" :disabled="busy">รับทราบ</button>
+            </div>
+          </div>
+        </template>
+        <p class="hint" x-show="openAlerts.length && canResolve">
+          "รับทราบ" = ซ่อนแจ้งเตือนนี้ ถ้าปัญหายังอยู่ ระบบจะไม่แจ้งเรื่องเดิมซ้ำภายใน 1 ชั่วโมง
+        </p>
+      </div>
+    </template>
+
+    <template x-if="tab === 'history'">
+      <div class="card">
+        <p class="muted" x-show="!history.length" style="margin:0;">ไม่มีการแจ้งเตือนในช่วง 30 วัน</p>
+        <div class="table-scroll" x-show="history.length">
+          <table class="data-table stack-table">
+            <thead><tr><th>ระดับ</th><th>เรื่อง</th><th>เริ่ม</th><th>ปิดเมื่อ</th><th>ใช้เวลา</th></tr></thead>
+            <tbody>
+              <template x-for="a in history" :key="a.id">
+                <tr>
+                  <td data-label="ระดับ"><span class="state-tag" :class="levelClass(a)" x-text="levelLabel(a)"></span></td>
+                  <td data-label="เรื่อง"><b x-text="kindLabel(a)"></b><span class="sub-text" x-text="a.message" style="overflow-wrap:anywhere;"></span></td>
+                  <td data-label="เริ่ม" x-text="fmt(a.created_at)"></td>
+                  <td data-label="ปิดเมื่อ">
+                    <span x-text="a.resolved_at ? fmt(a.resolved_at) : 'ยังไม่แก้ไข'"></span>
+                  </td>
+                  <td data-label="ใช้เวลา" x-text="a.resolved_at ? duration(a.created_at, a.resolved_at) : '–'"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </template>
+  </div>
+  </template>
+</div>
+
+<script>
+  function alertsPage() {
+    const asDate = (iso) => new Date(iso.endsWith("Z") ? iso : iso + "Z");
+    return {
+      ready: false, forbidden: false, isAdmin: false, canResolve: false,
+      tab: "open", openAlerts: [], history: [], system: [], checkedAt: "", busy: false, pageError: "",
+
+      async init() {
+        const user = await requireAuth();
+        if (!user) return;
+        const perms = user.permissions || [];
+        this.isAdmin = user.role === "admin";
+        this.forbidden = !this.isAdmin && !perms.includes("alerts");
+        this.canResolve = this.isAdmin || ["alerts", "override", "cameras"].some((k) => perms.includes(k));
+        if (location.hash === "#history") this.tab = "history";
+        this.ready = true;
+        if (this.forbidden) return;
+        await this.load();
+        setInterval(() => this.load(), 30000);
+      },
+      go(tab) { this.tab = tab; history.replaceState(null, "", tab === "history" ? "#history" : location.pathname); this.load(); },
+      async load() {
+        try {
+          const [open, summary] = await Promise.all([apiJson("/api/admin/alerts"), apiJson("/api/admin/alerts/summary")]);
+          this.openAlerts = open; this.system = summary.system;
+          if (this.tab === "history") this.history = await apiJson("/api/admin/alerts?include_resolved=true");
+          this.checkedAt = new Date().toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" }) + " น.";
+          this.pageError = "";
+          document.dispatchEvent(new CustomEvent("alerts-changed"));
+        } catch (e) {
+          this.pageError = "โหลดการแจ้งเตือนไม่สำเร็จ: " + e.message;
+        }
+      },
+      async resolve(a) {
+        this.busy = true;
+        try {
+          await apiJson(`/api/admin/alerts/${a.id}/resolve`, { method: "POST" });
+          await this.load();
+        } catch (e) {
+          this.pageError = "รับทราบไม่สำเร็จ: " + e.message;
+        } finally { this.busy = false; }
+      },
+      kindLabel(a) {
+        return { connection: "กล้องขาดการเชื่อมต่อ", moved: "กล้องอาจถูกขยับ / เปลี่ยนมุม" }[a.kind] || "ระบบแจ้งเตือน";
+      },
+      icon(a) { return a.kind === "connection" ? "📵" : a.kind === "moved" ? "↔" : (a.level === "error" ? "⛔" : "⚠"); },
+      levelLabel(a) { return { error: "ร้ายแรง", warning: "เตือน", info: "แจ้งให้ทราบ" }[a.level] || a.level; },
+      levelClass(a) { return a.resolved_at ? "inactive" : (a.level === "error" ? "locked" : "pending"); },
+      fmt(iso) {
+        return asDate(iso).toLocaleString("th-TH", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) + " น.";
+      },
+      ago(iso) { return "ผ่านมา " + this.duration(iso, new Date().toISOString()); },
+      duration(from, to) {
+        const mins = Math.max(0, Math.round((asDate(to) - asDate(from)) / 60000));
+        if (mins < 60) return mins + " นาที";
+        const h = Math.floor(mins / 60);
+        if (h < 48) return h + " ชม. " + (mins % 60) + " นาที";
+        return Math.floor(h / 24) + " วัน";
+      },
+    };
+  }
+</script>
+{% endblock %}

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}หลังบ้าน{% endblock %} - Smart Parking · NASLINK</title>
-  <link rel="stylesheet" href="/static/css/admin.css?v=20261023c">
+  <link rel="stylesheet" href="/static/css/admin.css?v=20261028c">
   <script defer src="/static/js/vendor/alpine.min.js"></script>
   <script src="/static/js/api.js"></script>
   {% block head %}{% endblock %}
@@ -15,13 +15,16 @@
      การซ่อนเมนูเป็นแค่ความสะดวก — สิทธิ์จริงตรวจที่ API ทุกครั้ง #}
   {% set nav_groups = [
     ("การใช้งาน · Operations", [
+      ("/admin/sites", "ภาพรวมทุกสถานที่", "All Sites", ["/admin/sites"], "sites", "live"),
       ("/admin/live", "สถานะช่องจอดสด", "Live Status", ["/admin/live"], "live", "live"),
       ("/admin/cctv", "กล้องวงจรปิด", "CCTV Monitor", ["/admin/cctv"], "cctv", "cctv"),
       ("/admin/override", "แก้สถานะช่องด้วยมือ", "Manual Override", ["/admin/override"], "override", "override"),
+      ("/admin/alerts", "การแจ้งเตือน", "Alerts", ["/admin/alerts"], "bell", "alerts"),
       ("/admin/reports", "รายงานและสถิติ", "Reports", ["/admin/reports"], "reports", "reports"),
     ]),
     ("ตั้งค่าระบบ · Settings", [
       ("/admin", "กล้องและช่องจอด", "Cameras & Slots", ["/admin", "/admin/layout"], "camera", "cameras"),
+      ("/admin/zones", "โซนและการปิดโซน", "Zones", ["/admin/zones"], "zones", "zones"),
       ("/admin/calibration", "ช่วยวาดช่องอัตโนมัติ", "Auto Slot Setup", ["/admin/calibration"], "auto", "calibration"),
       ("/admin/validation", "ทดสอบความแม่นยำ", "Accuracy Test", ["/admin/validation"], "check", "validation"),
       ("/admin/users", "ผู้ใช้และสิทธิ์", "Users & Access", ["/admin/users"], "users", "users"),
@@ -34,6 +37,9 @@
     "cctv": '<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/>',
     "override": '<path d="M12 3v4M12 17v4M3 12h4M17 12h4"/><circle cx="12" cy="12" r="4"/>',
     "reports": '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+    "sites": '<path d="M12 21s-7-6.1-7-11.5A7 7 0 0 1 19 9.5C19 14.9 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>',
+    "bell": '<path d="M6 16V11a6 6 0 1 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
+    "zones": '<path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/>',
     "camera": '<path d="M3 7h3l2-3h8l2 3h3v12H3z"/><circle cx="12" cy="13" r="3.5"/>',
     "auto": '<path d="M12 3l2.5 5 5.5.8-4 3.9.9 5.5L12 15.6 7.1 18.2l.9-5.5-4-3.9 5.5-.8z"/>',
     "check": '<path d="M9 12l2 2 4-4"/><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/>',
@@ -92,6 +98,11 @@
         </button>
         <h1 class="main-title">{% block page_title %}{{ self.title() }}{% endblock %}</h1>
         <div class="header-actions">
+          <a href="/admin/alerts" class="link-btn bell-btn" id="alert-bell" hidden aria-label="การแจ้งเตือน">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16V11a6 6 0 1 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>
+            <span>แจ้งเตือน</span>
+            <span class="bell-count" id="alert-count" hidden>0</span>
+          </a>
           <button type="button" class="link-btn" onclick="location.reload()">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg>
             <span>Refresh</span>
@@ -109,6 +120,26 @@
   </div>
 
   <script>
+    // กระดิ่งแจ้งเตือนที่หัวเว็บ: นับแจ้งเตือนที่ยังไม่แก้ (ดึงทุก 60 วินาที / ทันทีเมื่อหน้าแจ้งเตือนเปลี่ยน)
+    function startAlertBell() {
+      const bell = document.getElementById("alert-bell");
+      const count = document.getElementById("alert-count");
+      bell.hidden = false;
+      async function refresh() {
+        try {
+          const resp = await fetch("/api/admin/alerts/summary", { credentials: "same-origin" });
+          if (!resp.ok) return;
+          const data = await resp.json();
+          count.hidden = data.open_count === 0;
+          count.textContent = data.open_count > 99 ? "99+" : String(data.open_count);
+          count.classList.toggle("error", data.error_count > 0);
+          bell.title = data.open_count ? `มีแจ้งเตือนที่ยังไม่แก้ ${data.open_count} รายการ` : "ไม่มีแจ้งเตือน";
+        } catch (e) { /* ไม่เป็นไร รอบหน้าลองใหม่ */ }
+      }
+      refresh();
+      setInterval(refresh, 60000);
+      document.addEventListener("alerts-changed", refresh);
+    }
     function toggleSidebar(open) {
       document.body.classList.toggle("sidebar-open", open);
     }
@@ -131,6 +162,7 @@
           group.hidden = !group.querySelector("[data-perm]:not([hidden])");
         });
         window.currentUser = user;
+        if (perms.includes("alerts")) startAlertBell();
         document.dispatchEvent(new CustomEvent("user-loaded", { detail: user }));
       } catch (e) {
         // ไม่เป็นไร หน้ายังใช้งานได้

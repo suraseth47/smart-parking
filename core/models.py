@@ -12,7 +12,7 @@ from __future__ import annotations
 import enum
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, func
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, func
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -82,6 +82,8 @@ class User(Base):
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # สิทธิ์รายเมนู: None = ทุกเมนูตามบทบาท, list = เฉพาะเมนูที่ติ๊ก (ดู core/permissions.py)
     permissions: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # สถานที่ที่ดูแลได้ (TOR 4.6): None = ทุกสถานที่, list[int] = เฉพาะ site id ในรายการ (Admin เห็นทุกแห่งเสมอ)
+    site_ids: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
 
 class Invitation(Base):
@@ -98,6 +100,7 @@ class Invitation(Base):
     full_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     permissions: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    site_ids: Mapped[list | None] = mapped_column(JSON, nullable=True)
     method: Mapped[str] = mapped_column(String(10), default="link")  # "email" | "link" วิธีที่ Admin ส่ง
     message: Mapped[str | None] = mapped_column(String(500), nullable=True)  # ข้อความถึงผู้รับ
     email_status: Mapped[str | None] = mapped_column(String(10), nullable=True)  # "sent" | "failed" | None=ไม่ได้ส่งเอง
@@ -112,11 +115,33 @@ class Invitation(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
-class Zone(Base):
-    __tablename__ = "zones"
+class Site(Base):
+    """สถานที่จอดรถ 1 แห่ง (TOR 4.6): สถานที่ -> โซน -> ช่องจอด, ติดกล้องได้หลายตัว"""
+
+    __tablename__ = "sites"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     code: Mapped[str] = mapped_column(String(20), unique=True, index=True)
+    name_th: Mapped[str] = mapped_column(String(100))
+    name_en: Mapped[str] = mapped_column(String(100))
+    address: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    opening_hours: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    is_public: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    zones: Mapped[list["Zone"]] = relationship(back_populates="site")
+
+
+class Zone(Base):
+    __tablename__ = "zones"
+    # รหัสโซนไม่ซ้ำ "ภายในสถานที่เดียวกัน" (แต่ละแห่งมีโซน A ของตัวเองได้)
+    __table_args__ = (Index("ix_zones_site_code", "site_id", "code", unique=True),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    site_id: Mapped[int | None] = mapped_column(ForeignKey("sites.id"), nullable=True, index=True)
+    code: Mapped[str] = mapped_column(String(20), index=True)
     name_th: Mapped[str] = mapped_column(String(100))
     name_en: Mapped[str] = mapped_column(String(100))
     floor: Mapped[str | None] = mapped_column(String(20), nullable=True)
@@ -127,12 +152,14 @@ class Zone(Base):
     closed_note: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     slots: Mapped[list["Slot"]] = relationship(back_populates="zone")
+    site: Mapped["Site | None"] = relationship(back_populates="zones")
 
 
 class Camera(Base):
     __tablename__ = "cameras"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    site_id: Mapped[int | None] = mapped_column(ForeignKey("sites.id"), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(100))
     brand: Mapped[CameraBrand] = mapped_column(SAEnum(CameraBrand, native_enum=False, length=20))
     host: Mapped[str] = mapped_column(String(100))
@@ -169,9 +196,11 @@ class Camera(Base):
 
 class Slot(Base):
     __tablename__ = "slots"
+    # รหัสช่องไม่ซ้ำภายในโซน (DB) + ไม่ซ้ำภายในสถานที่ (ตรวจที่ API ตอนบันทึกผัง)
+    __table_args__ = (Index("ix_slots_zone_code", "zone_id", "code", unique=True),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    code: Mapped[str] = mapped_column(String(20), unique=True, index=True)
+    code: Mapped[str] = mapped_column(String(20), index=True)
     camera_id: Mapped[int] = mapped_column(ForeignKey("cameras.id"))
     zone_id: Mapped[int] = mapped_column(ForeignKey("zones.id"))
     type: Mapped[SlotType] = mapped_column(
@@ -285,6 +314,8 @@ class Alert(Base):
     message: Mapped[str] = mapped_column(String(500))
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # None = ระบบปิดเองเพราะกลับมาปกติ, มีค่า = เจ้าหน้าที่กด "รับทราบ" (user id)
+    resolved_by: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class ValidationJobStatus(str, enum.Enum):

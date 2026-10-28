@@ -3,51 +3,141 @@
 {% block head %}
 <script src="/static/js/vendor/chart.umd.min.js"></script>
 <style>
-  .heatmap-table { border-collapse: collapse; font-size: 0.7rem; }
-  .heatmap-table th, .heatmap-table td { padding: 2px 4px; text-align: center; }
+  .heatmap-table { border-collapse: collapse; font-size: 0.72rem; }
+  .heatmap-table th, .heatmap-table td { padding: 2px 3px; text-align: center; }
   .heatmap-table th { color: var(--color-muted); font-weight: 400; }
-  .heatmap-cell { width: 22px; height: 22px; border-radius: 3px; }
-  .chart-wrap { max-width: 900px; }
+  .heatmap-table th.dow { text-align: right; padding-right: 6px; white-space: nowrap; }
+  .heatmap-cell { width: 24px; height: 22px; border-radius: 3px; font-size: 0.62rem; line-height: 22px; color: #1f2937; }
+  .heatmap-cell.empty { background: repeating-linear-gradient(135deg, #f1f3f7 0 3px, #fff 3px 6px); }
+  .heat-legend { display: flex; align-items: center; gap: 0.5rem; font-size: 0.78rem; color: var(--color-muted); margin-top: 0.5rem; }
+  .heat-legend .bar { width: 160px; height: 10px; border-radius: 999px; background: linear-gradient(90deg, rgb(220,252,231), rgb(254,240,138), rgb(248,113,113)); }
+  .chart-wrap { max-width: 960px; }
+  .report-controls { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: flex-end; }
+  .report-controls > div { display: flex; flex-direction: column; }
+  .report-controls label { margin: 0 0 0.2rem; }
+  .report-controls select, .report-controls input { margin: 0; width: auto; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 0.6rem; margin-top: 0.75rem; }
+  .kpi { background: #f6f8fc; border-radius: 10px; padding: 0.6rem 0.8rem; }
+  .kpi b { display: block; font-size: 1.35rem; }
+  .kpi span { font-size: 0.78rem; color: var(--color-muted); }
+  .print-head { display: none; }
+  @media print {
+    @page { size: A4 portrait; margin: 12mm; }
+    body { background: #fff !important; }
+    .sidebar, .sidebar-backdrop, .main-header, .no-print { display: none !important; }
+    .app, .main, .page { display: block !important; padding: 0 !important; margin: 0 !important; }
+    .card { box-shadow: none !important; border: 1px solid #d5dbe6 !important; break-inside: avoid; margin-bottom: 8mm !important; }
+    .print-head { display: block; margin-bottom: 6mm; }
+    .print-head h1 { font-size: 18pt; margin: 0; }
+    .print-head p { margin: 2pt 0; font-size: 10pt; color: #4b5565; }
+    input, select { border: 0 !important; background: none !important; padding: 0 !important; -webkit-appearance: none; appearance: none; }
+    .heatmap-cell { -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 20px; height: 15px; line-height: 15px; font-size: 6pt; }
+    .heatmap-table { width: 100%; font-size: 6.5pt; }
+    .heatmap-table th, .heatmap-table td { padding: 1px; }
+    [style*="overflow-x:auto"] { overflow: visible !important; }
+    .chart-wrap canvas { max-width: 100% !important; height: auto !important; }
+  }
 </style>
 {% endblock %}
 {% block content %}
 <div x-data="reportsPage()" x-init="init()">
+  <!-- หัวรายงานตอนพิมพ์ / บันทึกเป็น PDF -->
+  <div class="print-head">
+    <h1>รายงานอัตราการใช้งานลานจอดรถ</h1>
+    <p x-text="'โซน ' + zoneName() + ' · ช่วงข้อมูล ' + thaiDate(dailyFrom) + ' ถึง ' + thaiDate(dailyTo)"></p>
+    <p x-text="'พิมพ์เมื่อ ' + new Date().toLocaleString('th-TH', { dateStyle: 'long', timeStyle: 'short' }) + ' น. · เวลาในรายงานเป็นเวลาประเทศไทย'"></p>
+  </div>
+
   <div class="card" style="margin-bottom:0.75rem;">
-    <label class="muted" style="margin:0;">โซน</label>
-    <select x-model="zoneId" @change="loadAll()">
-      <template x-for="z in zones" :key="z.id">
-        <option :value="z.id" x-text="z.code + ' - ' + z.name_th"></option>
-      </template>
-    </select>
+    <div class="report-controls">
+      <div>
+        <label for="r-zone" class="muted">โซน</label>
+        <select id="r-zone" x-model="zoneId" @change="loadAll()">
+          <template x-for="z in zones" :key="z.id">
+            <option :value="z.id" x-text="zoneLabel(z)"></option>
+          </template>
+        </select>
+      </div>
+      <div>
+        <label for="r-from" class="muted">ช่วงวันที่ จาก</label>
+        <input id="r-from" type="date" x-model="dailyFrom" @change="loadDaily()">
+      </div>
+      <div>
+        <label for="r-to" class="muted">ถึง</label>
+        <input id="r-to" type="date" x-model="dailyTo" @change="loadDaily()">
+      </div>
+      <div class="no-print" style="flex-direction:row; gap:0.4rem; flex-wrap:wrap;">
+        <button type="button" class="chip" @click="preset(7)">7 วัน</button>
+        <button type="button" class="chip" @click="preset(30)">30 วัน</button>
+        <button type="button" class="chip" @click="presetMonth(0)">เดือนนี้</button>
+        <button type="button" class="chip" @click="presetMonth(-1)">เดือนที่แล้ว</button>
+      </div>
+    </div>
+    <div class="kpis" x-show="summary">
+      <div class="kpi"><span>อัตราใช้งานเฉลี่ยช่วงนี้</span><b x-text="summary ? summary.avg + '%' : ''"></b></div>
+      <div class="kpi"><span>สูงสุดในช่วงนี้</span><b x-text="summary ? summary.max + '%' : ''"></b></div>
+      <div class="kpi"><span>วันที่ใช้งานมากที่สุด</span><b style="font-size:1rem;" x-text="summary ? summary.busiest : ''"></b></div>
+      <div class="kpi"><span>จำนวนวันที่มีข้อมูล</span><b x-text="summary ? summary.days + ' วัน' : ''"></b></div>
+    </div>
     <p class="error-text" x-show="error" x-text="error"></p>
   </div>
 
-  <div class="card" style="margin-bottom:0.75rem;">
-    <h3 style="margin-top:0;">รายชั่วโมง</h3>
-    <label class="muted" style="margin:0;">วันที่</label>
-    <input type="date" x-model="hourlyDate" @change="loadHourly()">
-    <div class="chart-wrap"><canvas id="hourly-chart" height="90"></canvas></div>
+  <!-- ส่งออกรายงาน -->
+  <div class="card no-print" style="margin-bottom:0.75rem;">
+    <h3 style="margin-top:0;">ส่งออกรายงาน</h3>
+    <div class="report-controls">
+      <div>
+        <label for="x-scope" class="muted">ขอบเขต</label>
+        <select id="x-scope" x-model="exportScope">
+          <option value="all" x-text="sites.length > 1 ? 'ทุกสถานที่ ทุกโซน' : 'ทุกโซน'"></option>
+          <option value="zone" x-text="'เฉพาะโซน ' + zoneName()"></option>
+        </select>
+      </div>
+      <div style="flex-direction:row; gap:0.5rem; flex-wrap:wrap;">
+        <button @click="download('xlsx')" :disabled="!!downloading" x-text="downloading === 'xlsx' ? 'กำลังสร้างไฟล์...' : 'ดาวน์โหลด Excel (.xlsx)'"></button>
+        <button class="btn-secondary" @click="download('csv')" :disabled="!!downloading" x-text="downloading === 'csv' ? 'กำลังสร้างไฟล์...' : 'CSV'"></button>
+        <button class="btn-secondary" @click="printReport()">พิมพ์ / บันทึกเป็น PDF</button>
+      </div>
+    </div>
+    <p class="hint" style="margin-top:0.5rem;">
+      ใช้ช่วงวันที่ด้านบน (ไม่เกิน 400 วัน) · Excel มี 4 แผ่นงาน: สรุปรายโซน, รายวัน, รายชั่วโมง และ Heatmap ·
+      CSV เป็นข้อมูลรายชั่วโมงสำหรับนำไปวิเคราะห์ต่อ · PDF: กด "พิมพ์" แล้วเลือกเครื่องพิมพ์ "บันทึกเป็น PDF"
+    </p>
+    <p class="notice warn" x-show="exportError" x-text="exportError" style="margin:0.5rem 0 0;"></p>
   </div>
 
   <div class="card" style="margin-bottom:0.75rem;">
-    <h3 style="margin-top:0;">รายวัน</h3>
-    <label class="muted" style="margin:0;">จาก</label>
-    <input type="date" x-model="dailyFrom" @change="loadDaily()">
-    <label class="muted" style="margin:0;">ถึง</label>
-    <input type="date" x-model="dailyTo" @change="loadDaily()">
+    <h3 style="margin-top:0;">อัตราการใช้งานรายวัน</h3>
     <div class="chart-wrap"><canvas id="daily-chart" height="90"></canvas></div>
+    <p class="muted" x-show="dailyEmpty" style="margin:0.5rem 0 0;">ไม่มีข้อมูลในช่วงวันที่นี้</p>
+  </div>
+
+  <div class="card" style="margin-bottom:0.75rem;">
+    <div class="report-controls" style="justify-content:space-between;">
+      <h3 style="margin:0;">อัตราการใช้งานรายชั่วโมง</h3>
+      <div>
+        <label for="r-day" class="muted">วันที่</label>
+        <input id="r-day" type="date" x-model="hourlyDate" @change="loadHourly()">
+      </div>
+    </div>
+    <div class="chart-wrap" style="margin-top:0.5rem;"><canvas id="hourly-chart" height="90"></canvas></div>
   </div>
 
   <div class="card">
-    <h3 style="margin-top:0;">Heatmap — ช่วงเวลาที่คนมากสุดเฉลี่ยตามวันในสัปดาห์</h3>
-    <label class="muted" style="margin:0;">ย้อนหลัง (สัปดาห์)</label>
-    <input type="number" x-model.number="heatmapWeeks" min="1" max="52" style="width:80px;" @change="loadHeatmap()">
+    <div class="report-controls" style="justify-content:space-between;">
+      <h3 style="margin:0;">แผนภาพความหนาแน่น (Heatmap) ตามวันในสัปดาห์และช่วงเวลา</h3>
+      <div>
+        <label for="r-weeks" class="muted">ย้อนหลัง (สัปดาห์)</label>
+        <input id="r-weeks" type="number" x-model.number="heatmapWeeks" min="1" max="104" style="width:90px;" @change="loadHeatmap()">
+      </div>
+    </div>
     <div style="overflow-x:auto; margin-top:0.75rem;">
       <table class="heatmap-table" id="heatmap-table"></table>
     </div>
-    <p class="muted" style="margin-top:0.5rem;">สีเข้ม = ใช้งานเยอะ, ช่องว่าง = ยังไม่มีข้อมูล</p>
+    <div class="heat-legend"><span>ว่าง</span><span class="bar"></span><span>หนาแน่น</span>
+      <span style="margin-left:1rem;">ตัวเลข = อัตราใช้งานเฉลี่ย (%) · ลายขีด = ไม่มีข้อมูล · เวลาประเทศไทย</span></div>
   </div>
 </div>
 
-<script src="/static/js/reports.js"></script>
+<script src="/static/js/reports.js?v=20261028b"></script>
 {% endblock %}

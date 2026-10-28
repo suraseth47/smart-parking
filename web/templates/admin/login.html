@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>เข้าสู่ระบบ - Smart Parking</title>
-  <link rel="stylesheet" href="/static/css/admin.css?v=20261023c">
+  <link rel="stylesheet" href="/static/css/admin.css?v=20261028c">
   <script defer src="/static/js/vendor/alpine.min.js"></script>
 </head>
 <body>
@@ -56,8 +56,8 @@
             }
             // ไปหน้าแรกที่บัญชีนี้มีสิทธิ์
             const perms = data.permissions || [];
-            const firstPage = { cameras: "/admin", live: "/admin/live", cctv: "/admin/cctv", override: "/admin/override", reports: "/admin/reports" };
-            const key = data.role === "admin" ? "cameras" : ["live", "cctv", "override", "reports"].find((k) => perms.includes(k));
+            const firstPage = { cameras: "/admin", live: "/admin/live", cctv: "/admin/cctv", override: "/admin/override", reports: "/admin/reports", zones: "/admin/zones" };
+            const key = data.role === "admin" ? "cameras" : ["live", "cctv", "override", "reports", "zones"].find((k) => perms.includes(k));
             window.location.href = firstPage[key] || "/admin/live";
           } catch (e) {
             this.error = "เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ";

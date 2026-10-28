@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from core.db import get_db
 from core.models import User
 from core.permissions import effective_permissions
+from core.sites import effective_site_ids
 from web.session import CSRF_COOKIE_NAME, SESSION_COOKIE_NAME, read_session_cookie
 
 
@@ -19,6 +20,10 @@ class CurrentUser:
     username: str
     role: str
     permissions: list[str]  # เมนูที่ใช้ได้จริง (บทบาท ∩ ที่ Admin ติ๊กไว้)
+    site_ids: list[int] | None = None  # สถานที่ที่ดูแลได้ (None = ทุกแห่ง; Admin = None เสมอ)
+
+    def can_see_site(self, site_id: int | None) -> bool:
+        return self.site_ids is None or (site_id is not None and site_id in self.site_ids)
 
 
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> CurrentUser:
@@ -35,6 +40,7 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> Current
     return CurrentUser(
         id=user.id, username=user.username, role=role,
         permissions=effective_permissions(role, user.permissions),
+        site_ids=effective_site_ids(role, user.site_ids),
     )
 
 

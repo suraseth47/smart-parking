@@ -62,6 +62,21 @@ def calibration_page(request: Request):
     return templates.TemplateResponse(request, "admin/calibration.html")
 
 
+@router.get("/sites")
+def sites_page(request: Request):
+    return templates.TemplateResponse(request, "admin/sites.html")
+
+
+@router.get("/alerts")
+def alerts_page(request: Request):
+    return templates.TemplateResponse(request, "admin/alerts.html")
+
+
+@router.get("/zones")
+def zones_page(request: Request):
+    return templates.TemplateResponse(request, "admin/zones.html")
+
+
 @router.get("/users")
 def users_page(request: Request):
     return templates.TemplateResponse(request, "admin/users.html")

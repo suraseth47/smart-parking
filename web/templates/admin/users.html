@@ -71,7 +71,10 @@
                 </td>
                 <td x-text="u.email || '-'"></td>
                 <td><span class="role-tag" :class="u.role" x-text="roleShort(u.role)"></span></td>
-                <td :title="permNames(u.permissions)" x-text="permSummary(u.role, u.permissions)"></td>
+                <td :title="permNames(u.permissions)">
+                  <span x-text="permSummary(u.role, u.permissions)"></span>
+                  <span class="sub-text" x-show="sites.length > 1" x-text="siteSummary(u.role, u.site_ids)"></span>
+                </td>
                 <td>
                   <span class="state-tag" :class="u.locked ? 'locked' : (u.is_active ? 'active' : 'inactive')"
                         x-text="u.locked ? 'ถูกล็อกชั่วคราว' : (u.is_active ? 'ใช้งานได้' : 'ปิดบัญชี')"></span>
@@ -244,6 +247,35 @@
             <p class="hint" style="margin-top:0.5rem;" x-text="'ใช้ได้ ' + selectedCount() + ' จาก ' + allowedCount() + ' เมนูของบทบาทนี้'"></p>
           </div>
 
+          <!-- สถานที่ที่ดูแล (TOR 4.6) -->
+          <template x-if="sites.length > 1">
+            <div>
+              <div class="section-title">สถานที่ที่ดูแล</div>
+              <div class="perm-box">
+                <template x-if="form.role === 'admin'">
+                  <p class="hint" style="margin:0;">ผู้ดูแลระบบดูแลได้ทุกสถานที่เสมอ</p>
+                </template>
+                <template x-if="form.role !== 'admin'">
+                  <div>
+                    <label class="perm-item" style="margin-bottom:0.4rem;">
+                      <input type="checkbox" :checked="form.allSites" @change="form.allSites = $event.target.checked; if (!form.allSites && !form.siteIds.length) form.siteIds = []">
+                      <span><span>ทุกสถานที่</span><small>รวมสถานที่ที่จะเพิ่มในอนาคต</small></span>
+                    </label>
+                    <div class="perm-grid" x-show="!form.allSites">
+                      <template x-for="st in sites" :key="st.id">
+                        <label class="perm-item">
+                          <input type="checkbox" :checked="form.siteIds.includes(st.id)" @change="toggleSite(st.id, $event.target.checked)">
+                          <span><span x-text="st.name_th"></span><small x-text="st.code"></small></span>
+                        </label>
+                      </template>
+                    </div>
+                    <p class="hint" style="margin-top:0.5rem;" x-text="form.allSites ? 'เห็นกล้อง โซน รายงาน และแจ้งเตือนของทุกสถานที่' : 'เห็นเฉพาะกล้อง โซน รายงาน และแจ้งเตือนของ ' + form.siteIds.length + ' สถานที่ที่เลือก'"></p>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </template>
+
           <!-- อายุลิงก์ + ข้อความ (เฉพาะคำเชิญ) -->
           <template x-if="panel === 'invite'">
             <div>
@@ -283,7 +315,7 @@
       ready: false, forbidden: false, me: {},
       users: [], invitations: [], permissionList: [], roleMax: {},
       roleCards: ROLE_CARDS,
-      panel: null, form: {}, formError: "", busy: false,
+      panel: null, form: {}, formError: "", busy: false, sites: [],
       mail: { configured: false }, testTo: "", testing: false, testResult: "", testOk: false,
       created: null, copied: "", flash: "", userError: "", confirmDisable: null,
 
@@ -296,6 +328,7 @@
         this.permissionList = perms.permissions;
         this.roleMax = perms.role_max;
         this.mail = await apiJson("/api/admin/mail/status");
+        this.sites = await apiJson("/api/admin/sites").catch(() => []);
         await this.reload();
         this.ready = true;
       },
@@ -327,18 +360,32 @@
 
       // ---------- แผงด้านข้าง ----------
       openInvite() {
-        this.form = { method: "email", email: "", full_name: "", role: "operator", perms: [...this.roleMax.operator], expires_hours: (this.mail.default_expiry_days || 3) * 24, message: "" };
+        this.form = { method: "email", email: "", full_name: "", role: "operator", perms: [...this.roleMax.operator], expires_hours: (this.mail.default_expiry_days || 3) * 24, message: "", allSites: true, siteIds: [] };
         this.formError = ""; this.panel = "invite";
       },
       openCreate() {
-        this.form = { username: "", full_name: "", email: "", password: "", password_confirm: "", role: "operator", perms: [...this.roleMax.operator] };
+        this.form = { username: "", full_name: "", email: "", password: "", password_confirm: "", role: "operator", perms: [...this.roleMax.operator], allSites: true, siteIds: [] };
         this.formError = ""; this.panel = "create";
       },
       openEdit(u) {
-        this.form = { id: u.id, username: u.username, full_name: u.full_name || "", email: u.email || "", role: u.role, perms: [...u.permissions] };
+        this.form = { id: u.id, username: u.username, full_name: u.full_name || "", email: u.email || "", role: u.role, perms: [...u.permissions],
+                      allSites: u.site_ids === null || u.site_ids === undefined, siteIds: [...(u.site_ids || [])] };
         this.formError = ""; this.panel = "edit";
       },
       closePanel() { if (!this.busy) this.panel = null; },
+      toggleSite(id, on) {
+        this.form.siteIds = on ? [...new Set([...this.form.siteIds, id])] : this.form.siteIds.filter((x) => x !== id);
+      },
+      siteIdsBody() {
+        if (this.sites.length <= 1 || this.form.role === "admin" || this.form.allSites) return null;
+        return this.form.siteIds;
+      },
+      siteSummary(role, ids) {
+        if (this.sites.length <= 1) return "";
+        if (role === "admin" || ids === null || ids === undefined) return "ทุกสถานที่";
+        const names = this.sites.filter((s) => ids.includes(s.id)).map((s) => s.name_th);
+        return names.length ? names.join(", ") : "ไม่มีสถานที่";
+      },
       panelTitle() {
         return { invite: "สร้างคำเชิญ", create: "เพิ่มผู้ใช้โดยตรง", edit: "แก้ไขสิทธิ์ผู้ใช้" }[this.panel] || "";
       },
@@ -367,6 +414,10 @@
         if (this.form.role !== "admin" && this.selectedCount() === 0) {
           this.formError = "ต้องเลือกอย่างน้อย 1 เมนู"; return;
         }
+        if (this.sites.length > 1 && this.form.role !== "admin" && !this.form.allSites && !this.form.siteIds.length) {
+          this.formError = "เลือกสถานที่ที่ดูแลอย่างน้อย 1 แห่ง หรือติ๊ก \"ทุกสถานที่\"";
+          return;
+        }
         if (this.panel === "create" && this.form.password !== this.form.password_confirm) {
           this.formError = "รหัสผ่านทั้งสองช่องไม่ตรงกัน"; return;
         }
@@ -387,7 +438,7 @@
         const f = this.form;
         const res = await apiJson("/api/admin/invitations", { method: "POST", body: JSON.stringify({
           method: f.method, email: f.email, full_name: f.full_name, role: f.role,
-          permissions: f.perms, expires_hours: f.expires_hours, message: f.message,
+          permissions: f.perms, expires_hours: f.expires_hours, message: f.message, site_ids: this.siteIdsBody(),
         }) });
         this.showCreated(res, false);
         // ระบบไม่ได้ส่งเอง (ยังไม่ตั้ง SMTP) -> เปิดโปรแกรมอีเมลในเครื่องพร้อมข้อความแทน
@@ -397,14 +448,14 @@
         const f = this.form;
         const u = await apiJson("/api/admin/users", { method: "POST", body: JSON.stringify({
           username: f.username, full_name: f.full_name, email: f.email, password: f.password,
-          password_confirm: f.password_confirm, role: f.role, permissions: f.perms,
+          password_confirm: f.password_confirm, role: f.role, permissions: f.perms, site_ids: this.siteIdsBody(),
         }) });
         this.created = null;
         this.flash = `เพิ่มผู้ใช้ ${u.username} (${this.roleShort(u.role)}) แล้ว`;
       },
       async submitEdit() {
         const f = this.form;
-        const body = { full_name: f.full_name, email: f.email, permissions: f.perms };
+        const body = { full_name: f.full_name, email: f.email, permissions: f.perms, site_ids: this.siteIdsBody() };
         if (f.id !== this.me.id) body.role = f.role;
         const u = await apiJson(`/api/admin/users/${f.id}`, { method: "PATCH", body: JSON.stringify(body) });
         this.flash = `บันทึกสิทธิ์ของ ${u.username} แล้ว (${this.permSummary(u.role, u.permissions)})`;

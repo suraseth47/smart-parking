@@ -1,7 +1,7 @@
 """ตรวจกล้องถูกขยับ + จัดการ alert ในหลังบ้าน (FR-30, FR-32)"""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import cv2
 import numpy as np
@@ -12,6 +12,8 @@ from core.models import Alert, AlertLevel, Camera
 
 MIN_MATCH_COUNT = 10  # ถ้าหาจุดสังเกตร่วมกันไม่พอ ถือว่าผิดปกติ (อาจกล้องถูกขยับ/บังมิด)
 MOVED_TRANSLATION_THRESHOLD_PX = 50.0  # ภาพเลื่อนเกินนี้ (พิกเซล) ถือว่ากล้องถูกขยับ
+# เจ้าหน้าที่กด "รับทราบ" แล้ว แต่ปัญหายังอยู่ -> ไม่แจ้งซ้ำข้อความเดิมภายในช่วงนี้ (worker วนทุก 30 วินาที)
+ACK_SNOOZE = timedelta(hours=1)
 
 
 def compute_camera_transform(reference_image: np.ndarray, current_image: np.ndarray) -> np.ndarray | None:
@@ -89,6 +91,19 @@ def raise_alert(db: Session, level: AlertLevel, source: str, message: str) -> No
         if existing.message == message:
             return
         existing.resolved_at = datetime.utcnow()  # สถานะเปลี่ยนไปแล้ว alert เก่าหมดความหมาย
+    else:
+        acked = db.scalar(
+            select(Alert)
+            .where(
+                Alert.source == source,
+                Alert.message == message,
+                Alert.resolved_by.is_not(None),
+                Alert.resolved_at >= datetime.utcnow() - ACK_SNOOZE,
+            )
+            .limit(1)
+        )
+        if acked is not None:
+            return
     db.add(Alert(level=level, source=source, message=message))
 
 

@@ -6,6 +6,7 @@ data/
 
 # เอกสารส่วนตัว/ไฟล์อ้างอิงที่เก็บไว้ในโฟลเดอร์โปรเจกต์ (ไม่ใช่โค้ด ห้ามขึ้น GitHub)
 1 Original/
+ส่วนสุธน/
 *.jpg
 *.png
 !web/static/**/*.png
@@ -25,3 +26,6 @@ venv/
 .claude/
 Thumbs.db
 .DS_Store
+
+# ค่าโดเมนเฉพาะเครื่อง (สร้างจาก Caddyfile.d/domain.caddy.example)
+Caddyfile.d/*.caddy

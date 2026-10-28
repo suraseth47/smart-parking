@@ -102,3 +102,16 @@ def get_detector_model_path() -> Path:
         return path
     print(f"[detector] ไม่พบโมเดล {path} ใช้ {DEFAULT_DETECTOR_MODEL} แทน", flush=True)
     return MODELS_DIR / DEFAULT_DETECTOR_MODEL
+
+
+def local_utc_offset_hours() -> float:
+    """offset ของเขตเวลาใน .env (TZ) เทียบ UTC — ฐานข้อมูลเก็บเวลาเป็น UTC ทั้งหมด
+    ใช้แปลงเป็นเวลาไทยตอนแสดงผล/ทำรายงาน; อ่านไม่ได้ใช้ +7 (ประเทศไทย)"""
+    try:
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        offset = datetime.now(ZoneInfo(get_settings().tz)).utcoffset()
+        return offset.total_seconds() / 3600 if offset is not None else 7.0
+    except Exception:
+        return 7.0

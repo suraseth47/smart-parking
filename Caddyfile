@@ -5,8 +5,12 @@
 #   หลังบ้าน  https://125.26.22.145:8010  -> VM :8443  (HTTPS ใบรับรองที่ Caddy ออกเอง)
 #
 # ค่า IP เปลี่ยนได้ใน .env: PUBLIC_IP, LAN_IP (ไม่ตั้งก็ใช้ค่าข้างล่าง)
-# เมื่อมีโดเมนแล้ว ค่อยเพิ่ม site block ของโดเมน (Let's Encrypt) ภายหลัง
-
+#
+# ใบรับรอง SSL ที่ถูกต้อง (TOR 5.1) — ต้องมีโดเมน เลือก 1 ใน 2 แบบ (ดู README หัวข้อ HTTPS):
+#   ก. มีเว็บเซิร์ฟเวอร์อื่นถือพอร์ต 443 อยู่แล้ว (เช่น เว็บ NASLINK): ให้เครื่องนั้นออกใบรับรองของโดเมน
+#      แล้ว reverse proxy มาที่ http://<IP เครื่องนี้>:8081 (บล็อก "หลัง reverse proxy" ข้างล่าง)
+#   ข. เครื่องนี้ได้พอร์ต 80/443 เอง (เช่น ติดตั้งที่หน่วยงาน): คัดลอก Caddyfile.d/domain.caddy.example
+#      เป็น Caddyfile.d/domain.caddy แล้วใส่ DOMAIN ใน .env — Caddy ขอใบรับรอง Let's Encrypt ให้อัตโนมัติ
 {
 	# IP ไม่มี SNI -> บอก Caddy ว่าให้ใช้ใบรับรองของ IP สาธารณะเป็นค่าเริ่มต้น
 	default_sni {$PUBLIC_IP:125.26.22.145}
@@ -14,6 +18,10 @@
 	skip_install_trust
 	# ไม่ต้องทำ redirect http->https อัตโนมัติ (พอร์ต 80 ใช้กับเว็บ NASLINK)
 	auto_https disable_redirects
+	# เชื่อ X-Forwarded-For/Proto จาก reverse proxy ในวง LAN เท่านั้น (ได้ IP จริงของผู้ใช้)
+	servers {
+		trusted_proxies static private_ranges
+	}
 }
 
 (common) {
@@ -48,3 +56,20 @@ https://{$PUBLIC_IP:125.26.22.145}:8443, https://{$LAN_IP:192.168.200.196}:8443 
 	tls internal
 	reverse_proxy {$WEB_UPSTREAM:web:8000}
 }
+
+# ---------- หลัง reverse proxy ที่ถือใบรับรองของโดเมน (แบบ ก.) ----------
+# เช่น https://parking.naslink.net -> (เว็บเซิร์ฟเวอร์ NASLINK ออกใบรับรอง) -> http://192.168.200.196:8081
+# รับเฉพาะจากเครื่องในวง LAN (proxy) เท่านั้น — ห้าม forward พอร์ตนี้ออกอินเทอร์เน็ตที่ MikroTik
+http://:8081 {
+	import common
+
+	@outside not remote_ip private_ranges
+	respond @outside "Forbidden" 403
+
+	# proxy ต้องเป็น HTTPS เท่านั้น (คุกกี้เข้าสู่ระบบตั้ง Secure ไว้ ใช้กับ HTTP ไม่ได้อยู่แล้ว)
+	header Strict-Transport-Security "max-age=31536000"
+	reverse_proxy {$WEB_UPSTREAM:web:8000}
+}
+
+# ---------- โดเมนของเครื่องนี้เอง (แบบ ข.) : ไฟล์ใน Caddyfile.d/*.caddy ----------
+import Caddyfile.d/*.caddy

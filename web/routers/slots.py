@@ -104,8 +104,10 @@ def save_draft_slots(
     หน้า editor ต้อง GET ช่องเดิมมาก่อนเสมอ แล้วส่งชุดเต็ม (เดิม+ที่แก้ไข+ที่เพิ่มใหม่)
     กลับมาที่นี่ — ช่องเดิมที่ไม่ได้ส่งกลับมาจะถือว่าถูกลบ
     """
-    _get_camera_or_404(db, camera_id)
+    camera = _get_camera_or_404(db, camera_id)
     _validate_zone_ids_exist(db, data.slots)
+    _validate_same_site(db, camera, data.slots)
+    _validate_codes_unique_in_site(db, camera, data.slots)
 
     keep_ids = {s.id for s in data.slots if s.id is not None}
     existing = db.scalars(select(Slot).where(Slot.camera_id == camera_id)).all()
@@ -252,6 +254,49 @@ def _get_camera_or_404(db: Session, camera_id: int) -> Camera:
     if camera is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "ไม่พบกล้องนี้")
     return camera
+
+
+def _validate_same_site(db: Session, camera: Camera, slots) -> None:
+    """ช่องจอดต้องอยู่ในโซนของสถานที่เดียวกับกล้อง (TOR 4.6) กันผูกช่องข้ามสถานที่จนยอดรวมผิด"""
+    if camera.site_id is None:
+        return
+    zone_ids = {s.zone_id for s in slots}
+    if not zone_ids:
+        return
+    wrong = db.scalars(select(Zone.code).where(Zone.id.in_(zone_ids), Zone.site_id != camera.site_id)).all()
+    if wrong:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"โซน {', '.join(sorted(wrong))} อยู่คนละสถานที่กับกล้องนี้ — เลือกโซนของสถานที่เดียวกับกล้อง",
+        )
+
+
+def _validate_codes_unique_in_site(db: Session, camera: Camera, slots) -> None:
+    """รหัสช่องห้ามซ้ำภายในสถานที่ (TOR 4.6: ต้องไม่นับช่องเดียวกันซ้ำเมื่อกล้องหลายตัวมองเห็นพื้นที่ทับซ้อนกัน)
+
+    ช่องจริง 1 ช่องวาดได้บนกล้องเพียงตัวเดียว — ถ้ากล้องอีกตัวมองเห็นช่องเดียวกัน ห้ามวาดซ้ำ
+    """
+    codes = [s.code.strip() for s in slots]
+    dup_in_request = sorted({c for c in codes if codes.count(c) > 1})
+    if dup_in_request:
+        raise HTTPException(status.HTTP_409_CONFLICT, f"รหัสช่องซ้ำกันในผังนี้: {', '.join(dup_in_request)}")
+    if not codes:
+        return
+    query = (
+        select(Slot.code, Camera.name)
+        .join(Camera, Camera.id == Slot.camera_id)
+        .join(Zone, Zone.id == Slot.zone_id)
+        .where(Slot.camera_id != camera.id, Slot.code.in_(codes))
+    )
+    query = query.where(Zone.site_id == camera.site_id) if camera.site_id is not None else query
+    clashes = db.execute(query).all()
+    if clashes:
+        detail = ", ".join(f"{code} (กล้อง {name})" for code, name in sorted(clashes))
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"รหัสช่องซ้ำกับช่องที่วาดไว้บนกล้องอื่นของสถานที่เดียวกัน: {detail} — "
+            "ถ้าเป็นช่องเดียวกันที่กล้องสองตัวมองเห็น ให้วาดบนกล้องตัวเดียวเท่านั้น เพื่อไม่ให้นับซ้ำ",
+        )
 
 
 def _validate_zone_ids_exist(db: Session, slots: list[SlotIn]) -> None:

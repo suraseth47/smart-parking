@@ -13,8 +13,10 @@ PERMISSIONS: list[tuple[str, str, str]] = [
     ("live", "สถานะช่องจอดสด", "Live Status"),
     ("cctv", "กล้องวงจรปิด", "CCTV Monitor"),
     ("override", "แก้สถานะช่องด้วยมือ", "Manual Override"),
+    ("alerts", "การแจ้งเตือน", "Alerts"),
     ("reports", "รายงานและสถิติ", "Reports"),
     ("cameras", "กล้องและช่องจอด", "Cameras & Slots"),
+    ("zones", "โซนและการปิดโซน", "Zones"),
     ("calibration", "ช่วยวาดช่องอัตโนมัติ", "Auto Slot Setup"),
     ("validation", "ทดสอบความแม่นยำ", "Accuracy Test"),
     ("users", "ผู้ใช้และสิทธิ์", "Users & Access"),
@@ -25,7 +27,8 @@ ALL_KEYS: tuple[str, ...] = tuple(key for key, _, _ in PERMISSIONS)
 
 ROLE_MAX: dict[str, tuple[str, ...]] = {
     "admin": ALL_KEYS,
-    "operator": ("live", "cctv", "override", "reports"),
+    # zones สำหรับเจ้าหน้าที่ = ปิด/เปิดโซนชั่วคราวได้อย่างเดียว (เพิ่ม/แก้/ลบโซน ต้องเป็น Admin)
+    "operator": ("live", "cctv", "override", "alerts", "reports", "zones"),
     "viewer": ("live", "reports"),
 }
 

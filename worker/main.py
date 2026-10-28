@@ -2,14 +2,16 @@
 from __future__ import annotations
 
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import cv2
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from core.camera_state import mark_camera_slots_unknown
 from core.camera_utils import build_camera_url, snapshot_path
-from core.config import get_detector_model_path
+from core.backup import backup_hour, is_backup_due, list_backups, run_backup
+from core.config import get_detector_model_path, get_settings, local_utc_offset_hours
 from core.db import SessionLocal
 from core.models import (
     AlertLevel,
@@ -73,10 +75,28 @@ def run_cycle(detector: OnnxYoloxDetector) -> None:
         maybe_record_minute_stats(db, now)  # FR-36, FR-37
         maybe_prune_old_stats(db, now)  # FR-39, FR-10
         _process_calib_jobs(db, detector, now)  # FR-28
+        _maybe_backup(now)  # NFR-7: สำรองฐานข้อมูลทุกวัน (ไม่ต้องตั้ง cron บนเครื่อง host)
         maybe_prune_old_calib_jobs(db, now)  # FR-29f
         db.commit()
     finally:
         db.close()
+
+
+_last_backup_check: datetime | None = None
+
+
+def _maybe_backup(now: datetime) -> None:
+    """ตรวจวันละไม่กี่ครั้ง (ทุก 1 นาที) ว่าถึงเวลาสำรองของวันนี้หรือยัง"""
+    global _last_backup_check
+    if _last_backup_check is not None and (now - _last_backup_check).total_seconds() < 60:
+        return
+    _last_backup_check = now
+    settings = get_settings()
+    backup_dir = settings.data_dir / "backups"
+    local_now = now + timedelta(hours=local_utc_offset_hours())
+    if is_backup_due(list_backups(backup_dir), local_now, backup_hour()):
+        status = run_backup(settings.db_path, backup_dir, local_now)
+        print(f"[backup] {status['message']} ({status['file']})", flush=True)
 
 
 def _is_due(camera: Camera) -> bool:
@@ -228,30 +248,7 @@ def _update_slot_state(db: Session, slot: Slot, footprints: list, now: datetime)
 
 
 def _mark_camera_slots_unknown(db: Session, camera: Camera) -> None:
-    """ดึงภาพไม่ได้ หรือกล้องถูกขยับ -> ช่องที่ publish แล้วของกล้องนี้ทั้งหมดเป็น unknown (FR-9)"""
-    slots = db.scalars(
-        select(Slot).where(Slot.camera_id == camera.id, Slot.layout_status == LayoutStatus.PUBLISHED)
-    ).all()
-    now = datetime.utcnow()
-    for slot in slots:
-        state_row = db.get(SlotState, slot.id)
-        if state_row is None:
-            state_row = SlotState(slot_id=slot.id, raw_history=[])
-            db.add(state_row)
-
-        if state_row.state != OccupancyState.UNKNOWN:
-            db.add(
-                SlotEvent(
-                    slot_id=slot.id,
-                    from_state=state_row.state or OccupancyState.UNKNOWN,
-                    to_state=OccupancyState.UNKNOWN,
-                    ts=now,
-                )
-            )
-            state_row.since = now
-
-        state_row.state = OccupancyState.UNKNOWN
-        state_row.updated_at = now
+    mark_camera_slots_unknown(db, camera)
 
 
 if __name__ == "__main__":

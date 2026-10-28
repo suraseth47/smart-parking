@@ -1,0 +1,338 @@
+{% extends "admin/base.html" %}
+{% block title %}โซนและการปิดโซน{% endblock %}
+{% block content %}
+<div x-data="zonesPage()" x-init="init()">
+  <div class="card" x-show="forbidden" style="margin-bottom:1rem;">
+    <p style="margin:0;">บัญชีนี้ไม่มีสิทธิ์จัดการโซน ติดต่อผู้ดูแลระบบ</p>
+  </div>
+
+  <template x-if="ready && !forbidden">
+  <div>
+    <div class="card" style="margin-bottom:1rem; display:flex; flex-wrap:wrap; gap:0.75rem; align-items:center; justify-content:space-between;">
+      <div style="flex:1 1 320px;">
+        <h2 style="margin:0 0 0.25rem;">โซนและชั้นจอด</h2>
+        <p class="muted" style="margin:0; font-size:0.88rem;">
+          จัดกลุ่มช่องจอดเป็นโซนหรือชั้น (เช่น โซน A หน้าอาคาร, ชั้น 2) — หน้าสาธารณะแสดงจำนวนช่องว่างแยกตามโซนนี้
+          และเมื่อ <b>ปิดโซนชั่วคราว</b> ประชาชนจะเห็นป้าย "ปิด" พร้อมข้อความที่ระบุไว้ทันที
+        </p>
+      </div>
+      <div class="toolbar-actions">
+        <select x-show="sites.length > 1" x-model="siteFilter" @change="setFilter()" aria-label="กรองตามสถานที่" style="width:auto; margin:0;">
+          <option value="">ทุกสถานที่</option>
+          <template x-for="st in sites" :key="st.id"><option :value="String(st.id)" x-text="st.name_th"></option></template>
+        </select>
+        <a class="btn btn-secondary" href="/" target="_blank" rel="noopener">ดูหน้าสาธารณะ</a>
+        <button x-show="isAdmin" @click="openEdit(null)">+ เพิ่มโซน</button>
+      </div>
+    </div>
+
+    <p class="notice ok" x-show="flash" x-text="flash" style="margin:0 0 1rem;"></p>
+    <p class="notice warn" x-show="pageError" x-text="pageError" style="margin:0 0 1rem;"></p>
+
+    <div class="card" style="margin-bottom:1rem;">
+      <p class="muted" x-show="!shownZones.length" style="margin:0;">ยังไม่มีโซน <span x-show="isAdmin">กด "+ เพิ่มโซน" เพื่อเริ่ม</span></p>
+      <div class="table-scroll" x-show="shownZones.length">
+        <table class="data-table stack-table">
+          <thead>
+            <tr>
+              <th style="width:3.5rem;">ลำดับ</th>
+              <th>โซน</th>
+              <th x-show="sites.length > 1">สถานที่</th>
+              <th>ชั้น</th>
+              <th>ช่องจอด</th>
+              <th>หน้าสาธารณะ</th>
+              <th>สถานะ</th>
+              <th style="text-align:right;">จัดการ</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="z in shownZones" :key="z.id">
+              <tr :style="z.is_closed && 'background:#fff8f1;'">
+                <td data-label="ลำดับ" x-text="z.sort_order"></td>
+                <td data-label="โซน">
+                  <b x-text="z.code"></b> · <span x-text="z.name_th"></span>
+                  <span class="sub-text" lang="en" x-text="z.name_en"></span>
+                </td>
+                <td data-label="สถานที่" x-show="sites.length > 1" x-text="siteName(z.site_id)"></td>
+                <td data-label="ชั้น" x-text="z.floor || '–'"></td>
+                <td data-label="ช่องจอด">
+                  <span x-text="cov(z).published_slots + ' ช่อง'"></span>
+                  <span class="sub-text" x-text="coverageText(z)"></span>
+                </td>
+                <td data-label="หน้าสาธารณะ">
+                  <span class="state-tag" :class="z.is_public ? 'active' : 'inactive'" x-text="z.is_public ? 'แสดง' : 'ซ่อน'"></span>
+                </td>
+                <td data-label="สถานะ" style="max-width:260px;">
+                  <span class="state-tag" :class="z.is_closed ? 'locked' : 'active'" x-text="z.is_closed ? 'ปิดชั่วคราว' : 'เปิดใช้งาน'"></span>
+                  <span class="sub-text" x-show="z.is_closed" x-text="'“' + (z.closed_note || DEFAULT_NOTE) + '”'"></span>
+                </td>
+                <td class="stack-actions">
+                  <div class="cell-actions">
+                    <button x-show="!z.is_closed" class="btn-secondary" style="color:var(--color-danger);" @click="openClose(z)">ปิดโซนชั่วคราว</button>
+                    <button x-show="z.is_closed" class="btn-secondary" @click="openClose(z)">แก้ข้อความ</button>
+                    <button x-show="z.is_closed" @click="reopen(z)" :disabled="busy">เปิดโซนคืน</button>
+                    <button x-show="isAdmin" class="btn-secondary" @click="openEdit(z)">แก้ไข</button>
+                    <template x-if="isAdmin && confirmDelete !== z.id">
+                      <button class="btn-secondary" @click="askDelete(z)">ลบ</button>
+                    </template>
+                    <template x-if="isAdmin && confirmDelete === z.id">
+                      <span style="display:flex; gap:0.4rem;">
+                        <button class="btn-danger" @click="remove(z)" :disabled="busy">ยืนยันลบ</button>
+                        <button class="btn-secondary" @click="confirmDelete = null">ยกเลิก</button>
+                      </span>
+                    </template>
+                  </div>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+      <p class="hint" style="margin-top:0.75rem;">
+        "ช่องจอด" นับเฉพาะช่องที่ Publish แล้ว (หน้าสาธารณะใช้ช่องเหล่านี้) — วาดและผูกช่องกับโซนได้ที่เมนู "กล้องและช่องจอด"
+        <span x-show="isAdmin">· ลบโซนได้เฉพาะโซนที่ยังไม่มีช่องจอดผูกอยู่</span>
+      </p>
+    </div>
+  </div>
+  </template>
+
+  <!-- ================= แผง: เพิ่ม/แก้ไขโซน (Admin) ================= -->
+  <template x-if="panel === 'edit'">
+    <div>
+      <div class="drawer-backdrop" @click="closePanel()"></div>
+      <aside class="drawer" role="dialog" aria-modal="true" :aria-label="form.id ? 'แก้ไขโซน' : 'เพิ่มโซน'" @keydown.escape.window="closePanel()">
+        <div class="drawer-head">
+          <h2 x-text="form.id ? 'แก้ไขโซน ' + form.code : 'เพิ่มโซนใหม่'"></h2>
+          <p>ชื่อโซนแสดงบนหน้าสาธารณะทั้งภาษาไทยและอังกฤษ</p>
+        </div>
+        <div class="drawer-body">
+          <div x-show="sites.length > 1">
+            <label for="z-site">สถานที่ *</label>
+            <select id="z-site" x-model="form.site_id">
+              <option value="">— เลือกสถานที่ —</option>
+              <template x-for="st in sites" :key="st.id"><option :value="String(st.id)" x-text="st.name_th"></option></template>
+            </select>
+            <p class="hint">รหัสโซนห้ามซ้ำเฉพาะภายในสถานที่เดียวกัน (แต่ละแห่งมีโซน A ของตัวเองได้)</p>
+          </div>
+          <div class="form-grid" style="grid-template-columns: 1fr 1fr;">
+            <div>
+              <label for="z-code">รหัสโซน *</label>
+              <input id="z-code" type="text" x-model="form.code" maxlength="20" placeholder="เช่น A, B, P2" style="text-transform:uppercase;">
+            </div>
+            <div>
+              <label for="z-floor">ชั้น</label>
+              <input id="z-floor" type="text" x-model="form.floor" maxlength="20" placeholder="เช่น G, 1, 2 (ว่างได้)">
+            </div>
+          </div>
+          <label for="z-th">ชื่อภาษาไทย *</label>
+          <input id="z-th" type="text" x-model="form.name_th" maxlength="100" placeholder="เช่น ลานจอดหน้าอาคาร">
+          <label for="z-en">ชื่อภาษาอังกฤษ *</label>
+          <input id="z-en" type="text" x-model="form.name_en" maxlength="100" placeholder="e.g. Front Building Lot" lang="en">
+          <div class="form-grid" style="grid-template-columns: 1fr 1fr;">
+            <div>
+              <label for="z-order">ลำดับการแสดง</label>
+              <input id="z-order" type="number" x-model.number="form.sort_order">
+              <p class="hint">เลขน้อยแสดงก่อน</p>
+            </div>
+            <div>
+              <label for="z-exp">จำนวนช่องตามแผน</label>
+              <input id="z-exp" type="number" min="0" x-model.number="form.expected_slots">
+              <p class="hint">ใช้ตรวจว่าวาดช่องครบหรือยัง (0 = ไม่ระบุ)</p>
+            </div>
+          </div>
+          <label class="choice-card" :class="form.is_public && 'selected'" style="margin-top:0.75rem;">
+            <input type="checkbox" x-model="form.is_public">
+            <div>
+              <div class="choice-title">แสดงโซนนี้บนหน้าสาธารณะ</div>
+              <div class="choice-desc">ปิดไว้ได้ระหว่างติดตั้ง/ทดสอบกล้อง เพื่อไม่ให้ประชาชนเห็นตัวเลขที่ยังไม่พร้อม</div>
+            </div>
+          </label>
+          <p class="error-text" x-show="formError" x-text="formError"></p>
+        </div>
+        <div class="drawer-foot">
+          <button class="btn-secondary" @click="closePanel()" :disabled="busy">ยกเลิก</button>
+          <button @click="saveZone()" :disabled="busy" x-text="busy ? 'กำลังบันทึก...' : 'บันทึก'"></button>
+        </div>
+      </aside>
+    </div>
+  </template>
+
+  <!-- ================= แผง: ปิดโซนชั่วคราว ================= -->
+  <template x-if="panel === 'close'">
+    <div>
+      <div class="drawer-backdrop" @click="closePanel()"></div>
+      <aside class="drawer" role="dialog" aria-modal="true" aria-label="ปิดโซนชั่วคราว" @keydown.escape.window="closePanel()">
+        <div class="drawer-head">
+          <h2 x-text="(target.is_closed ? 'แก้ข้อความแจ้ง · ' : 'ปิดโซนชั่วคราว · ') + target.code + ' ' + target.name_th"></h2>
+          <p>ประชาชนจะเห็นโซนนี้เป็น "ปิด" พร้อมข้อความด้านล่าง และไม่นับช่องว่างของโซนนี้ในยอดรวม</p>
+        </div>
+        <div class="drawer-body">
+          <div class="section-title">ข้อความแจ้งประชาชน</div>
+          <div style="display:flex; gap:0.4rem; flex-wrap:wrap; margin-bottom:0.5rem;">
+            <template x-for="p in NOTE_PRESETS" :key="p">
+              <button type="button" class="chip" @click="note = p" x-text="p"></button>
+            </template>
+          </div>
+          <textarea x-model="note" rows="3" maxlength="255" style="width:100%;" :placeholder="DEFAULT_NOTE" aria-label="ข้อความแจ้งประชาชน"></textarea>
+          <p class="hint"><span x-text="note.length"></span>/255 ตัวอักษร — ว่าง = แสดง "<span x-text="DEFAULT_NOTE"></span>"</p>
+
+          <div class="section-title">ตัวอย่างที่ประชาชนเห็น</div>
+          <div style="border:1px solid #f0c36d; background:#fff8eb; border-radius:12px; padding:0.75rem 0.9rem;">
+            <div style="display:flex; justify-content:space-between; gap:0.5rem; align-items:center;">
+              <b x-text="target.code + ' · ' + target.name_th"></b>
+              <span class="state-tag locked">ปิด</span>
+            </div>
+            <div style="margin-top:0.35rem; font-size:0.9rem; color:#7a5200; white-space:pre-line;" x-text="note.trim() || DEFAULT_NOTE"></div>
+          </div>
+          <p class="hint" style="margin-top:0.5rem;">ประวัติการปิด/เปิดโซนพร้อมข้อความถูกบันทึกในเมนู "ประวัติการใช้งาน"</p>
+          <p class="error-text" x-show="formError" x-text="formError"></p>
+        </div>
+        <div class="drawer-foot">
+          <button class="btn-secondary" @click="closePanel()" :disabled="busy">ยกเลิก</button>
+          <button :class="!target.is_closed && 'btn-danger'" @click="saveClose()" :disabled="busy"
+                  x-text="busy ? 'กำลังบันทึก...' : (target.is_closed ? 'บันทึกข้อความ' : 'ปิดโซนนี้')"></button>
+        </div>
+      </aside>
+    </div>
+  </template>
+</div>
+
+<script>
+  // ข้อความเดียวกับหน้าสาธารณะเมื่อไม่ได้ระบุข้อความ (closedDefault ใน public/index.html)
+  const DEFAULT_NOTE = "โซนนี้ปิดให้บริการชั่วคราว";
+  const NOTE_PRESETS = [
+    "ปิดปรับปรุงพื้นผิวลานจอด",
+    "สงวนพื้นที่สำหรับงานพิธี",
+    "ปิดชั่วคราวเนื่องจากน้ำท่วมขัง",
+    "ปิดทำความสะอาด เปิดอีกครั้งเวลา 13:00 น.",
+  ];
+
+  function zonesPage() {
+    return {
+      DEFAULT_NOTE, NOTE_PRESETS,
+      ready: false, forbidden: false, isAdmin: false,
+      zones: [], coverage: {}, sites: [], siteFilter: "",
+      panel: null, form: {}, target: {}, note: "",
+      busy: false, formError: "", pageError: "", flash: "", confirmDelete: null,
+
+      async init() {
+        const user = await requireAuth();
+        if (!user) return;
+        this.isAdmin = user.role === "admin";
+        this.forbidden = !this.isAdmin && !(user.permissions || []).includes("zones");
+        this.siteFilter = new URLSearchParams(location.search).get("site") || "";
+        if (!this.forbidden) await this.load();
+        this.ready = true;
+      },
+      async load() {
+        try {
+          const [zones, overview, sites] = await Promise.all([
+            apiJson("/api/admin/zones"), apiJson("/api/admin/zones/overview"), apiJson("/api/admin/sites"),
+          ]);
+          this.zones = zones;
+          this.sites = sites;
+          this.coverage = Object.fromEntries(overview.map((c) => [c.zone_id, c]));
+        } catch (e) {
+          this.pageError = "โหลดรายการโซนไม่สำเร็จ: " + e.message;
+        }
+      },
+      get shownZones() {
+        return this.siteFilter ? this.zones.filter((z) => String(z.site_id) === this.siteFilter) : this.zones;
+      },
+      siteName(id) { const st = this.sites.find((x) => x.id === id); return st ? st.name_th : "–"; },
+      setFilter() {
+        const url = this.siteFilter ? `?site=${this.siteFilter}` : location.pathname;
+        history.replaceState(null, "", url);
+      },
+      cov(z) { return this.coverage[z.id] || { drawn_slots: 0, published_slots: 0 }; },
+      coverageText(z) {
+        const c = this.cov(z);
+        const parts = [];
+        if (z.expected_slots) parts.push(`แผน ${z.expected_slots} ช่อง` + (c.published_slots >= z.expected_slots ? " · ครบ" : ` · ขาด ${z.expected_slots - c.published_slots}`));
+        if (c.drawn_slots > c.published_slots) parts.push(`ร่างรอ Publish ${c.drawn_slots - c.published_slots}`);
+        return parts.join(" · ");
+      },
+      errText(e) {
+        const d = e.data && e.data.detail;
+        if (Array.isArray(d)) return "ข้อมูลไม่ถูกต้อง กรุณาตรวจช่องที่มี * และความยาวข้อความ";
+        return e.message;
+      },
+      say(msg) { this.flash = msg; clearTimeout(this._t); this._t = setTimeout(() => (this.flash = ""), 5000); },
+      closePanel() { if (!this.busy) { this.panel = null; this.formError = ""; } },
+
+      // ---------- เพิ่ม/แก้ไข ----------
+      openEdit(z) {
+        const nextOrder = this.zones.reduce((m, x) => Math.max(m, x.sort_order), 0) + 1;
+        const defaultSite = this.siteFilter || (this.sites.length === 1 ? String(this.sites[0].id) : "");
+        this.form = z ? { ...z, floor: z.floor || "", site_id: String(z.site_id ?? "") }
+                      : { id: null, site_id: defaultSite, code: "", name_th: "", name_en: "", floor: "", sort_order: nextOrder, expected_slots: 0, is_public: true };
+        this.formError = ""; this.panel = "edit";
+      },
+      async saveZone() {
+        const f = this.form;
+        if (!f.code.trim() || !f.name_th.trim() || !f.name_en.trim()) { this.formError = "กรอกรหัสโซน ชื่อภาษาไทย และชื่อภาษาอังกฤษ"; return; }
+        if (this.sites.length > 1 && !f.site_id) { this.formError = "กรุณาเลือกสถานที่ของโซนนี้"; return; }
+        this.busy = true; this.formError = "";
+        const body = { site_id: f.site_id ? Number(f.site_id) : null, code: f.code, name_th: f.name_th, name_en: f.name_en, floor: f.floor || null,
+                       sort_order: Number(f.sort_order) || 0, expected_slots: Number(f.expected_slots) || 0, is_public: !!f.is_public };
+        try {
+          const saved = await apiJson(f.id ? `/api/admin/zones/${f.id}` : "/api/admin/zones",
+                                      { method: f.id ? "PUT" : "POST", body: JSON.stringify(body) });
+          this.busy = false; this.panel = null;
+          this.say(`${f.id ? "บันทึก" : "เพิ่ม"}โซน ${saved.code} แล้ว`);
+          await this.load();
+        } catch (e) {
+          this.formError = this.errText(e);
+        } finally { this.busy = false; }
+      },
+      askDelete(z) {
+        if (this.cov(z).drawn_slots > 0) {
+          this.pageError = `ลบโซน ${z.code} ไม่ได้ เพราะยังมีช่องจอดผูกอยู่ ${this.cov(z).drawn_slots} ช่อง — ย้ายหรือลบช่องในเมนู "กล้องและช่องจอด" ก่อน`;
+          return;
+        }
+        this.pageError = ""; this.confirmDelete = z.id;
+      },
+      async remove(z) {
+        this.busy = true;
+        try {
+          await apiFetch(`/api/admin/zones/${z.id}`, { method: "DELETE" }).then(async (r) => {
+            if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.detail || `ลบไม่สำเร็จ (${r.status})`); }
+          });
+          this.confirmDelete = null; this.say(`ลบโซน ${z.code} แล้ว`);
+          await this.load();
+        } catch (e) {
+          this.confirmDelete = null; this.pageError = e.message;
+        } finally { this.busy = false; }
+      },
+
+      // ---------- ปิด/เปิดโซน ----------
+      openClose(z) { this.target = z; this.note = z.closed_note || ""; this.formError = ""; this.panel = "close"; },
+      async setClosed(z, isClosed, note) {
+        return apiJson(`/api/admin/zones/${z.id}/close`, { method: "POST", body: JSON.stringify({ is_closed: isClosed, closed_note: note }) });
+      },
+      async saveClose() {
+        this.busy = true; this.formError = "";
+        try {
+          const wasClosed = this.target.is_closed;
+          await this.setClosed(this.target, true, this.note.trim() || null);
+          this.busy = false; this.panel = null;
+          this.say(wasClosed ? `อัปเดตข้อความโซน ${this.target.code} แล้ว` : `ปิดโซน ${this.target.code} แล้ว หน้าสาธารณะจะแสดงผลภายในไม่กี่วินาที`);
+          await this.load();
+        } catch (e) {
+          this.formError = this.errText(e);
+        } finally { this.busy = false; }
+      },
+      async reopen(z) {
+        this.busy = true; this.pageError = "";
+        try {
+          await this.setClosed(z, false, null);
+          this.say(`เปิดโซน ${z.code} คืนแล้ว`);
+          await this.load();
+        } catch (e) {
+          this.pageError = "เปิดโซนไม่สำเร็จ: " + this.errText(e);
+        } finally { this.busy = false; }
+      },
+    };
+  }
+</script>
+{% endblock %}

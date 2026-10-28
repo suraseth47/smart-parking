@@ -1,6 +1,8 @@
 """ประกอบ RTSP URL จาก preset ของแต่ละยี่ห้อกล้อง (SPEC ข้อ 5.5) — pure function"""
 from __future__ import annotations
 
+from urllib.parse import quote
+
 from core.models import CameraBrand, CameraStream
 
 
@@ -19,6 +21,10 @@ def build_rtsp_url(
         if not rtsp_url_custom:
             raise ValueError("กล้อง custom ต้องกรอก RTSP URL เอง")
         return rtsp_url_custom
+
+    # รหัสผ่านกล้องมักมี @ หรือ # (เช่น Admin@123) ต้อง percent-encode ไม่งั้น ffmpeg แยก host ผิด
+    username = quote(username or "", safe="")
+    password = quote(password or "", safe="")
 
     if brand == CameraBrand.HIKVISION:
         suffix = "01" if stream == CameraStream.MAIN else "02"

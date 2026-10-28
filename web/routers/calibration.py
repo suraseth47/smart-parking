@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 
 import cv2
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -14,6 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from core.camera_utils import build_camera_url, snapshot_path
+from web.routers.slots import _validate_codes_unique_in_site, _validate_same_site
 from core.config import get_settings
 from core.models import (
     AuditLog,
@@ -330,6 +332,13 @@ def accept_proposal(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "proposal นี้ตัดสินใจไปแล้ว")
     if db.get(Zone, data.zone_id) is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"ไม่พบโซน id={data.zone_id}")
+    camera = db.get(Camera, proposal.camera_id)
+    if camera is not None:
+        # ใช้กฎเดียวกับหน้าวาดผัง: โซนต้องอยู่สถานที่เดียวกับกล้อง และรหัสช่องห้ามซ้ำในสถานที่ (TOR 4.6)
+        candidate = SimpleNamespace(code=data.code, zone_id=data.zone_id)
+        existing = db.scalars(select(Slot).where(Slot.camera_id == camera.id)).all()
+        _validate_same_site(db, camera, [candidate])
+        _validate_codes_unique_in_site(db, camera, [candidate, *existing])
 
     slot = Slot(
         camera_id=proposal.camera_id,

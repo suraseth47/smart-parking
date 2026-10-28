@@ -4,15 +4,21 @@ services:
     restart: unless-stopped
     # FRONT_PORT = หน้าบ้าน HTTP, ADMIN_PORT = ทั้งระบบ HTTPS (พอร์ตบน Server; ตั้งใน .env)
     # MikroTik ต้อง forward มาที่พอร์ตเดียวกันนี้ / ไม่ใช้ 80,443 เพราะเว็บ NASLINK ใช้อยู่
+    # PROXY_PORT = รับจาก reverse proxy ในวง LAN ที่ถือใบรับรองของโดเมน (ห้าม forward ออกอินเทอร์เน็ต)
+    # ใช้โดเมนแบบ ข. (Caddy ขอใบรับรองเอง) ให้เพิ่ม "80:80" และ "443:443" (ดู README หัวข้อ HTTPS)
     ports:
       - "${FRONT_PORT:-8080}:8080"
       - "${ADMIN_PORT:-8443}:8443"
+      - "${PROXY_PORT:-8081}:8081"
     environment:
       - PUBLIC_IP=${PUBLIC_IP:-125.26.22.145}
       - LAN_IP=${LAN_IP:-192.168.200.196}
       - ADMIN_PUBLIC_PORT=${ADMIN_PUBLIC_PORT:-8010}
+      - DOMAIN=${DOMAIN:-}
+      - ACME_EMAIL=${ACME_EMAIL:-}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./Caddyfile.d:/etc/caddy/Caddyfile.d:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:

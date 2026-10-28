@@ -1,0 +1,217 @@
+{% extends "admin/base.html" %}
+{% block title %}ภาพรวมทุกสถานที่{% endblock %}
+{% block content %}
+<div x-data="sitesPage()" x-init="init()">
+  <template x-if="ready">
+  <div>
+    <div class="card" style="margin-bottom:1rem; display:flex; flex-wrap:wrap; gap:0.75rem; align-items:center; justify-content:space-between;">
+      <div style="flex:1 1 320px;">
+        <h2 style="margin:0 0 0.25rem;">ภาพรวมทุกสถานที่</h2>
+        <p class="muted" style="margin:0; font-size:0.88rem;">
+          สถานะสดของทุกสถานที่ที่บัญชีนี้ดูแล ในหน้าเดียว · โครงสร้างข้อมูล: สถานที่ → โซน → ช่องจอด
+          (1 สถานที่ติดกล้องได้หลายตัว ระบบรวมยอดทุกกล้องเป็นยอดเดียว) · รีเฟรชทุก 30 วินาที
+        </p>
+      </div>
+      <div class="toolbar-actions">
+        <a class="btn btn-secondary" href="/" target="_blank" rel="noopener">ดูหน้าสาธารณะ</a>
+        <button x-show="isAdmin" @click="openEdit(null)">+ เพิ่มสถานที่</button>
+      </div>
+    </div>
+
+    <p class="notice ok" x-show="flash" x-text="flash" style="margin:0 0 1rem;"></p>
+    <p class="notice warn" x-show="pageError" x-text="pageError" style="margin:0 0 1rem;"></p>
+
+    <!-- รวมทุกสถานที่ -->
+    <div class="stat-grid" x-show="sites.length > 1" style="margin-bottom:1rem;">
+      <div class="stat-card"><div><div class="stat-label">สถานที่</div><div class="stat-value" x-text="sites.length"></div>
+        <div class="stat-note" x-text="'กล้อง ' + sum('camera_count') + ' ตัว'"></div></div></div>
+      <div class="stat-card"><div><div class="stat-label">ช่องจอดทั้งหมด</div><div class="stat-value" x-text="sum('capacity')"></div>
+        <div class="stat-note">ช่องที่เปิดให้จอด (ไม่รวมช่องสงวน)</div></div></div>
+      <div class="stat-card"><div><div class="stat-label">ว่างตอนนี้</div><div class="stat-value green" x-text="sum('free')"></div>
+        <div class="stat-note" x-text="'ไม่ทราบสถานะ ' + sum('unknown') + ' ช่อง'"></div></div></div>
+      <div class="stat-card"><div><div class="stat-label">มีรถจอด</div><div class="stat-value red" x-text="sum('occupied')"></div>
+        <div class="stat-note" x-text="sum('capacity') ? ('ใช้งาน ' + Math.round(sum('occupied') * 100 / sum('capacity')) + '%') : '-'"></div></div></div>
+    </div>
+
+    <div class="card" x-show="!sites.length">
+      <p class="muted" style="margin:0;">ไม่มีสถานที่ที่บัญชีนี้ดูแล ติดต่อผู้ดูแลระบบ</p>
+    </div>
+
+    <div class="site-grid">
+      <template x-for="s in sites" :key="s.id">
+        <div class="card site-tile" :class="!s.is_public && 'is-hidden-site'">
+          <div style="display:flex; justify-content:space-between; gap:0.5rem; align-items:flex-start;">
+            <div style="min-width:0;">
+              <div class="sub-text" style="font-family:ui-monospace,Consolas,monospace;" x-text="s.code"></div>
+              <h3 style="margin:0.1rem 0 0.2rem;" x-text="s.name_th"></h3>
+              <div class="sub-text" x-show="s.address" x-text="s.address"></div>
+            </div>
+            <span class="state-tag" :class="s.is_public ? 'active' : 'inactive'" x-text="s.is_public ? 'แสดงหน้าสาธารณะ' : 'ซ่อน'"></span>
+          </div>
+
+          <div class="site-numbers">
+            <div><b class="green" x-text="s.free"></b><span>ว่าง</span></div>
+            <div><b class="red" x-text="s.occupied"></b><span>มีรถ</span></div>
+            <div><b x-text="s.unknown"></b><span>ไม่ทราบ</span></div>
+            <div><b x-text="s.capacity"></b><span>ช่องทั้งหมด</span></div>
+          </div>
+          <div class="occ-bar" :title="'ใช้งาน ' + (s.occupancy_pct ?? 0) + '%'">
+            <span :style="'width:' + (s.capacity ? s.occupied * 100 / s.capacity : 0) + '%'"></span>
+            <span class="unk" :style="'width:' + (s.capacity ? s.unknown * 100 / s.capacity : 0) + '%'"></span>
+          </div>
+
+          <div class="site-meta">
+            <span x-text="'โซน ' + s.zone_count"></span>
+            <span><span class="ok-dot"></span><span x-text="'กล้อง online ' + (s.cameras.online || 0)"></span></span>
+            <span x-show="s.cameras.offline || s.cameras.moved" style="color:var(--color-danger);"
+                  x-text="'มีปัญหา ' + ((s.cameras.offline || 0) + (s.cameras.moved || 0))"></span>
+            <span x-show="s.cameras.disabled" class="muted" x-text="'ปิดใช้งาน ' + s.cameras.disabled"></span>
+            <span x-show="s.closed_zones" style="color:#b45309;" x-text="'ปิดโซน ' + s.closed_zones"></span>
+            <a x-show="s.open_alerts" href="/admin/alerts" style="color:var(--color-danger); font-weight:600;" x-text="'แจ้งเตือน ' + s.open_alerts"></a>
+          </div>
+          <div class="sub-text" x-text="s.updated_at ? ('ภาพล่าสุด ' + ago(s.updated_at)) : 'ยังไม่มีภาพจากกล้อง'"></div>
+
+          <div class="cell-actions" style="justify-content:flex-start; margin-top:0.25rem;">
+            <a class="btn btn-secondary" x-show="perms.includes('live')" href="/admin/live">สถานะสด</a>
+            <a class="btn btn-secondary" x-show="perms.includes('zones')" :href="'/admin/zones?site=' + s.id">โซน</a>
+            <a class="btn btn-secondary" x-show="s.maps_url" :href="s.maps_url" target="_blank" rel="noopener noreferrer">แผนที่</a>
+            <button x-show="isAdmin" class="btn-secondary" @click="openEdit(s)">แก้ไข</button>
+            <button x-show="isAdmin && sites.length > 1" class="btn-secondary" style="color:var(--color-danger);" @click="remove(s)">ลบ</button>
+          </div>
+        </div>
+      </template>
+    </div>
+  </div>
+  </template>
+
+  <!-- ================= แผง: เพิ่ม/แก้ไขสถานที่ ================= -->
+  <template x-if="panel">
+    <div>
+      <div class="drawer-backdrop" @click="closePanel()"></div>
+      <aside class="drawer" role="dialog" aria-modal="true" :aria-label="form.id ? 'แก้ไขสถานที่' : 'เพิ่มสถานที่'" @keydown.escape.window="closePanel()">
+        <div class="drawer-head">
+          <h2 x-text="form.id ? 'แก้ไขสถานที่ ' + form.code : 'เพิ่มสถานที่'"></h2>
+          <p>ข้อมูลนี้แสดงบนหน้าสาธารณะ พร้อมปุ่มนำทางผ่านแอปแผนที่</p>
+        </div>
+        <div class="drawer-body">
+          <div class="form-grid" style="grid-template-columns: 1fr 1fr;">
+            <div>
+              <label for="s-code">รหัสสถานที่ *</label>
+              <input id="s-code" type="text" x-model="form.code" maxlength="20" placeholder="เช่น CITYHALL" style="text-transform:uppercase; font-family:ui-monospace,Consolas,monospace;">
+              <p class="hint">A-Z 0-9 _ - ใช้ในลิงก์หน้าสาธารณะ</p>
+            </div>
+            <div>
+              <label for="s-order">ลำดับการแสดง</label>
+              <input id="s-order" type="number" x-model.number="form.sort_order">
+            </div>
+          </div>
+          <label for="s-th">ชื่อภาษาไทย *</label>
+          <input id="s-th" type="text" x-model="form.name_th" maxlength="100" placeholder="เช่น ลานจอดรถสำนักงานเทศบาล">
+          <label for="s-en">ชื่อภาษาอังกฤษ *</label>
+          <input id="s-en" type="text" x-model="form.name_en" maxlength="100" placeholder="e.g. City Hall Parking" lang="en">
+          <label for="s-addr">ที่อยู่ / จุดสังเกต</label>
+          <input id="s-addr" type="text" x-model="form.address" maxlength="255" placeholder="เช่น ถ.พหลโยธิน ข้างศาลากลาง">
+          <label for="s-hours">เวลาให้บริการ</label>
+          <input id="s-hours" type="text" x-model="form.opening_hours" maxlength="100" placeholder="เช่น ทุกวัน 06:00–20:00 น.">
+
+          <div class="section-title">พิกัดสำหรับปุ่มนำทาง</div>
+          <label for="s-ll">วางพิกัดจาก Google Maps</label>
+          <input id="s-ll" type="text" x-model="latlngText" @input="parseLatLng()" placeholder="เช่น 14.5289, 100.9101" style="font-family:ui-monospace,Consolas,monospace;">
+          <p class="hint">เปิด Google Maps → คลิกขวาที่ทางเข้าลานจอด → คลิกตัวเลขพิกัดแถวบนสุดเพื่อคัดลอก → วางที่นี่</p>
+          <div class="form-grid" style="grid-template-columns: 1fr 1fr;">
+            <div><label for="s-lat">ละติจูด</label><input id="s-lat" type="number" step="0.000001" x-model.number="form.latitude"></div>
+            <div><label for="s-lng">ลองจิจูด</label><input id="s-lng" type="number" step="0.000001" x-model.number="form.longitude"></div>
+          </div>
+          <a x-show="hasCoords()" :href="mapsUrl()" target="_blank" rel="noopener noreferrer" class="hint" style="display:inline-block; margin-top:0.25rem;">ทดสอบปุ่มนำทาง (เปิด Google Maps) ↗</a>
+
+          <label class="choice-card" :class="form.is_public && 'selected'" style="margin-top:0.75rem;">
+            <input type="checkbox" x-model="form.is_public">
+            <div><div class="choice-title">แสดงสถานที่นี้บนหน้าสาธารณะ</div>
+              <div class="choice-desc">ปิดไว้ได้ระหว่างติดตั้งกล้องและวาดช่องจอด</div></div>
+          </label>
+          <p class="error-text" x-show="formError" x-text="formError"></p>
+        </div>
+        <div class="drawer-foot">
+          <button class="btn-secondary" @click="closePanel()" :disabled="busy">ยกเลิก</button>
+          <button @click="save()" :disabled="busy" x-text="busy ? 'กำลังบันทึก...' : 'บันทึก'"></button>
+        </div>
+      </aside>
+    </div>
+  </template>
+</div>
+
+<script>
+  function sitesPage() {
+    return {
+      ready: false, isAdmin: false, perms: [], sites: [],
+      panel: false, form: {}, latlngText: "", busy: false, formError: "", flash: "", pageError: "",
+
+      async init() {
+        const user = await requireAuth();
+        if (!user) return;
+        this.isAdmin = user.role === "admin";
+        this.perms = user.permissions || [];
+        await this.load();
+        this.ready = true;
+        setInterval(() => this.load(), 30000);
+      },
+      async load() {
+        try {
+          this.sites = await apiJson("/api/admin/sites");
+          this.pageError = "";
+        } catch (e) {
+          this.pageError = "โหลดข้อมูลสถานที่ไม่สำเร็จ: " + e.message;
+        }
+      },
+      sum(key) { return this.sites.reduce((n, s) => n + (s[key] || 0), 0); },
+      ago(iso) {
+        const mins = Math.round((Date.now() - new Date(iso.endsWith("Z") ? iso : iso + "Z")) / 60000);
+        if (mins < 1) return "เมื่อสักครู่";
+        if (mins < 60) return mins + " นาทีที่แล้ว";
+        if (mins < 2880) return Math.floor(mins / 60) + " ชม.ที่แล้ว";
+        return Math.floor(mins / 1440) + " วันที่แล้ว";
+      },
+      say(msg) { this.flash = msg; clearTimeout(this._t); this._t = setTimeout(() => (this.flash = ""), 6000); },
+      closePanel() { if (!this.busy) this.panel = false; },
+      openEdit(s) {
+        const next = this.sites.reduce((m, x) => Math.max(m, x.sort_order), 0) + 1;
+        this.form = s ? { ...s } : { id: null, code: "", name_th: "", name_en: "", address: "", opening_hours: "", latitude: null, longitude: null, sort_order: next, is_public: true };
+        this.latlngText = s && s.latitude !== null ? `${s.latitude}, ${s.longitude}` : "";
+        this.formError = ""; this.panel = true;
+      },
+      parseLatLng() {
+        const m = this.latlngText.match(/(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)/);
+        if (m) { this.form.latitude = Number(m[1]); this.form.longitude = Number(m[2]); }
+      },
+      hasCoords() { return typeof this.form.latitude === "number" && typeof this.form.longitude === "number"; },
+      mapsUrl() { return `https://www.google.com/maps/dir/?api=1&destination=${this.form.latitude},${this.form.longitude}`; },
+      async save() {
+        const f = this.form;
+        if (!f.code.trim() || !f.name_th.trim() || !f.name_en.trim()) { this.formError = "กรอกรหัส ชื่อภาษาไทย และชื่อภาษาอังกฤษ"; return; }
+        const num = (v) => (v === "" || v === null || v === undefined || Number.isNaN(Number(v)) ? null : Number(v));
+        const body = { code: f.code, name_th: f.name_th, name_en: f.name_en, address: f.address || null, opening_hours: f.opening_hours || null,
+                       latitude: num(f.latitude), longitude: num(f.longitude), sort_order: Number(f.sort_order) || 0, is_public: !!f.is_public };
+        this.busy = true; this.formError = "";
+        try {
+          const saved = await apiJson(f.id ? `/api/admin/sites/${f.id}` : "/api/admin/sites", { method: f.id ? "PUT" : "POST", body: JSON.stringify(body) });
+          this.busy = false; this.panel = false;
+          this.say(f.id ? `บันทึกสถานที่ ${saved.name_th} แล้ว` : `เพิ่มสถานที่ ${saved.name_th} แล้ว — ขั้นต่อไป: เพิ่มโซนและกล้องของสถานที่นี้`);
+          await this.load();
+        } catch (e) {
+          const d = e.data && e.data.detail;
+          this.formError = Array.isArray(d) ? "ข้อมูลไม่ถูกต้อง (ตรวจพิกัดและความยาวข้อความ)" : e.message;
+        } finally { this.busy = false; }
+      },
+      async remove(s) {
+        if (!confirm(`ลบสถานที่ ${s.name_th}?`)) return;
+        try {
+          const r = await apiFetch(`/api/admin/sites/${s.id}`, { method: "DELETE" });
+          if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.detail || "ลบไม่สำเร็จ"); }
+          this.say(`ลบสถานที่ ${s.name_th} แล้ว`);
+          await this.load();
+        } catch (e) { this.pageError = e.message; }
+      },
+    };
+  }
+</script>
+{% endblock %}

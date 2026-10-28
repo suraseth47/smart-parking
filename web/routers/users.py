@@ -29,7 +29,8 @@ from core.invitations import (
     validate_password,
     validate_username,
 )
-from core.models import AuditLog, Invitation, InvitationPurpose, User, UserRole
+from core.models import AuditLog, Invitation, InvitationPurpose, Site, User, UserRole
+from core.sites import effective_site_ids, normalize_site_ids
 from core.permissions import PERMISSIONS, ROLE_MAX, effective_permissions, normalize_permissions
 from core.security import hash_password
 from web.deps import CurrentUser, require_admin, verify_csrf
@@ -63,6 +64,7 @@ class UserOut(BaseModel):
     role: str
     permissions: list[str]  # สิทธิ์ที่ใช้ได้จริง
     custom_permissions: bool  # True = ถูกติ๊กลดจากสิทธิ์เต็มของบทบาท
+    site_ids: list[int] | None = None  # None = ทุกสถานที่
     is_active: bool
     created_at: datetime | None
     last_login_at: datetime | None
@@ -77,11 +79,13 @@ class UserCreateIn(BaseModel):
     password_confirm: str
     role: UserRole
     permissions: list[str] | None = None
+    site_ids: list[int] | None = None  # null = ทุกสถานที่
 
 
 class UserUpdateIn(BaseModel):
     role: UserRole | None = None
     permissions: list[str] | None = None  # ส่ง null = กลับไปใช้สิทธิ์ตามบทบาท
+    site_ids: list[int] | None = None  # ส่ง null = ทุกสถานที่
     is_active: bool | None = None
     full_name: str | None = None
     email: str | None = None
@@ -93,6 +97,7 @@ class InvitationIn(BaseModel):
     full_name: str | None = None
     email: str | None = None
     permissions: list[str] | None = None
+    site_ids: list[int] | None = None
     message: str | None = None
     expires_hours: int | None = None  # ไม่ส่ง = ใช้ค่าเริ่มต้นจากหน้าตั้งค่าระบบ
 
@@ -104,6 +109,7 @@ class InvitationOut(BaseModel):
     role: str
     permissions: list[str]
     custom_permissions: bool
+    site_ids: list[int] | None = None
     full_name: str | None
     email: str | None
     message: str | None
@@ -134,6 +140,7 @@ class InviteInfoOut(BaseModel):
     role: str
     role_label: str
     permission_labels: list[str]
+    site_labels: list[str] = []  # ว่าง = ทุกสถานที่
     full_name: str | None
     email: str | None
     message: str | None
@@ -156,6 +163,16 @@ def _clean(text: str | None, max_len: int | None = None) -> str | None:
     return text or None
 
 
+def _site_id_set(db: Session) -> set[int]:
+    return set(db.scalars(select(Site.id)).all())
+
+
+def _site_labels(db: Session, site_ids: list[int] | None) -> list[str]:
+    if site_ids is None:
+        return []
+    return [s.name_th for s in db.scalars(select(Site).where(Site.id.in_(site_ids or [-1])).order_by(Site.sort_order)).all()]
+
+
 def _user_out(user: User, now: datetime) -> UserOut:
     role = user.role.value
     return UserOut(
@@ -166,6 +183,7 @@ def _user_out(user: User, now: datetime) -> UserOut:
         role=role,
         permissions=effective_permissions(role, user.permissions),
         custom_permissions=role != "admin" and user.permissions is not None,
+        site_ids=effective_site_ids(role, user.site_ids),
         is_active=user.is_active,
         created_at=user.created_at,
         last_login_at=user.last_login_at,
@@ -186,6 +204,7 @@ def _invitation_out(db: Session, inv: Invitation, now: datetime) -> InvitationOu
         role=role,
         permissions=effective_permissions(role, inv.permissions),
         custom_permissions=role != "admin" and inv.permissions is not None,
+        site_ids=effective_site_ids(role, inv.site_ids),
         full_name=inv.full_name,
         email=inv.email,
         message=inv.message,
@@ -275,6 +294,7 @@ def _new_invitation(
     db: Session, request: Request, admin: CurrentUser, *, purpose: InvitationPurpose, role: UserRole,
     full_name: str | None, email: str | None, target_user_id: int | None, expires_hours: int | None,
     method: str = "link", permissions: list[str] | None = None, message: str | None = None,
+    site_ids: list[int] | None = None,
 ) -> InvitationCreatedOut:
     if expires_hours is None:
         expires_hours = get_default_expiry_days(db) * 24
@@ -287,6 +307,7 @@ def _new_invitation(
         purpose=purpose,
         role=role,
         permissions=permissions,
+        site_ids=site_ids,
         method=method,
         message=message,
         full_name=full_name,
@@ -304,7 +325,7 @@ def _new_invitation(
             action="create_invitation" if purpose == InvitationPurpose.INVITE else "create_password_reset",
             target=(email or full_name or "")[:100] or None,
             detail={"invitation_id": inv.id, "role": role.value, "method": method,
-                    "permissions": permissions, "expires_hours": expires_hours},
+                    "permissions": permissions, "site_ids": site_ids, "expires_hours": expires_hours},
         )
     )
     db.commit()
@@ -411,6 +432,7 @@ def create_user(
         password_hash=hash_password(data.password),
         role=data.role,
         permissions=normalize_permissions(data.role.value, data.permissions),
+        site_ids=normalize_site_ids(data.role.value, data.site_ids, _site_id_set(db)),
         is_active=True,
         full_name=_clean(data.full_name, 100),
         email=email,
@@ -418,7 +440,7 @@ def create_user(
     db.add(user)
     db.flush()
     db.add(AuditLog(user_id=admin.id, action="create_user", target=user.username,
-                    detail={"role": user.role.value, "permissions": user.permissions}))
+                    detail={"role": user.role.value, "permissions": user.permissions, "site_ids": user.site_ids}))
     db.commit()
     db.refresh(user)
     return _user_out(user, datetime.utcnow())
@@ -455,9 +477,14 @@ def update_user(
         detail["role"] = new_role.value
         if "permissions" not in fields:
             user.permissions = None  # เปลี่ยนบทบาท = เริ่มจากสิทธิ์เต็มของบทบาทใหม่
+        if new_role == UserRole.ADMIN:
+            user.site_ids = None  # Admin ดูแลทุกสถานที่เสมอ
     if "permissions" in fields:
         user.permissions = normalize_permissions(user.role.value, data.permissions)
         detail["permissions"] = user.permissions
+    if "site_ids" in fields:
+        user.site_ids = normalize_site_ids(user.role.value, data.site_ids, _site_id_set(db))
+        detail["site_ids"] = user.site_ids
     if new_active is not None:
         user.is_active = new_active
         detail["is_active"] = new_active
@@ -495,7 +522,7 @@ def create_password_reset(
         db, request, admin, purpose=InvitationPurpose.RESET, role=user.role,
         full_name=user.full_name or user.username, email=user.email,
         target_user_id=user.id, expires_hours=expires_hours,
-        method="email" if user.email else "link", permissions=user.permissions,
+        method="email" if user.email else "link", permissions=user.permissions, site_ids=user.site_ids,
     )
 
 
@@ -526,6 +553,7 @@ def create_invitation(
         expires_hours=data.expires_hours, method=data.method,
         permissions=normalize_permissions(data.role.value, data.permissions),
         message=_clean(data.message, 500),
+        site_ids=normalize_site_ids(data.role.value, data.site_ids, _site_id_set(db)),
     )
 
 
@@ -559,6 +587,7 @@ def get_invite_info(token: str, db: Session = Depends(get_db)):
         role=role,
         role_label=ROLE_LABELS_TH.get(role, role),
         permission_labels=[PERMISSION_LABELS[k] for k in effective_permissions(role, inv.permissions)],
+        site_labels=_site_labels(db, effective_site_ids(role, inv.site_ids)),
         full_name=inv.full_name,
         email=inv.email,
         message=inv.message,
@@ -592,6 +621,7 @@ def accept_invite(token: str, data: AcceptIn, db: Session = Depends(get_db)) -> 
             password_hash=hash_password(data.password),
             role=inv.role,
             permissions=inv.permissions,
+            site_ids=inv.site_ids,
             is_active=True,
             full_name=inv.full_name,
             email=inv.email,

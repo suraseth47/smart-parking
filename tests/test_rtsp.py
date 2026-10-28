@@ -41,3 +41,10 @@ def test_custom_uses_given_url():
 def test_custom_without_url_raises():
     with pytest.raises(ValueError):
         build_rtsp_url(CameraBrand.CUSTOM, "ignored", 554, 1, CameraStream.MAIN, "u", "p", None)
+
+
+def test_special_characters_in_password_are_encoded():
+    url = build_rtsp_url(
+        CameraBrand.HIKVISION, "192.168.1.10", 554, 1, CameraStream.MAIN, "admin", "Adm@n#1:x", None
+    )
+    assert url == "rtsp://admin:Adm%40n%231%3Ax@192.168.1.10:554/Streaming/Channels/101"

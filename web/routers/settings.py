@@ -3,12 +3,16 @@ from __future__ import annotations
 
 import ipaddress
 import re
+from datetime import datetime, timedelta
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from core.backup import backup_hour, backup_keep, copy_dir, days_covered, list_backups, read_status, run_backup
+from core.config import get_settings as get_app_settings
+from core.config import local_utc_offset_hours
 from core.db import get_db
 from core.models import AuditLog, Setting
 from core.security import encrypt_camera_password
@@ -182,3 +186,86 @@ def _save_setting(db: Session, key: str, value: dict) -> None:
         db.add(Setting(key=key, value=value))
     else:
         setting.value = value
+
+
+# ---------- สำรองข้อมูล (NFR-7, TOR 5.1) ----------
+
+def _backup_dir():
+    return get_app_settings().data_dir / "backups"
+
+
+@router.get("/backup")
+def get_backup_status(_admin: CurrentUser = Depends(require_admin)) -> dict:
+    """สถานะการสำรองล่าสุด + รายการไฟล์สำรอง (worker สำรองให้อัตโนมัติทุกวัน)"""
+    files = list_backups(_backup_dir())
+    offsite = copy_dir()
+    return {
+        "status": read_status(_backup_dir()),
+        "files": [{"name": f.name, "size": f.size, "created_at": f.created_at.isoformat()} for f in files],
+        "keep": backup_keep(),
+        "hour": backup_hour(),
+        "days_covered": days_covered(files),
+        "copy_dir": str(offsite) if offsite else None,
+    }
+
+
+@router.post("/backup/run")
+def run_backup_now(
+    admin: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_db),
+    _csrf: None = Depends(verify_csrf),
+) -> dict:
+    """สำรองทันที เช่น ก่อนอัปเดตระบบหรือก่อนแก้ค่าครั้งใหญ่"""
+    local_now = datetime.utcnow() + timedelta(hours=local_utc_offset_hours())
+    status_ = run_backup(get_app_settings().db_path, _backup_dir(), local_now, reason=f"manual:{admin.username}")
+    db.add(AuditLog(user_id=admin.id, action="backup_now", target=status_.get("file"),
+                    detail={"ok": status_.get("ok"), "message": status_.get("message")}))
+    db.commit()
+    if not status_.get("ok"):
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, status_.get("message", "สำรองไม่สำเร็จ"))
+    return status_
+
+
+# ---------- ตรวจความปลอดภัยตาม TOR 5.1 (หน้าตั้งค่า → ความปลอดภัย) ----------
+
+@router.get("/security-status")
+def security_status(
+    request: Request, db: Session = Depends(get_db), _admin: CurrentUser = Depends(require_admin)
+) -> list[dict]:
+    """รายการตรวจ TOR 5.1 แบบสด — ใช้ประกอบการตรวจรับ"""
+    from web.routers.public import RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_WINDOW_SECONDS
+
+    app_settings = get_app_settings()
+    host = (request.headers.get("x-forwarded-host") or request.url.hostname or "").split(":")[0]
+    scheme = request.headers.get("x-forwarded-proto") or request.url.scheme
+    host_is_ip = _is_valid_ip_or_cidr(host) if host else True
+    allow = db.get(Setting, IP_ALLOWLIST_SETTING_KEY)
+    allow_value = allow.value if allow else {}
+    files = list_backups(_backup_dir())
+    last = read_status(_backup_dir()) or {}
+
+    def item(key: str, title: str, ok: bool, detail: str, warn: bool = False) -> dict:
+        return {"key": key, "title": title, "state": "ok" if ok else ("warn" if warn else "fail"), "detail": detail}
+
+    return [
+        item("login", "หลังบ้านต้องเข้าสู่ระบบด้วยชื่อผู้ใช้และรหัสผ่าน", True,
+             "ทุก API หลังบ้านตรวจ session · ผิดรหัส 5 ครั้งล็อก 15 นาที · บันทึกการเข้าสู่ระบบไม่สำเร็จ"),
+        item("ip", "จำกัด IP ที่เข้าหลังบ้านได้ผ่านหน้าตั้งค่า", bool(allow_value.get("enabled") and allow_value.get("ips")),
+             "เปิดใช้อยู่ " + str(len(allow_value.get("ips", []))) + " รายการ" if allow_value.get("enabled")
+             else "มีฟังก์ชันแล้ว แต่ยังไม่ได้เปิดใช้ (แท็บ \"จำกัด IP\")", warn=True),
+        item("camera_pw", "รหัสผ่านกล้องเก็บแบบเข้ารหัส", len(app_settings.fernet_key) >= 40 and app_settings.fernet_key != "change-me",
+             "เข้ารหัสด้วย Fernet (AES-128) คีย์อยู่ใน .env ไม่อยู่ในฐานข้อมูล" if len(app_settings.fernet_key) >= 40
+             else "ยังไม่ได้ตั้ง FERNET_KEY ใน .env"),
+        item("secret", "คีย์เซ็นคุกกี้เข้าสู่ระบบ (SECRET_KEY)", len(app_settings.secret_key) >= 32 and app_settings.secret_key != "change-me",
+             "ตั้งค่าแล้ว" if len(app_settings.secret_key) >= 32 else "SECRET_KEY สั้นหรือยังเป็นค่าตัวอย่าง"),
+        item("https", "เชื่อมต่อผ่าน HTTPS ด้วยใบรับรองที่ถูกต้อง", scheme == "https" and not host_is_ip,
+             f"กำลังใช้ {scheme}://{host} — ใบรับรองของโดเมน (Let's Encrypt)" if scheme == "https" and not host_is_ip
+             else f"กำลังใช้ {scheme}://{host} — เข้าผ่าน IP ใช้ใบรับรองที่ระบบออกเอง เบราว์เซอร์จะเตือน ต้องเข้าผ่านโดเมน (ดู README หัวข้อ HTTPS)",
+             warn=True),
+        item("rate", "จำกัดอัตราการเรียกหน้าสาธารณะ (Rate limit)", True,
+             f"ไม่เกิน {RATE_LIMIT_MAX_REQUESTS} ครั้ง / {RATE_LIMIT_WINDOW_SECONDS} วินาที ต่อ IP (เกินได้รับ HTTP 429) + cache 10 วินาที"),
+        item("backup", "สำรองฐานข้อมูลอัตโนมัติทุกวัน เก็บไม่น้อยกว่า 7 วัน", bool(last.get("ok")) and days_covered(files) >= 7,
+             (f"ล่าสุด {last.get('time', '-')} · มีไฟล์สำรอง {days_covered(files)} วัน (เก็บ {backup_keep()} ชุด)"
+              if last.get("ok") else f"ล่าสุด: {last.get('message', 'ยังไม่เคยสำรอง')}"),
+             warn=bool(last.get("ok"))),
+    ]

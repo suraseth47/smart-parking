@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 
 
 @dataclass
@@ -28,12 +28,16 @@ class HeatmapCell:
     avg_occ_pct: float
 
 
-def build_hourly_report(rows: list[tuple[datetime, float, float, int]]) -> list[HourlyPoint]:
-    """rows: [(hour_ts, avg_occ_pct, max_occ_pct, samples), ...] ของ 1 วัน -> เรียง 24 ชั่วโมง (0-23)
+def build_hourly_report(
+    rows: list[tuple[datetime, float, float, int]], utc_offset_hours: float = 0.0
+) -> list[HourlyPoint]:
+    """rows: [(hour_ts แบบ UTC, avg_occ_pct, max_occ_pct, samples), ...] ของ 1 วัน -> เรียง 24 ชั่วโมง (0-23)
 
+    ชั่วโมงในผลลัพธ์เป็นเวลาท้องถิ่น (UTC + utc_offset_hours)
     ชั่วโมงที่ไม่มีข้อมูล (ยังไม่มี slot publish/worker ยังไม่ได้รัน) จะได้ samples=0
     """
-    by_hour = {ts.hour: (avg, mx, n) for ts, avg, mx, n in rows}
+    shift = timedelta(hours=utc_offset_hours)
+    by_hour = {(ts + shift).hour: (avg, mx, n) for ts, avg, mx, n in rows}
     points = []
     for hour in range(24):
         if hour in by_hour:
@@ -44,11 +48,14 @@ def build_hourly_report(rows: list[tuple[datetime, float, float, int]]) -> list[
     return points
 
 
-def build_daily_report(rows: list[tuple[datetime, float, float]]) -> list[DailyPoint]:
-    """rows: [(hour_ts, avg_occ_pct, max_occ_pct), ...] หลายวัน -> รวมเป็นรายวัน เรียงตามวันที่"""
+def build_daily_report(
+    rows: list[tuple[datetime, float, float]], utc_offset_hours: float = 0.0
+) -> list[DailyPoint]:
+    """rows: [(hour_ts แบบ UTC, avg_occ_pct, max_occ_pct), ...] หลายวัน -> รวมเป็นรายวัน (ตามวันท้องถิ่น) เรียงตามวันที่"""
+    shift = timedelta(hours=utc_offset_hours)
     by_date: dict[str, list[tuple[float, float]]] = defaultdict(list)
     for ts, avg, mx in rows:
-        by_date[ts.strftime("%Y-%m-%d")].append((avg, mx))
+        by_date[(ts + shift).strftime("%Y-%m-%d")].append((avg, mx))
 
     result = []
     for date_str in sorted(by_date.keys()):
@@ -59,15 +66,17 @@ def build_daily_report(rows: list[tuple[datetime, float, float]]) -> list[DailyP
     return result
 
 
-def build_heatmap_report(rows: list[tuple[datetime, float]]) -> list[HeatmapCell]:
+def build_heatmap_report(rows: list[tuple[datetime, float]], utc_offset_hours: float = 0.0) -> list[HeatmapCell]:
     """rows: [(hour_ts, avg_occ_pct), ...] หลายสัปดาห์ -> เฉลี่ยตาม (วันในสัปดาห์, ชั่วโมง)
 
     ช่องที่ไม่มีข้อมูลเลยจะไม่อยู่ในผลลัพธ์ (ให้ frontend แสดงเป็น "ไม่มีข้อมูล" เอง
     แทนที่จะปลอมเป็น 0%)
     """
+    shift = timedelta(hours=utc_offset_hours)
     buckets: dict[tuple[int, int], list[float]] = defaultdict(list)
     for ts, avg in rows:
-        buckets[(ts.weekday(), ts.hour)].append(avg)
+        local = ts + shift
+        buckets[(local.weekday(), local.hour)].append(avg)
 
     return [
         HeatmapCell(day_of_week=dow, hour=hour, avg_occ_pct=sum(vals) / len(vals))
@@ -90,8 +99,6 @@ def build_public_peak(
     weekday: วันที่ต้องการ (0=จันทร์ ... 6=อาทิตย์) ตามเวลาท้องถิ่น
     คืนค่าเฉลี่ย % การใช้งานรายชั่วโมงของวันนั้น เฉพาะชั่วโมงที่มีข้อมูล (ไม่ปลอมเป็น 0%)
     """
-    from datetime import timedelta
-
     buckets: dict[int, list[float]] = defaultdict(list)
     for ts, avg in rows:
         local = ts + timedelta(hours=utc_offset_hours)

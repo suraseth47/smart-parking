@@ -10,7 +10,8 @@
   <div>
     <div class="tab-bar" role="tablist">
       <button type="button" role="tab" :class="tab === 'mail' && 'active'" :aria-selected="tab === 'mail'" @click="go('mail')">✉ อีเมลและลิงก์คำเชิญ</button>
-      <button type="button" role="tab" :class="tab === 'security' && 'active'" :aria-selected="tab === 'security'" @click="go('security')">🛡 ความปลอดภัย (จำกัด IP)</button>
+      <button type="button" role="tab" :class="tab === 'security' && 'active'" :aria-selected="tab === 'security'" @click="go('security')">🛡 ความปลอดภัย</button>
+      <button type="button" role="tab" :class="tab === 'backup' && 'active'" :aria-selected="tab === 'backup'" @click="go('backup')">💾 สำรองข้อมูล</button>
     </div>
 
     <!-- ================= อีเมลและลิงก์คำเชิญ ================= -->
@@ -92,9 +93,64 @@
       <p class="notice warn" x-show="testResult && !testOk" x-text="testResult" style="margin-top:0.5rem;"></p>
     </div>
 
-    <!-- ================= ความปลอดภัย ================= -->
+    <!-- ================= ความปลอดภัย: ตรวจตาม TOR 5.1 ================= -->
+    <div class="card" x-show="tab === 'security'" style="margin-bottom:1rem;">
+      <h2 style="margin-top:0;">ตรวจความปลอดภัยตาม TOR 5.1</h2>
+      <p class="muted" style="margin-top:0;">ตรวจจากค่าที่ระบบใช้งานอยู่จริงตอนนี้ — ใช้ประกอบการตรวจรับได้</p>
+      <template x-for="c in checks" :key="c.key">
+        <div class="check-row" :class="c.state">
+          <span class="check-icon" aria-hidden="true" x-text="c.state === 'ok' ? '✓' : (c.state === 'warn' ? '!' : '✕')"></span>
+          <div><div style="font-weight:600;" x-text="c.title"></div><div class="sub-text" x-text="c.detail"></div></div>
+        </div>
+      </template>
+    </div>
+
+    <!-- ================= สำรองข้อมูล ================= -->
+    <div class="card" x-show="tab === 'backup'">
+      <h2 style="margin-top:0;">สำรองฐานข้อมูลอัตโนมัติ</h2>
+      <p class="muted" style="margin-top:0;">
+        ระบบสำรองฐานข้อมูลให้เองทุกวันเวลา <b x-text="String(backup.hour).padStart(2, '0') + ':00 น.'"></b>
+        เก็บ <b x-text="backup.keep"></b> ชุดล่าสุด และตรวจความสมบูรณ์ของไฟล์ทุกครั้ง (ไม่ต้องตั้ง cron บนเครื่อง Server)
+      </p>
+      <div class="check-row" :class="backup.status && backup.status.ok ? 'ok' : 'fail'" x-show="backup.status">
+        <span class="check-icon" aria-hidden="true" x-text="backup.status && backup.status.ok ? '✓' : '✕'"></span>
+        <div>
+          <div style="font-weight:600;" x-text="backup.status ? ('สำรองล่าสุด ' + fmtLocal(backup.status.time)) : ''"></div>
+          <div class="sub-text" x-text="backup.status ? backup.status.message : ''"></div>
+          <div class="sub-text" x-show="backup.status && backup.status.copy" x-text="backup.status && backup.status.copy ? backup.status.copy.message : ''"
+               :style="backup.status && backup.status.copy && !backup.status.copy.ok && 'color:var(--color-danger)'"></div>
+        </div>
+      </div>
+      <p class="notice warn" x-show="!backup.status" style="margin:0 0 0.75rem;">ยังไม่เคยสำรอง — กด "สำรองตอนนี้" หรือรอ worker สำรองให้ในรอบถัดไป</p>
+      <p class="hint" x-text="'มีไฟล์สำรองครอบคลุม ' + backup.days_covered + ' วัน (TOR กำหนดไม่น้อยกว่า 7 วัน)'"></p>
+      <p class="hint" x-show="backup.copy_dir" x-text="'คัดลอกไปเก็บนอกเครื่องที่: ' + backup.copy_dir"></p>
+      <p class="hint" x-show="!backup.copy_dir">แนะนำ: ตั้ง BACKUP_COPY_DIR ให้คัดลอกไปเก็บที่ NAS ด้วย (ดู README หัวข้อ สำรองข้อมูล)</p>
+
+      <div style="display:flex; gap:0.5rem; margin:0.75rem 0;">
+        <button @click="backupNow()" :disabled="backingUp" x-text="backingUp ? 'กำลังสำรอง...' : 'สำรองตอนนี้'"></button>
+      </div>
+      <p class="error-text" x-show="backupError" x-text="backupError"></p>
+
+      <div class="table-scroll" x-show="backup.files.length">
+        <table class="data-table">
+          <thead><tr><th>ไฟล์</th><th>เวลา</th><th style="text-align:right;">ขนาด</th></tr></thead>
+          <tbody>
+            <template x-for="f in backup.files" :key="f.name">
+              <tr>
+                <td style="font-family:ui-monospace,Consolas,monospace; font-size:0.85rem;" x-text="f.name"></td>
+                <td x-text="fmtLocal(f.created_at)"></td>
+                <td style="text-align:right;" x-text="(f.size / 1048576).toFixed(2) + ' MB'"></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+      <p class="hint" style="margin-top:0.75rem;">ไฟล์อยู่ในโฟลเดอร์ data/backups บนเครื่อง Server · วิธีกู้คืนดู README หัวข้อ สำรองข้อมูล</p>
+    </div>
+
+    <!-- ================= จำกัด IP ================= -->
     <div class="card" x-show="tab === 'security'">
-      <h2 style="margin-top:0;">จำกัด IP เข้าหลังบ้าน (NFR-12)</h2>
+      <h2 style="margin-top:0;">จำกัด IP เข้าหลังบ้าน (NFR-12, TOR 5.1)</h2>
       <p class="muted">
         หน้า login เข้าได้จากทุก IP เสมอ (ป้องกันล็อกตัวเองออกจากระบบ) แต่การทำงานอื่นๆ ทั้งหมด
         หลัง login จะถูกบล็อกถ้า IP ไม่อยู่ในรายการด้านล่าง — ถ้าเปิดใช้แต่ยังไม่ใส่รายการ จะยังไม่บล็อกใครเลย
@@ -133,6 +189,8 @@
       mail: { base_url: "", default_expiry_days: 3, host: "", port: 587, user: "", from_address: "", security: "starttls", has_password: false, source: "none", effective_base_url: "" },
       password: "", clearPassword: false, saving: false, mailSaved: "", mailError: "",
       testTo: "", testing: false, testResult: "", testOk: false,
+      // ตรวจ TOR 5.1 + สำรองข้อมูล
+      checks: [], backup: { files: [], keep: 14, hour: 3, days_covered: 0, status: null, copy_dir: null }, backingUp: false, backupError: "",
 
       async init() {
         const user = await requireAuth();
@@ -140,7 +198,26 @@
         this.isOperator = user.role !== "admin";
         if (this.isOperator) return;
         if (location.hash === "#security") this.tab = "security";
-        await Promise.all([this.load(), this.loadMail()]);
+        if (location.hash === "#backup") this.tab = "backup";
+        await Promise.all([this.load(), this.loadMail(), this.loadChecks(), this.loadBackup()]);
+      },
+      async loadChecks() { this.checks = await apiJson("/api/admin/settings/security-status").catch(() => []); },
+      async loadBackup() { this.backup = await apiJson("/api/admin/settings/backup"); },
+      fmtLocal(iso) {
+        // เวลาไฟล์สำรองเป็นเวลาท้องถิ่นของ Server อยู่แล้ว (ไม่ใช่ UTC)
+        const [d, t] = iso.split("T");
+        const [y, m, day] = d.split("-").map(Number);
+        const months = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
+        return `${day} ${months[m - 1]} ${y + 543} ${t.slice(0, 5)} น.`;
+      },
+      async backupNow() {
+        this.backingUp = true; this.backupError = "";
+        try {
+          await apiJson("/api/admin/settings/backup/run", { method: "POST" });
+          await Promise.all([this.loadBackup(), this.loadChecks()]);
+        } catch (e) {
+          this.backupError = e.message;
+        } finally { this.backingUp = false; }
       },
       go(tab) { this.tab = tab; history.replaceState(null, "", "#" + tab); },
 

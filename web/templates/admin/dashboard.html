@@ -20,7 +20,8 @@
       <div>
         <div class="stat-label">กล้องทั้งหมด</div>
         <div class="stat-value" x-text="liveCams.length"></div>
-        <div class="stat-note"><span class="ok" x-text="'● ' + camOnline + ' online'"></span> &nbsp; <span class="bad" x-text="'● ' + (liveCams.length - camOnline) + ' offline'"></span></div>
+        <div class="stat-note"><span class="ok" x-text="'● ' + camOnline + ' online'"></span> &nbsp; <span class="bad" x-text="'● ' + (liveCams.length - camOnline) + ' offline'"></span>
+          <span class="muted" x-show="cameras.some((c) => !c.enabled)" x-text="' · ปิดใช้งาน ' + cameras.filter((c) => !c.enabled).length"></span></div>
       </div>
     </div>
     <div class="stat-card">
@@ -55,41 +56,119 @@
   <template x-if="!isOperator">
   <div>
   <div class="card" style="margin-bottom:1rem;">
-    <h2 style="margin-top:0;">กล้อง</h2>
-    <p class="muted" x-show="cameras.length === 0">ยังไม่มีกล้อง เพิ่มกล้องแรกด้านล่าง</p>
-    <table style="width:100%; border-collapse:collapse;" x-show="cameras.length > 0">
+    <div style="display:flex; flex-wrap:wrap; gap:0.5rem; align-items:center; justify-content:space-between; margin-bottom:0.5rem;">
+      <h2 style="margin:0;">กล้อง</h2>
+      <div style="display:flex; gap:0.5rem; align-items:center;">
+        <select x-show="sites.length > 1" x-model="camSiteFilter" aria-label="กรองตามสถานที่" style="width:auto; margin:0;">
+          <option value="">ทุกสถานที่</option>
+          <template x-for="st in sites" :key="st.id"><option :value="String(st.id)" x-text="st.name_th"></option></template>
+        </select>
+        <button @click="openCam(null)">+ เพิ่มกล้อง</button>
+      </div>
+    </div>
+    <p class="notice ok" x-show="camFlash" x-text="camFlash" style="margin:0 0 0.75rem;"></p>
+    <p class="notice warn" x-show="camError" x-text="camError" style="margin:0 0 0.75rem; white-space:pre-line;"></p>
+    <p class="muted" x-show="cameras.length === 0">ยังไม่มีกล้อง กด "+ เพิ่มกล้อง" เพื่อเริ่ม</p>
+    <div class="table-scroll" x-show="cameras.length > 0">
+    <table class="data-table stack-table">
       <thead>
-        <tr style="text-align:left; border-bottom:1px solid var(--color-border);">
-          <th style="padding:0.4rem;">ชื่อ</th>
-          <th style="padding:0.4rem;">ยี่ห้อ</th>
-          <th style="padding:0.4rem;">โฮสต์</th>
-          <th style="padding:0.4rem;">สถานะ</th>
-          <th style="padding:0.4rem;"></th>
+        <tr>
+          <th>ชื่อกล้อง</th>
+          <th>การเชื่อมต่อ</th>
+          <th>สถานะ</th>
+          <th>ช่องจอด</th>
+          <th>เปิดใช้งาน</th>
+          <th style="text-align:right;">จัดการ</th>
         </tr>
       </thead>
       <tbody>
-        <template x-for="cam in cameras" :key="cam.id">
-          <tr style="border-bottom:1px solid var(--color-border);">
-            <td style="padding:0.4rem;">
-              <span x-text="cam.name"></span>
-              <div class="muted" style="font-size:0.8rem;" x-show="cam.large_object_min_area != null"
-                   x-text="'นับวัตถุขนาดใหญ่เป็นรถ ≥ ' + formatPct(cam.large_object_min_area)"></div>
-              <div class="muted" style="font-size:0.8rem;" x-show="cam.roi_auto_margin != null"
-                   x-text="'ROI เฉพาะบริเวณช่องจอด (ขอบ ' + formatPct(cam.roi_auto_margin) + ')'"></div>
+        <template x-for="cam in shownCameras" :key="cam.id">
+          <tr :id="'camera-' + cam.id" :class="highlightId === cam.id && 'row-highlight'" :style="!cam.enabled && 'opacity:0.7;'">
+            <td data-label="ชื่อกล้อง">
+              <b x-text="cam.name"></b>
+              <span class="sub-text" x-show="sites.length > 1"><span class="site-chip" x-text="siteName(cam.site_id)"></span></span>
+              <span class="sub-text" x-show="cam.large_object_min_area != null"
+                    x-text="'นับวัตถุขนาดใหญ่เป็นรถ ≥ ' + formatPct(cam.large_object_min_area)"></span>
+              <span class="sub-text" x-show="cam.roi_auto_margin != null"
+                    x-text="'ROI เฉพาะบริเวณช่องจอด (ขอบ ' + formatPct(cam.roi_auto_margin) + ')'"></span>
             </td>
-            <td style="padding:0.4rem;" x-text="cam.brand"></td>
-            <td style="padding:0.4rem;" x-text="cam.host"></td>
-            <td style="padding:0.4rem;"><span class="status-pill" :class="cam.status" x-text="cam.status"></span></td>
-            <td style="padding:0.4rem;">
-              <a class="btn" :href="'/admin/layout?camera_id=' + cam.id">กำหนดช่องจอด</a>
-              <button x-show="cam.status === 'moved'" class="btn-secondary" @click="openRealign(cam)">Re-align</button>
-              <button class="btn-secondary" @click="openDetect(cam)">ตั้งค่าตรวจจับ</button>
-              <button class="btn-secondary" style="color:var(--color-danger);" @click="askClearSlots(cam)">ลบช่องจอดทั้งหมด</button>
+            <td data-label="การเชื่อมต่อ">
+              <span x-text="brandLabel(cam.brand)"></span>
+              <span class="sub-text" style="font-family:ui-monospace,Consolas,monospace; overflow-wrap:anywhere;" x-text="camAddress(cam)"></span>
+            </td>
+            <td data-label="สถานะ">
+              <span class="status-pill" :class="cam.status" x-text="statusLabel(cam.status)"></span>
+              <span class="sub-text" x-show="cam.enabled && cam.last_frame_at" x-text="'ภาพล่าสุด ' + ago(cam.last_frame_at)"></span>
+              <span class="sub-text" x-show="cam.enabled && cam.last_error" style="color:var(--color-danger); overflow-wrap:anywhere;" x-text="cam.last_error"></span>
+            </td>
+            <td data-label="ช่องจอด" x-text="cam.slot_count + ' ช่อง'"></td>
+            <td data-label="เปิดใช้งาน">
+              <label class="switch" :title="cam.enabled ? 'กดเพื่อปิดใช้งานกล้อง' : 'กดเพื่อเปิดใช้งานกล้อง'">
+                <input type="checkbox" :checked="cam.enabled" @click.prevent="askToggle(cam)" :aria-label="'เปิดใช้งานกล้อง ' + cam.name">
+                <span class="switch-track"></span>
+              </label>
+            </td>
+            <td class="stack-actions">
+              <div class="cell-actions">
+                <a class="btn" :href="'/admin/layout?camera_id=' + cam.id">กำหนดช่องจอด</a>
+                <button class="btn-secondary" @click="openCam(cam)">แก้ไข</button>
+                <button class="btn-secondary" @click="testSaved(cam)" :disabled="testingId === cam.id" x-text="testingId === cam.id ? 'กำลังทดสอบ...' : 'ทดสอบ'"></button>
+                <button x-show="cam.status === 'moved'" class="btn-secondary" @click="openRealign(cam)">Re-align</button>
+                <button class="btn-secondary" @click="openDetect(cam)">ตั้งค่าตรวจจับ</button>
+                <button class="btn-secondary" style="color:var(--color-danger);" @click="askDelete(cam)">ลบ…</button>
+              </div>
             </td>
           </tr>
         </template>
       </tbody>
     </table>
+    </div>
+    <p class="hint" style="margin-top:0.5rem;">ปิดใช้งาน = หยุดดึงภาพชั่วคราว (เช่น ซ่อมกล้อง) โดยไม่ลบช่องจอดที่วาดไว้ ช่องของกล้องนั้นจะแสดง "ไม่ทราบสถานะ" และไม่นับเป็นช่องว่าง</p>
+  </div>
+
+  <!-- ยืนยันปิด/เปิดใช้งาน -->
+  <div class="card" x-show="toggleTarget" style="margin-bottom:1rem; border-color:#f0c36d; background:#fffbeb;">
+    <template x-if="toggleTarget && toggleTarget.enabled">
+      <div>
+        <h2 style="margin-top:0;">ปิดใช้งานกล้อง <span x-text="toggleTarget.name"></span>?</h2>
+        <p style="margin:0;">ระบบจะหยุดดึงภาพจากกล้องนี้ ช่องจอด <b x-text="toggleTarget.slot_count"></b> ช่องของกล้องนี้จะแสดงเป็น "ไม่ทราบสถานะ" บนหน้าสาธารณะ และไม่นับเป็นช่องว่าง ช่องที่วาดไว้ไม่ถูกลบ เปิดใช้งานคืนได้ทุกเมื่อ</p>
+      </div>
+    </template>
+    <template x-if="toggleTarget && !toggleTarget.enabled">
+      <div>
+        <h2 style="margin-top:0;">เปิดใช้งานกล้อง <span x-text="toggleTarget.name"></span>?</h2>
+        <p style="margin:0;">ระบบจะเริ่มดึงภาพและตรวจจับในรอบถัดไป (ภายในไม่กี่วินาที)</p>
+      </div>
+    </template>
+    <div style="display:flex; gap:0.5rem; margin-top:0.75rem;">
+      <button :class="toggleTarget && toggleTarget.enabled ? 'btn-danger' : ''" @click="confirmToggle()" :disabled="camBusy"
+              x-text="toggleTarget && toggleTarget.enabled ? 'ปิดใช้งาน' : 'เปิดใช้งาน'"></button>
+      <button class="btn-secondary" @click="toggleTarget = null" :disabled="camBusy">ยกเลิก</button>
+    </div>
+  </div>
+
+  <!-- ลบ: เลือกว่าจะลบช่องจอด หรือลบกล้อง -->
+  <div class="card" x-show="deleteTarget" style="margin-bottom:1rem; border-color:#fecaca; background:#fef2f2;">
+    <h2 style="margin-top:0; color:var(--color-danger);">ลบข้อมูลกล้อง <span x-text="deleteTarget && deleteTarget.name"></span></h2>
+    <p style="margin-top:0;">ถ้าแค่ซ่อมหรือถอดกล้องชั่วคราว แนะนำใช้สวิตช์ "เปิดใช้งาน" แทนการลบ</p>
+    <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+      <button class="btn-secondary" style="color:var(--color-danger);" @click="askClearSlots(deleteTarget); deleteTarget = null"
+              :disabled="!deleteTarget || !deleteTarget.slot_count">ลบช่องจอดทั้งหมดของกล้องนี้ (วาดใหม่)</button>
+      <button class="btn-danger" @click="deleteCamera()" :disabled="camBusy || (deleteTarget && deleteTarget.slot_count > 0)">ลบกล้องออกจากระบบ</button>
+      <button class="btn-secondary" @click="deleteTarget = null">ยกเลิก</button>
+    </div>
+    <p class="hint" x-show="deleteTarget && deleteTarget.slot_count > 0">ลบกล้องได้เมื่อไม่มีช่องจอดผูกอยู่ — ลบช่องจอดของกล้องก่อน (ประวัติสถานะของช่องจะหายด้วย)</p>
+  </div>
+
+  <!-- ผลทดสอบการเชื่อมต่อของกล้องที่บันทึกแล้ว -->
+  <div class="card" x-show="savedTest" style="margin-bottom:1rem;">
+    <div style="display:flex; justify-content:space-between; gap:0.5rem; align-items:center;">
+      <h2 style="margin:0;" x-text="savedTest && ('ทดสอบกล้อง ' + savedTest.name)"></h2>
+      <button class="btn-secondary" @click="savedTest = null">ปิด</button>
+    </div>
+    <p class="notice" :class="savedTest && savedTest.ok ? 'ok' : 'warn'" x-text="savedTest && savedTest.message" style="margin:0.75rem 0 0;"></p>
+    <img x-show="savedTest && savedTest.image" :src="savedTest && savedTest.image" alt="ภาพทดสอบจากกล้อง" style="max-width:100%; margin-top:0.75rem; border-radius:8px;">
+    <p class="hint" x-show="savedTest && savedTest.image">ภาพมีข้อมูลส่วนบุคคล (PDPA) ใช้ตรวจการตั้งค่ากล้องเท่านั้น</p>
   </div>
 
   <div class="card" x-show="clearTarget" style="margin-bottom:1rem; border-color:#fecaca; background:#fef2f2;">
@@ -179,50 +258,139 @@
     <p class="error-text" x-show="realignError" x-text="realignError"></p>
   </div>
 
-  <div class="card">
-    <h2 style="margin-top:0;">เพิ่มกล้องใหม่</h2>
-    <form @submit.prevent="createCamera">
-      <label>ชื่อกล้อง</label>
-      <input type="text" x-model="form.name" required>
-
-      <label>ยี่ห้อ</label>
-      <select x-model="form.brand">
-        <option value="hikvision">Hikvision</option>
-        <option value="dahua">Dahua</option>
-        <option value="custom">Custom (กรอก RTSP URL เอง)</option>
-      </select>
-
-      <template x-if="form.brand !== 'custom'">
-        <div>
-          <label>IP กล้อง</label>
-          <input type="text" x-model="form.host" placeholder="192.168.1.10">
-          <label>Username</label>
-          <input type="text" x-model="form.username">
-          <label>Password</label>
-          <input type="password" x-model="form.password">
-          <label>Channel</label>
-          <input type="number" x-model.number="form.channel" min="1">
-        </div>
-      </template>
-      <template x-if="form.brand === 'custom'">
-        <div>
-          <label>RTSP URL (หรือ path ไฟล์วิดีโอ/ภาพสำหรับทดสอบ)</label>
-          <input type="text" x-model="form.rtsp_url_custom" placeholder="rtsp://... หรือ data/samples/xxx.mp4">
-        </div>
-      </template>
-
-      <button type="submit" style="margin-top:1rem;" :disabled="loading">เพิ่มกล้อง</button>
-      <p class="error-text" x-show="error" x-text="error"></p>
-    </form>
   </div>
-  </div>
+  </template>
+
+  <!-- ================= แผง: เพิ่ม/แก้ไขกล้อง ================= -->
+  <template x-if="camPanel">
+    <div>
+      <div class="drawer-backdrop" @click="closeCam()"></div>
+      <aside class="drawer" role="dialog" aria-modal="true" :aria-label="cf.id ? 'แก้ไขกล้อง' : 'เพิ่มกล้อง'" @keydown.escape.window="closeCam()">
+        <div class="drawer-head">
+          <h2 x-text="cf.id ? 'แก้ไขกล้อง ' + cf.name : 'เพิ่มกล้องใหม่'"></h2>
+          <p>รองรับกล้อง IP ทั่วไปผ่าน RTSP — เลือกยี่ห้อเพื่อให้ระบบสร้าง URL ให้ หรือกรอก RTSP URL เอง</p>
+        </div>
+        <div class="drawer-body">
+          <div x-show="sites.length > 1">
+            <label for="c-site">สถานที่ *</label>
+            <select id="c-site" x-model="cf.site_id">
+              <option value="">— เลือกสถานที่ —</option>
+              <template x-for="st in sites" :key="st.id"><option :value="String(st.id)" x-text="st.name_th"></option></template>
+            </select>
+            <p class="hint">ช่องจอดที่วาดบนกล้องนี้ต้องอยู่ในโซนของสถานที่เดียวกัน · ย้ายสถานที่ได้เมื่อกล้องยังไม่มีช่องจอด</p>
+          </div>
+          <label for="c-name">ชื่อกล้อง *</label>
+          <input id="c-name" type="text" x-model="cf.name" maxlength="100" placeholder="เช่น Cam1 ลานหน้าอาคาร">
+
+          <div class="section-title">ยี่ห้อ / รูปแบบ</div>
+          <template x-for="b in BRANDS" :key="b.value">
+            <label class="choice-card" :class="cf.brand === b.value && 'selected'">
+              <input type="radio" name="c-brand" :value="b.value" x-model="cf.brand">
+              <div><div class="choice-title" x-text="b.label"></div><div class="choice-desc" x-text="b.desc"></div></div>
+            </label>
+          </template>
+
+          <template x-if="cf.brand !== 'custom'">
+            <div>
+              <div class="form-grid" style="grid-template-columns: 2fr 1fr;">
+                <div>
+                  <label for="c-host">IP กล้อง / NVR *</label>
+                  <input id="c-host" type="text" x-model="cf.host" placeholder="192.168.1.64" style="font-family:ui-monospace,Consolas,monospace;">
+                </div>
+                <div>
+                  <label for="c-port">พอร์ต RTSP</label>
+                  <input id="c-port" type="number" min="1" max="65535" x-model.number="cf.port">
+                </div>
+              </div>
+              <div class="form-grid" style="grid-template-columns: 1fr 1fr;">
+                <div>
+                  <label for="c-ch">Channel</label>
+                  <input id="c-ch" type="number" min="1" max="256" x-model.number="cf.channel">
+                  <p class="hint">กล้องเดี่ยว = 1 · ต่อผ่าน NVR = เลขช่องบน NVR</p>
+                </div>
+                <div>
+                  <label for="c-stream">สตรีม</label>
+                  <select id="c-stream" x-model="cf.stream">
+                    <option value="main">Main stream (ชัดสุด · แนะนำ)</option>
+                    <option value="sub">Sub stream (ประหยัดเน็ต)</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-grid" style="grid-template-columns: 1fr 1fr;">
+                <div>
+                  <label for="c-user">Username กล้อง</label>
+                  <input id="c-user" type="text" x-model="cf.username" autocomplete="off">
+                </div>
+                <div>
+                  <label for="c-pass">Password กล้อง</label>
+                  <input id="c-pass" type="password" x-model="cf.password" autocomplete="new-password" :placeholder="cf.has_password ? '•••••••• (เว้นว่าง = ใช้รหัสเดิม)' : ''">
+                </div>
+              </div>
+              <p class="hint" x-show="cf.has_password">
+                มีรหัสผ่านบันทึกไว้แล้ว (เข้ารหัสในฐานข้อมูล)
+                <a href="#" @click.prevent="cf.clear_password = !cf.clear_password" x-text="cf.clear_password ? '· ยกเลิกการลบรหัส' : '· ลบรหัสที่บันทึกไว้'"></a>
+              </p>
+              <p class="hint" style="color:var(--color-danger);" x-show="cf.clear_password">จะลบรหัสผ่านกล้องเมื่อกดบันทึก</p>
+              <label>RTSP URL ที่ระบบจะใช้</label>
+              <div class="url-preview" x-text="urlPreview()"></div>
+            </div>
+          </template>
+          <template x-if="cf.brand === 'custom'">
+            <div>
+              <label for="c-url">RTSP URL *</label>
+              <input id="c-url" type="text" x-model="cf.rtsp_url_custom" maxlength="255" placeholder="rtsp://user:pass@192.168.1.70:554/stream1" style="font-family:ui-monospace,Consolas,monospace;">
+              <p class="hint">ดู path ได้จากคู่มือกล้อง หรือโปรแกรม ONVIF Device Manager · ใส่ path ไฟล์วิดีโอ/ภาพ (เช่น data/samples/xxx.mp4) เพื่อทดสอบได้</p>
+            </div>
+          </template>
+
+          <div class="section-title">การตรวจจับ</div>
+          <div class="form-grid" style="grid-template-columns: 1fr 1fr;">
+            <div>
+              <label for="c-int">ตรวจทุก (วินาที)</label>
+              <input id="c-int" type="number" min="5" max="3600" x-model.number="cf.detect_interval_s">
+              <p class="hint">ค่าแนะนำ 30 · น้อยลง = อัปเดตไวขึ้นแต่ใช้ CPU มากขึ้น</p>
+            </div>
+            <div>
+              <label for="c-conf">ความมั่นใจขั้นต่ำของ AI</label>
+              <input id="c-conf" type="number" min="0.05" max="0.95" step="0.05" x-model.number="cf.conf_threshold">
+              <p class="hint">ค่าแนะนำ 0.35</p>
+            </div>
+          </div>
+          <label class="choice-card" :class="cf.enabled && 'selected'" style="margin-top:0.5rem;">
+            <input type="checkbox" x-model="cf.enabled">
+            <div><div class="choice-title">เปิดใช้งานกล้องนี้</div><div class="choice-desc">ปิดไว้ได้ถ้ายังติดตั้งไม่เสร็จ</div></div>
+          </label>
+
+          <div class="section-title">ทดสอบก่อนบันทึก</div>
+          <button type="button" class="btn-secondary" style="width:100%;" @click="testForm()" :disabled="formTesting"
+                  x-text="formTesting ? 'กำลังเชื่อมต่อกล้อง (ไม่เกิน 15 วินาที)...' : 'ทดสอบการเชื่อมต่อ'"></button>
+          <p id="c-test-result" class="notice" :class="formTest && formTest.ok ? 'ok' : 'warn'" x-show="formTest" x-text="formTest && formTest.message" style="margin:0.5rem 0 0;"></p>
+          <img x-show="formTest && formTest.preview" :src="formTest && formTest.preview" @load="scrollDrawerEnd()" alt="ภาพทดสอบจากกล้อง" style="width:100%; margin-top:0.5rem; border-radius:8px;">
+          <p class="error-text" x-show="cfError" x-text="cfError"></p>
+        </div>
+        <div class="drawer-foot">
+          <button class="btn-secondary" @click="closeCam()" :disabled="camBusy">ยกเลิก</button>
+          <button @click="saveCam()" :disabled="camBusy" x-text="camBusy ? 'กำลังบันทึก...' : (cf.id ? 'บันทึก' : 'เพิ่มกล้อง')"></button>
+        </div>
+      </aside>
+    </div>
   </template>
 </div>
 
 <script>
+  const CAMERA_BRANDS = [
+    { value: "hikvision", label: "Hikvision / HiLook", desc: "ระบบสร้าง RTSP URL ให้อัตโนมัติ (ใช้กับ NVR Hikvision ได้)" },
+    { value: "dahua", label: "Dahua / Imou", desc: "ระบบสร้าง RTSP URL ให้อัตโนมัติ (ใช้กับ NVR Dahua ได้)" },
+    { value: "custom", label: "ยี่ห้ออื่น / กรอก RTSP URL เอง", desc: "เช่น Uniview, Axis, TP-Link VIGI, กล้อง ONVIF ทั่วไป" },
+  ];
+  // ซ่อนรหัสผ่านใน RTSP URL ก่อนแสดงบนจอ (rtsp://user:pass@host -> rtsp://user:••••@host)
+  function maskUrl(url) { return String(url).replace(/(\/\/[^:/@]*:)[^@/]*@/, "$1••••@"); }
+
   function dashboard() {
     return {
       cameras: [],
+      sites: [],
+      camSiteFilter: "",
       isOperator: false,
       username: "",
       liveCams: [],
@@ -232,7 +400,8 @@
         return this.liveCams.filter((c) => c.status === "online").length;
       },
       get heroSub() {
-        return `ดูแล ${this.liveCams.length} กล้อง · ${this.totals.capacity} ช่องจอด · ว่าง ${this.totals.free} ช่อง`;
+        const where = this.sites.length > 1 ? `${this.sites.length} สถานที่ · ` : "";
+        return `${where}ดูแล ${this.liveCams.length} กล้อง · ${this.totals.capacity} ช่องจอด · ว่าง ${this.totals.free} ช่อง`;
       },
       get updatedLabel() {
         if (!this.updatedAt) return "";
@@ -242,20 +411,14 @@
       async loadOverview() {
         try {
           this.liveCams = await apiJson("/api/admin/live/cameras");
-          const resp = await fetch("/api/public/summary");
-          if (!resp.ok) return;
-          const data = await resp.json();
-          let occupied = 0;
-          let locked = 0;
-          for (const z of data.zones) {
-            if (z.status !== "ok" && z.status !== "partial") continue;
-            for (const sl of z.slots || []) {
-              if (sl.state === "occupied") occupied++;
-              if (sl.state === "locked") locked++;
-            }
-          }
-          this.totals = { ...data.total, occupied, locked };
-          this.updatedAt = data.updated_at;
+          // รวมทุกสถานที่ (TOR 4.6) — ช่องของโซนที่ปิดชั่วคราวไม่นับ
+          const sites = await apiJson("/api/admin/sites");
+          this.sites = sites;
+          const sum = (k) => sites.reduce((n, s) => n + (s[k] || 0), 0);
+          this.totals = { capacity: sum("capacity"), free: sum("free"), occupied: sum("occupied"), locked: sum("reserved"),
+                          free_disabled: sum("free_disabled"), free_ev: sum("free_ev") };
+          const times = sites.map((s) => s.updated_at).filter(Boolean).sort();
+          this.updatedAt = times.length ? times[times.length - 1] : null;
         } catch (e) {
           // ภาพรวมโหลดไม่ได้ ไม่กระทบส่วนจัดการกล้อง
         }
@@ -346,7 +509,6 @@
       },
       realignLoading: false,
       realignError: "",
-      form: { name: "", brand: "hikvision", host: "", username: "", password: "", channel: 1, rtsp_url_custom: "" },
       async init() {
         const user = await requireAuth();
         if (!user) return;
@@ -356,22 +518,140 @@
         setInterval(() => this.loadOverview(), 30000);
         if (this.isOperator) return;  // จัดการกล้องเป็นสิทธิ์ Admin เท่านั้น
         await this.loadCameras();
+        // มาจากหน้าแจ้งเตือน (#camera-3) -> เลื่อนไปไฮไลต์กล้องนั้น
+        const m = location.hash.match(/^#camera-(\d+)$/);
+        if (m) {
+          this.highlightId = Number(m[1]);
+          this.$nextTick(() => { const el = document.getElementById("camera-" + m[1]); if (el) el.scrollIntoView({ block: "center" }); });
+        }
       },
       async loadCameras() {
         this.cameras = await apiJson("/api/admin/cameras");
       },
-      async createCamera() {
-        this.loading = true;
-        this.error = "";
+
+      // ---------- จัดการกล้อง (TOR 4.4) ----------
+      BRANDS: CAMERA_BRANDS,
+      camPanel: false, cf: {}, cfError: "", camBusy: false, formTest: null, formTesting: false,
+      camFlash: "", camError: "", toggleTarget: null, deleteTarget: null,
+      testingId: null, savedTest: null, highlightId: null,
+      get shownCameras() {
+        return this.camSiteFilter ? this.cameras.filter((c) => String(c.site_id) === this.camSiteFilter) : this.cameras;
+      },
+      siteName(id) { const st = this.sites.find((x) => x.id === id); return st ? st.name_th : "ไม่ระบุสถานที่"; },
+      brandLabel(b) { return (CAMERA_BRANDS.find((x) => x.value === b) || { label: b }).label; },
+      statusLabel(s) { return { online: "ออนไลน์", offline: "ขาดการเชื่อมต่อ", moved: "อาจถูกขยับ", disabled: "ปิดใช้งาน" }[s] || s; },
+      camAddress(cam) {
+        if (cam.brand === "custom") return maskUrl(cam.rtsp_url_custom || "");
+        return `${cam.host}:${cam.port} · ch ${cam.channel} · ${cam.stream === "sub" ? "sub" : "main"}`;
+      },
+      ago(iso) {
+        if (!iso) return "";
+        const mins = Math.round((Date.now() - new Date(iso.endsWith("Z") ? iso : iso + "Z")) / 60000);
+        if (mins < 1) return "เมื่อสักครู่";
+        if (mins < 60) return mins + " นาทีที่แล้ว";
+        if (mins < 48 * 60) return Math.floor(mins / 60) + " ชม.ที่แล้ว";
+        return Math.floor(mins / 1440) + " วันที่แล้ว";
+      },
+      flash(msg) { this.camFlash = msg; this.camError = ""; clearTimeout(this._ft); this._ft = setTimeout(() => (this.camFlash = ""), 6000); },
+      openCam(cam) {
+        const defaultSite = this.camSiteFilter || (this.sites.length === 1 ? String(this.sites[0].id) : "");
+        this.cf = cam
+          ? { ...cam, site_id: String(cam.site_id ?? ""), username: cam.username || "", password: "", clear_password: false, rtsp_url_custom: cam.rtsp_url_custom || "" }
+          : { id: null, site_id: defaultSite, name: "", brand: "hikvision", host: "", port: 554, channel: 1, stream: "main", username: "admin", password: "",
+              clear_password: false, has_password: false, rtsp_url_custom: "", detect_interval_s: 30, conf_threshold: 0.35, enabled: true };
+        this.cfError = ""; this.formTest = null; this.camPanel = true;
+      },
+      closeCam() { if (!this.camBusy) this.camPanel = false; },
+      camBody() {
+        const f = this.cf;
+        const body = { site_id: f.site_id ? Number(f.site_id) : null, name: f.name, brand: f.brand, host: f.brand === "custom" ? "" : f.host, port: Number(f.port) || 554,
+          channel: Number(f.channel) || 1, stream: f.stream, username: f.username || null, rtsp_url_custom: f.brand === "custom" ? f.rtsp_url_custom : null,
+          detect_interval_s: Number(f.detect_interval_s) || 30, conf_threshold: Number(f.conf_threshold) || 0.35,
+          enabled: !!f.enabled, clear_password: !!f.clear_password, tiling_enabled: !!f.tiling_enabled };
+        if (f.password) body.password = f.password;
+        return body;
+      },
+      urlPreview() {
+        const f = this.cf;
+        const auth = (f.username || "") + ":" + (f.password || f.has_password ? "••••" : "") + "@";
+        const host = (f.host || "<IP>") + ":" + (f.port || 554);
+        if (f.brand === "hikvision") return `rtsp://${auth}${host}/Streaming/Channels/${f.channel || 1}${f.stream === "sub" ? "02" : "01"}`;
+        if (f.brand === "dahua") return `rtsp://${auth}${host}/cam/realmonitor?channel=${f.channel || 1}&subtype=${f.stream === "sub" ? 1 : 0}`;
+        return "";
+      },
+      errText(e) {
+        const d = e.data && e.data.detail;
+        if (Array.isArray(d)) return "ข้อมูลไม่ถูกต้อง: " + d.map((x) => (x.loc || []).slice(-1)[0]).join(", ");
+        return e.message;
+      },
+      async testForm() {
+        this.formTesting = true; this.formTest = null; this.cfError = "";
         try {
-          await apiJson("/api/admin/cameras", { method: "POST", body: JSON.stringify(this.form) });
-          this.form = { name: "", brand: "hikvision", host: "", username: "", password: "", channel: 1, rtsp_url_custom: "" };
-          await this.loadCameras();
+          this.formTest = await apiJson("/api/admin/cameras/test-config", { method: "POST", body: JSON.stringify({ ...this.camBody(), camera_id: this.cf.id }) });
         } catch (e) {
-          this.error = e.message;
+          this.formTest = { ok: false, message: this.errText(e) };
         } finally {
-          this.loading = false;
+          this.formTesting = false;
+          setTimeout(() => this.scrollDrawerEnd(), 50);
         }
+      },
+      scrollDrawerEnd() {
+        const body = document.querySelector(".drawer-body");
+        if (body) body.scrollTop = body.scrollHeight;
+      },
+      async saveCam() {
+        const f = this.cf;
+        if (!f.name.trim()) { this.cfError = "กรุณาตั้งชื่อกล้อง"; return; }
+        if (this.sites.length > 1 && !f.site_id) { this.cfError = "กรุณาเลือกสถานที่ของกล้อง"; return; }
+        if (f.brand !== "custom" && !f.host.trim()) { this.cfError = "กรุณากรอก IP กล้อง"; return; }
+        if (f.brand === "custom" && !f.rtsp_url_custom.trim()) { this.cfError = "กรุณากรอก RTSP URL"; return; }
+        this.camBusy = true; this.cfError = "";
+        try {
+          const saved = await apiJson(f.id ? `/api/admin/cameras/${f.id}` : "/api/admin/cameras",
+                                      { method: f.id ? "PUT" : "POST", body: JSON.stringify(this.camBody()) });
+          this.camBusy = false; this.camPanel = false;
+          this.flash(f.id ? `บันทึกกล้อง ${saved.name} แล้ว — มีผลในรอบตรวจจับถัดไป`
+                          : `เพิ่มกล้อง ${saved.name} แล้ว ขั้นต่อไปกด "กำหนดช่องจอด" เพื่อวาดช่อง`);
+          await this.loadCameras(); this.loadOverview();
+        } catch (e) {
+          this.cfError = this.errText(e);
+        } finally { this.camBusy = false; }
+      },
+      askToggle(cam) { this.toggleTarget = cam; this.deleteTarget = null; },
+      async confirmToggle() {
+        const cam = this.toggleTarget; if (!cam) return;
+        this.camBusy = true;
+        try {
+          await apiJson(`/api/admin/cameras/${cam.id}/enabled`, { method: "PATCH", body: JSON.stringify({ enabled: !cam.enabled }) });
+          this.flash(cam.enabled ? `ปิดใช้งานกล้อง ${cam.name} แล้ว` : `เปิดใช้งานกล้อง ${cam.name} แล้ว ระบบจะเริ่มดึงภาพในรอบถัดไป`);
+          this.toggleTarget = null;
+          await this.loadCameras(); this.loadOverview();
+        } catch (e) {
+          this.camError = "เปลี่ยนสถานะไม่สำเร็จ: " + this.errText(e);
+        } finally { this.camBusy = false; }
+      },
+      askDelete(cam) { this.deleteTarget = cam; this.toggleTarget = null; },
+      async deleteCamera() {
+        const cam = this.deleteTarget; if (!cam) return;
+        this.camBusy = true;
+        try {
+          const r = await apiFetch(`/api/admin/cameras/${cam.id}`, { method: "DELETE" });
+          if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.detail || `ลบไม่สำเร็จ (${r.status})`); }
+          this.flash(`ลบกล้อง ${cam.name} แล้ว`);
+          this.deleteTarget = null;
+          await this.loadCameras(); this.loadOverview();
+        } catch (e) {
+          this.camError = e.message;
+        } finally { this.camBusy = false; }
+      },
+      async testSaved(cam) {
+        this.testingId = cam.id; this.savedTest = null;
+        try {
+          const r = await apiJson(`/api/admin/cameras/${cam.id}/test`, { method: "POST" });
+          this.savedTest = { name: cam.name, ok: true, message: r.message, image: r.snapshot_url + "?t=" + Date.now() };
+        } catch (e) {
+          this.savedTest = { name: cam.name, ok: false, message: e.message };
+        } finally { this.testingId = null; }
       },
       async openRealign(cam) {
         this.realignError = "";

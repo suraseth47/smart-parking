@@ -13,6 +13,7 @@ from web.routers import (
     cameras,
     cctv,
     health,
+    sites,
     live,
     override,
     public,
@@ -29,6 +30,7 @@ app.add_middleware(IPAllowlistMiddleware)  # NFR-12: จำกัด IP เข�
 app.include_router(auth.router)
 app.include_router(cameras.router)
 app.include_router(zones.router)
+app.include_router(sites.router)
 app.include_router(slots.router)
 app.include_router(health.router)
 app.include_router(live.router)

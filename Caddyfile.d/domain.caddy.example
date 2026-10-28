@@ -1,0 +1,17 @@
+# ใช้เมื่อเครื่องนี้ได้พอร์ต 80 และ 443 จากอินเทอร์เน็ตเอง (แบบ ข. ใน Caddyfile)
+#   1) ชี้ DNS: DOMAIN (เช่น parking.example.go.th) -> IP สาธารณะของหน่วยงาน
+#   2) router forward พอร์ต 80 และ 443 มาที่เครื่องนี้ (docker-compose ต้องเปิดพอร์ต 80/443 ด้วย ดู README)
+#   3) คัดลอกไฟล์นี้เป็น Caddyfile.d/domain.caddy แล้วใส่ DOMAIN=... และ ACME_EMAIL=... ใน .env
+#   4) docker compose up -d caddy -> Caddy ขอใบรับรอง Let's Encrypt และต่ออายุให้เองทุก 60-90 วัน
+
+{$DOMAIN} {
+	import common
+	tls {$ACME_EMAIL}
+	header Strict-Transport-Security "max-age=31536000"
+	reverse_proxy {$WEB_UPSTREAM:web:8000}
+}
+
+# พิมพ์ http:// มา -> พาไป https:// (พอร์ต 80 ยังใช้ต่ออายุใบรับรองได้ตามปกติ)
+http://{$DOMAIN} {
+	redir https://{host}{uri} permanent
+}

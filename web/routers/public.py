@@ -9,10 +9,11 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from core.config import get_settings
+from core.config import local_utc_offset_hours
 from core.counting import SlotInfo, ZoneInfo, build_public_summary, build_slot_maps
 from core.db import get_db
-from core.models import Camera, Slot, SlotState, Zone, ZoneStatHour
+from core.models import Camera, Site, Slot, SlotState, Zone, ZoneStatHour
+from core.sites import google_maps_directions_url
 from core.reports import build_public_peak
 from web.templates_env import templates
 
@@ -20,17 +21,22 @@ router = APIRouter(tags=["public"])
 
 CACHE_TTL_SECONDS = 10
 RATE_LIMIT_WINDOW_SECONDS = 60
-RATE_LIMIT_MAX_REQUESTS = 60
+# 240 ครั้ง/นาที/IP: มือถือ 1 เครื่องเรียกราว 3 ครั้ง/นาที — เผื่อคนจำนวนมากที่ออกเน็ตผ่าน IP เดียวกัน
+# (Wi-Fi สำนักงาน/มือถือเครือข่ายเดียวกัน) แต่ยังกันการยิงคำขอถี่ๆ ได้
+RATE_LIMIT_MAX_REQUESTS = 240
 STALE_AFTER_SECONDS = 180  # ทั้งระบบไม่อัปเดตเกิน 3 นาที -> stale (FR-16)
 
-_cache: dict | None = None
-_cache_at: float = 0.0
+_cache: dict[str, tuple[float, dict]] = {}  # key = รหัสสถานที่ (หรือ "__sites__" สำหรับรายการสถานที่)
 _rate_limit_hits: dict[str, list[float]] = {}
 
 
 class SiteOut(BaseModel):
     name_th: str
     name_en: str
+    code: str | None = None
+    address: str | None = None
+    opening_hours: str | None = None
+    maps_url: str | None = None
 
 
 class TotalOut(BaseModel):
@@ -62,6 +68,7 @@ class ZoneSummaryOut(BaseModel):
 
 class PublicSummaryOut(BaseModel):
     site: SiteOut
+    site_count: int = 1  # จำนวนสถานที่สาธารณะทั้งหมด (>1 = หน้าเว็บแสดงปุ่มกลับไปรายการสถานที่)
     updated_at: str | None
     stale: bool
     total: TotalOut
@@ -79,24 +86,93 @@ def healthz():
     return {"status": "ok", "time": datetime.utcnow().isoformat()}
 
 
-@router.get("/api/public/summary", response_model=PublicSummaryOut)
-def get_public_summary(request: Request, db: Session = Depends(get_db)):
-    client_ip = request.client.host if request.client else "unknown"
-    _check_rate_limit(client_ip)
+class PublicSiteOut(BaseModel):
+    code: str
+    name_th: str
+    name_en: str
+    address: str | None
+    opening_hours: str | None
+    maps_url: str | None
+    latitude: float | None
+    longitude: float | None
+    status: str  # "ok" | "full" | "no_data" | "closed" | "stale"
+    free: int
+    capacity: int
+    free_disabled: int
+    free_ev: int
+    stale: bool
+    updated_at: str | None
 
-    cached = _get_cached()
+
+@router.get("/api/public/sites", response_model=list[PublicSiteOut])
+def get_public_sites(request: Request, db: Session = Depends(get_db)):
+    """รายการสถานที่จอดรถทั้งหมด พร้อมจำนวนช่องว่างของแต่ละแห่ง (TOR 4.6)"""
+    _check_rate_limit(request.client.host if request.client else "unknown")
+    cached = _get_cached("__sites__")
     if cached is not None:
         return cached
-
-    result = _build_summary(db)
-    _set_cached(result)
+    result = []
+    for site in _public_sites(db):
+        summary = _build_summary(db, site, site_count=0)
+        total = summary["total"]
+        statuses = [z["status"] for z in summary["zones"]]
+        if statuses and all(s == "closed" for s in statuses):
+            status_text = "closed"
+        elif total["capacity"] == 0 and not summary["updated_at"]:
+            status_text = "no_data"  # ยังไม่ติดตั้งกล้อง/ยังไม่มีช่องจอด
+        elif summary["stale"]:
+            status_text = "stale"
+        elif total["capacity"] == 0:
+            status_text = "no_data"
+        elif total["free"] == 0:
+            status_text = "full"
+        else:
+            status_text = "ok"
+        result.append({
+            "code": site.code, "name_th": site.name_th, "name_en": site.name_en,
+            "address": site.address, "opening_hours": site.opening_hours,
+            "maps_url": google_maps_directions_url(site.latitude, site.longitude),
+            "latitude": site.latitude, "longitude": site.longitude,
+            "status": status_text, "free": total["free"], "capacity": total["capacity"],
+            "free_disabled": total["free_disabled"], "free_ev": total["free_ev"],
+            "stale": summary["stale"], "updated_at": summary["updated_at"],
+        })
+    _set_cached("__sites__", result)
     return result
 
 
-def _build_summary(db: Session) -> dict:
-    settings = get_settings()
+@router.get("/api/public/summary", response_model=PublicSummaryOut)
+def get_public_summary(request: Request, site: str | None = None, db: Session = Depends(get_db)):
+    """ยอดว่างของสถานที่เดียว — ไม่ระบุ site = สถานที่แรก (ระบบที่มีสถานที่เดียวใช้แบบเดิมได้)"""
+    client_ip = request.client.host if request.client else "unknown"
+    _check_rate_limit(client_ip)
 
-    zones = db.scalars(select(Zone)).all()
+    sites = _public_sites(db)
+    if not sites:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "ยังไม่มีสถานที่ที่เปิดให้บริการ")
+    chosen = sites[0] if site is None else next((s for s in sites if s.code == site.upper()), None)
+    if chosen is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "ไม่พบสถานที่นี้")
+
+    cached = _get_cached(chosen.code)
+    if cached is not None:
+        return cached
+    result = _build_summary(db, chosen, site_count=len(sites))
+    _set_cached(chosen.code, result)
+    return result
+
+
+def _public_sites(db: Session) -> list[Site]:
+    return list(db.scalars(select(Site).where(Site.is_public.is_(True)).order_by(Site.sort_order, Site.id)).all())
+
+
+def _build_summary(db: Session, site: Site, site_count: int) -> dict:
+    """ยอดสาธารณะของ 1 สถานที่ — รวมทุกกล้องของสถานที่เป็นยอดเดียว
+
+    ช่องจอดแต่ละช่องผูกกับกล้องตัวเดียว (ระบบห้ามวาดรหัสช่องซ้ำในสถานที่เดียวกัน)
+    จึงไม่มีการนับช่องเดียวกันซ้ำแม้กล้องหลายตัวมองเห็นพื้นที่ทับซ้อนกัน
+    """
+    zones = db.scalars(select(Zone).where(Zone.site_id == site.id).order_by(Zone.sort_order, Zone.code)).all()
     zone_infos = [
         ZoneInfo(
             id=z.id, code=z.code, name_th=z.name_th, name_en=z.name_en,
@@ -110,6 +186,7 @@ def _build_summary(db: Session) -> dict:
     rows = db.execute(
         select(Slot.zone_id, Slot.code, Slot.type, Slot.is_active, Slot.layout_status, SlotState.state)
         .outerjoin(SlotState, SlotState.slot_id == Slot.id)
+        .where(Slot.zone_id.in_([z.id for z in zones] or [-1]))
     ).all()
     slot_infos = [
         SlotInfo(
@@ -127,13 +204,22 @@ def _build_summary(db: Session) -> dict:
     slot_maps = build_slot_maps(zone_infos, slot_infos)
     zone_id_by_code = {z.code: z.id for z in zones}
 
-    latest_update = db.scalar(select(func.max(Camera.last_frame_at)).where(Camera.enabled.is_(True)))
+    # ข้อมูลไม่เป็นปัจจุบัน = กล้องทุกตัวของสถานที่นี้ไม่ได้อัปเดตเกิน 3 นาที
+    # (กล้องหลุดบางตัว: เฉพาะช่องของกล้องนั้นเป็น "ไม่ทราบสถานะ" ส่วนช่องอื่นแสดงตามปกติ)
+    latest_update = db.scalar(
+        select(func.max(Camera.last_frame_at)).where(Camera.enabled.is_(True), Camera.site_id == site.id)
+    )
     stale = latest_update is None or (
         datetime.utcnow() - latest_update > timedelta(seconds=STALE_AFTER_SECONDS)
     )
 
     return {
-        "site": {"name_th": settings.site_name_th, "name_en": settings.site_name_en},
+        "site": {
+            "name_th": site.name_th, "name_en": site.name_en, "code": site.code,
+            "address": site.address, "opening_hours": site.opening_hours,
+            "maps_url": google_maps_directions_url(site.latitude, site.longitude),
+        },
+        "site_count": site_count,
         "updated_at": latest_update.isoformat() if latest_update else None,
         "stale": stale,
         "total": {
@@ -163,8 +249,7 @@ def _build_summary(db: Session) -> dict:
 
 PEAK_WEEKS = 4
 PEAK_CACHE_TTL_SECONDS = 600
-_peak_cache: dict | None = None
-_peak_cache_at: float = 0.0
+_peak_cache: dict[str, tuple[float, dict]] = {}
 
 
 class PeakPointOut(BaseModel):
@@ -180,20 +265,24 @@ class PublicPeakOut(BaseModel):
 
 
 @router.get("/api/public/peak", response_model=PublicPeakOut)
-def get_public_peak(request: Request, db: Session = Depends(get_db)):
-    """ช่วงเวลาที่คนหนาแน่นของ "วันนี้" (เฉลี่ยวันเดียวกันย้อนหลัง 4 สัปดาห์) ทุกโซนสาธารณะรวมกัน
+def get_public_peak(request: Request, site: str | None = None, db: Session = Depends(get_db)):
+    """ช่วงเวลาที่คนหนาแน่นของ "วันนี้" (เฉลี่ยวันเดียวกันย้อนหลัง 4 สัปดาห์) ของสถานที่ที่เลือก
 
     เป็นตัวเลขรวม % การใช้งานเท่านั้น ไม่มีข้อมูลส่วนบุคคล
     """
-    global _peak_cache, _peak_cache_at
     client_ip = request.client.host if request.client else "unknown"
     _check_rate_limit(client_ip)
-    if _peak_cache is not None and (time.monotonic() - _peak_cache_at) < PEAK_CACHE_TTL_SECONDS:
-        return _peak_cache
+    sites = _public_sites(db)
+    chosen = (sites[0] if sites else None) if site is None else next((s for s in sites if s.code == site.upper()), None)
+    if chosen is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "ไม่พบสถานที่นี้")
+    hit = _peak_cache.get(chosen.code)
+    if hit is not None and (time.monotonic() - hit[0]) < PEAK_CACHE_TTL_SECONDS:
+        return hit[1]
 
-    offset_hours = _local_utc_offset_hours()
+    offset_hours = local_utc_offset_hours()
     local_now = datetime.utcnow() + timedelta(hours=offset_hours)
-    public_zone_ids = select(Zone.id).where(Zone.is_public.is_(True))
+    public_zone_ids = select(Zone.id).where(Zone.is_public.is_(True), Zone.site_id == chosen.id)
     rows = db.execute(
         select(ZoneStatHour.hour_ts, ZoneStatHour.avg_occ_pct).where(
             ZoneStatHour.zone_id.in_(public_zone_ids),
@@ -207,31 +296,19 @@ def get_public_peak(request: Request, db: Session = Depends(get_db)):
         "weeks": PEAK_WEEKS,
         "points": [{"hour": p.hour, "avg_occ_pct": p.avg_occ_pct} for p in points],
     }
-    _peak_cache, _peak_cache_at = result, time.monotonic()
+    _peak_cache[chosen.code] = (time.monotonic(), result)
     return result
 
 
-def _local_utc_offset_hours() -> float:
-    """ค่า offset ของเขตเวลาใน .env (TZ) เทียบ UTC; ถ้าอ่านไม่ได้ใช้ +7 (ประเทศไทย)"""
-    try:
-        from zoneinfo import ZoneInfo as TzZoneInfo
-
-        offset = datetime.now(TzZoneInfo(get_settings().tz)).utcoffset()
-        return offset.total_seconds() / 3600 if offset is not None else 7.0
-    except Exception:
-        return 7.0
-
-
-def _get_cached() -> dict | None:
-    if _cache is not None and (time.monotonic() - _cache_at) < CACHE_TTL_SECONDS:
-        return _cache
+def _get_cached(key: str) -> dict | list | None:
+    hit = _cache.get(key)
+    if hit is not None and (time.monotonic() - hit[0]) < CACHE_TTL_SECONDS:
+        return hit[1]
     return None
 
 
-def _set_cached(result: dict) -> None:
-    global _cache, _cache_at
-    _cache = result
-    _cache_at = time.monotonic()
+def _set_cached(key: str, result) -> None:
+    _cache[key] = (time.monotonic(), result)
 
 
 def _check_rate_limit(client_ip: str) -> None:

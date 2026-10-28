@@ -5,21 +5,88 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0b1120">
   <title>ที่จอดรถว่าง - Smart Parking</title>
-  <link rel="stylesheet" href="/static/css/public.css?v=20261018">
+  <link rel="stylesheet" href="/static/css/public.css?v=20261028b">
   <script defer src="/static/js/vendor/alpine.min.js"></script>
 </head>
 <body>
   <div class="wrap" x-data="publicPage()" x-init="init()">
 
-    <!-- ===================== หน้าภาพรวม ===================== -->
-    <div x-show="view === 'overview'">
+    <!-- ===================== รายการสถานที่ (มีหลายแห่ง) ===================== -->
+    <div x-show="view === 'sites'" x-cloak>
       <header class="header">
         <div>
           <div class="subtitle" x-text="t('subtitle')"></div>
-          <h1 class="site-name" x-text="lang === 'th' ? site.name_th : site.name_en">Smart Parking</h1>
+          <h1 class="site-name" x-text="t('allSites')"></h1>
         </div>
         <button type="button" class="pill-btn" @click="toggleLang()" x-text="lang === 'th' ? 'EN' : 'ไทย'"></button>
       </header>
+
+      <div class="sites-tools">
+        <span class="muted-sm" x-text="t('sitesCount').replace('{n}', sites.length) + ' · ' + t('freeTotal') + ' ' + sites.reduce((n, s) => n + (s.status === 'stale' ? 0 : s.free), 0)"></span>
+        <button type="button" class="link-btn-sm" @click="sortByDistance()" x-show="sites.some((s) => s.latitude !== null)"
+                x-text="distances ? t('sortedNear') : t('nearMe')"></button>
+      </div>
+      <div class="muted-sm" x-show="geoError" x-text="geoError" style="margin-bottom:10px;"></div>
+
+      <template x-for="s in sortedSites" :key="s.code">
+        <section class="card site-card" :class="'st-' + s.status">
+          <button type="button" class="site-main" @click="openSite(s.code)" :aria-label="siteName(s) + ' ' + siteStatusText(s)">
+            <div class="site-info">
+              <h2 class="zone-title" x-text="siteName(s)"></h2>
+              <div class="muted-sm" x-show="s.address" x-text="s.address"></div>
+              <div class="muted-sm" x-show="s.opening_hours" x-text="t('openHours') + ' ' + s.opening_hours"></div>
+              <div class="muted-sm" x-show="distances && distances[s.code] !== undefined" x-text="distanceText(s)"></div>
+            </div>
+            <div class="site-count">
+              <template x-if="s.status === 'ok' || s.status === 'full'">
+                <div>
+                  <span class="zone-free" :class="s.free === 0 ? 'c-taken' : 'c-free'" x-text="s.free"></span>
+                  <span class="muted-sm" x-text="'/ ' + s.capacity"></span>
+                </div>
+              </template>
+              <span class="site-pill" x-text="siteStatusText(s)"></span>
+            </div>
+          </button>
+          <div class="site-extra" x-show="s.status === 'ok'">
+            <span><svg class="icon c-acc" viewBox="0 0 24 24" aria-hidden="true"><use href="#wheelchair"/></svg>
+              <span x-text="t('disabled') + ' ' + s.free_disabled"></span></span>
+            <span><svg class="icon c-muted" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>
+              <span x-text="'EV ' + s.free_ev"></span></span>
+          </div>
+          <div class="site-actions">
+            <button type="button" class="primary-btn" @click="openSite(s.code)"><span x-text="t('viewDetail')"></span></button>
+            <a class="nav-btn" x-show="s.maps_url" :href="s.maps_url" target="_blank" rel="noopener noreferrer">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l18-8-8 18-2-8z"/></svg>
+              <span x-text="t('navigate')"></span>
+            </a>
+          </div>
+        </section>
+      </template>
+
+      <footer class="footer">
+        <span x-text="t('footer1')"></span><br>
+        <span x-text="t('footer2')"></span>
+      </footer>
+    </div>
+
+    <!-- ===================== หน้าภาพรวม ===================== -->
+    <div x-show="view === 'overview'">
+      <header class="header">
+        <button type="button" class="round-btn" x-show="multiSite" @click="backToSites()" :aria-label="t('backToSites')" style="margin-right:10px;">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+        </button>
+        <div style="flex:1; min-width:0;">
+          <div class="subtitle" x-text="t('subtitle')"></div>
+          <h1 class="site-name" x-text="lang === 'th' ? site.name_th : site.name_en">Smart Parking</h1>
+          <div class="muted-sm" x-show="site.address" x-text="site.address"></div>
+          <div class="muted-sm" x-show="site.opening_hours" x-text="t('openHours') + ' ' + site.opening_hours"></div>
+        </div>
+        <button type="button" class="pill-btn" @click="toggleLang()" x-text="lang === 'th' ? 'EN' : 'ไทย'"></button>
+      </header>
+      <a class="nav-btn nav-btn-wide" x-show="site.maps_url" :href="site.maps_url" target="_blank" rel="noopener noreferrer">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l18-8-8 18-2-8z"/></svg>
+        <span x-text="t('navigateHere')"></span>
+      </a>
 
       <div class="live-row" x-show="!stale">
         <span class="live-dot"></span>
@@ -60,6 +127,7 @@
           <div class="stat"><div class="stat-num c-free" x-text="total.free"></div><div class="stat-label" x-text="t('free')"></div></div>
           <div class="stat"><div class="stat-num c-taken" x-text="counts.occupied"></div><div class="stat-label" x-text="t('occupied')"></div></div>
           <div class="stat"><div class="stat-num c-locked" x-text="counts.locked"></div><div class="stat-label" x-text="t('locked')"></div></div>
+          <div class="stat"><div class="stat-num c-unknown" x-text="counts.unknown"></div><div class="stat-label" x-text="t('unknown')"></div></div>
         </div>
         <div class="extra-row">
           <span class="extra">
@@ -78,7 +146,7 @@
 
       <!-- การ์ดแต่ละโซน -->
       <template x-for="zone in zones" :key="zone.code">
-        <section class="card zone-card" :class="zone.status === 'closed' ? 'card-closed' : ''">
+        <section class="card zone-card" :class="(zone.status === 'closed' ? 'card-closed' : '') + (stale && zone.status !== 'closed' ? ' is-stale' : '')">
           <template x-if="zone.status === 'closed'">
             <div class="closed-row">
               <div class="closed-icon"><svg class="icon c-locked" viewBox="0 0 24 24" aria-hidden="true"><use href="#lock"/></svg></div>
@@ -94,7 +162,8 @@
               <div class="zone-head">
                 <h2 class="zone-title" x-text="zoneName(zone)"></h2>
                 <div class="zone-count" x-show="zone.free !== null">
-                  <span class="zone-free c-free" x-text="zone.free"></span> / <span x-text="zone.capacity"></span>
+                  <span class="full-tag" x-show="zone.free === 0 && !stale" x-text="t('zoneFull')"></span>
+                  <span class="zone-free" :class="zone.free === 0 ? 'c-taken' : 'c-free'" x-text="zone.free"></span> / <span x-text="zone.capacity"></span>
                 </div>
               </div>
               <div class="zone-status-label" x-show="zone.status === 'partial'" x-text="t('partialData')"></div>
@@ -169,6 +238,7 @@
         <span><i class="lg lg-taken"></i><span x-text="t('occupied')"></span></span>
         <span><i class="lg lg-locked"></i><span x-text="t('locked')"></span></span>
         <span><i class="lg lg-acc"></i><span x-text="t('disabled')"></span></span>
+        <span><i class="lg lg-ev"></i><span>EV</span></span>
         <span><i class="lg lg-unknown"></i><span x-text="t('unknown')"></span></span>
       </div>
 
@@ -245,8 +315,9 @@
         unknown: "ไม่ทราบ",
         disabled: "คนพิการ",
         excludedNote: "ไม่รวมโซน",
-        noData: "ไม่มีข้อมูล",
-        partialData: "ข้อมูลบางส่วน",
+        noData: "ไม่มีข้อมูลขณะนี้ (กล้องขาดการเชื่อมต่อ หรือยังไม่เปิดใช้งาน)",
+        partialData: "บางช่องยังไม่ทราบสถานะ (ไม่นับรวมเป็นช่องว่าง)",
+        zoneFull: "เต็ม",
         closed: "ปิดชั่วคราว",
         closedDefault: "โซนนี้ปิดให้บริการชั่วคราว",
         staleTitle: "ข้อมูลอาจไม่เป็นปัจจุบัน",
@@ -273,6 +344,23 @@
         lblLocked: "สงวน/ล็อก ไม่เปิดให้จอด",
         lblUnknown: "ยังไม่ทราบสถานะ",
         days: ["วันจันทร์", "วันอังคาร", "วันพุธ", "วันพฤหัสบดี", "วันศุกร์", "วันเสาร์", "วันอาทิตย์"],
+        allSites: "ที่จอดรถทั้งหมด",
+        sitesCount: "{n} สถานที่",
+        freeTotal: "ว่างรวม",
+        viewDetail: "ดูรายละเอียด",
+        navigate: "นำทาง",
+        navigateHere: "นำทางมาที่นี่ (แอปแผนที่)",
+        openHours: "เวลาให้บริการ",
+        backToSites: "กลับไปรายการสถานที่",
+        nearMe: "เรียงตามระยะทางจากฉัน",
+        sortedNear: "เรียงตามระยะทางแล้ว",
+        geoDenied: "ไม่ได้รับอนุญาตให้ใช้ตำแหน่ง จึงเรียงตามลำดับปกติ",
+        km: "กม. จากคุณ",
+        stFree: "ว่าง",
+        stFull: "เต็ม",
+        stClosed: "ปิดชั่วคราว",
+        stStale: "ข้อมูลไม่เป็นปัจจุบัน",
+        stNoData: "ยังไม่มีข้อมูล",
       },
       en: {
         subtitle: "Real-time parking availability",
@@ -288,8 +376,9 @@
         unknown: "Unknown",
         disabled: "Disabled",
         excludedNote: "Excluding zones",
-        noData: "No data",
-        partialData: "Partial data",
+        noData: "No data right now (camera offline or not yet in service)",
+        partialData: "Some slots have unknown status (not counted as free)",
+        zoneFull: "Full",
         closed: "Temporarily closed",
         closedDefault: "This zone is temporarily closed",
         staleTitle: "Data may be out of date",
@@ -316,6 +405,23 @@
         lblLocked: "Reserved, not open for parking",
         lblUnknown: "Status unknown",
         days: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+        allSites: "All parking sites",
+        sitesCount: "{n} sites",
+        freeTotal: "free in total",
+        viewDetail: "View details",
+        navigate: "Directions",
+        navigateHere: "Get directions (maps app)",
+        openHours: "Open",
+        backToSites: "Back to all sites",
+        nearMe: "Sort by distance from me",
+        sortedNear: "Sorted by distance",
+        geoDenied: "Location permission denied; showing the default order",
+        km: "km away",
+        stFree: "Available",
+        stFull: "Full",
+        stClosed: "Temporarily closed",
+        stStale: "Data may be out of date",
+        stNoData: "No data yet",
       },
     };
 
@@ -332,7 +438,12 @@
     function publicPage() {
       return {
         lang: "th",
-        view: "overview",
+        view: "",  // กำหนดใน route() หลังโหลดรายการสถานที่ (กันหน้ากระพริบ)
+        sites: [],
+        siteCode: null,
+        multiSite: false,
+        distances: null,
+        geoError: "",
         mapZoneCode: null,
         selected: null,
         site: { name_th: "", name_en: "" },
@@ -342,17 +453,110 @@
         stale: false,
         peak: { weekday: 0, now_hour: 0, weeks: 4, points: [] },
 
-        init() {
+        async init() {
           this.lang = this._resolveLang();
           document.documentElement.lang = this.lang;
+          await this.fetchSites();
+          this.route();
+          window.addEventListener("popstate", () => this.route());
+          setInterval(() => (this.view === "sites" ? this.fetchSites() : this.fetchSummary()), 30000);
+          setInterval(() => this.fetchPeak(), 600000);
+        },
+
+        // ---------- เส้นทางในหน้า: #site-CODE และ #site-CODE/map-ZONE ----------
+        route() {
+          const m = location.hash.match(/^#site-([^/]+)(?:\/map-(.+))?$/);
+          const legacyMap = location.hash.match(/^#map-(.+)$/);  // ลิงก์รูปแบบเดิม (สถานที่เดียว)
+          let code = m ? decodeURIComponent(m[1]) : null;
+          const zone = m && m[2] ? decodeURIComponent(m[2]) : legacyMap ? decodeURIComponent(legacyMap[1]) : null;
+          if (code && !this.sites.some((s) => s.code === code)) code = null;
+          if (!code && !this.multiSite && this.sites.length) code = this.sites[0].code;
+          if (!code) {
+            this.view = "sites";
+            this.fetchSites();
+            return;
+          }
+          if (code !== this.siteCode) this.switchSite(code);
+          if (zone) {
+            this.mapZoneCode = zone;
+            this.selected = null;
+            this.view = "map";
+          } else {
+            this.view = "overview";
+          }
+        },
+
+        switchSite(code) {
+          this.siteCode = code;
+          this.zones = [];
+          this.total = { free: 0, capacity: 0, free_disabled: 0, free_ev: 0, excluded_zones: [] };
+          this.peak = { weekday: 0, now_hour: 0, weeks: 4, points: [] };
+          const s = this.sites.find((x) => x.code === code);
+          if (s) this.site = { name_th: s.name_th, name_en: s.name_en, address: s.address, opening_hours: s.opening_hours, maps_url: s.maps_url };
           this.fetchSummary();
           this.fetchPeak();
-          setInterval(() => this.fetchSummary(), 30000);
-          setInterval(() => this.fetchPeak(), 600000);
-          if (location.hash.startsWith("#map-")) this.openMap(decodeURIComponent(location.hash.slice(5)));
-          window.addEventListener("popstate", () => {
-            if (!location.hash.startsWith("#map-")) this.view = "overview";
-          });
+        },
+
+        go(hash) {
+          if (location.hash !== hash) history.pushState(null, "", hash || location.pathname + location.search);
+          this.route();
+          window.scrollTo(0, 0);
+        },
+
+        openSite(code) { this.go("#site-" + encodeURIComponent(code)); },
+        backToSites() { this.go(""); },
+
+        async fetchSites() {
+          try {
+            const resp = await fetch("/api/public/sites");
+            if (!resp.ok) return;
+            this.sites = await resp.json();
+            this.multiSite = this.sites.length > 1;
+          } catch (e) {
+            // เงียบไว้ รอบถัดไป poll ใหม่เอง
+          }
+        },
+
+        siteName(s) { return this.lang === "th" ? s.name_th : s.name_en; },
+
+        siteStatusText(s) {
+          if (s.status === "ok") return this.t("stFree") + " " + s.free + " " + this.t("slots");
+          return this.t({ full: "stFull", closed: "stClosed", stale: "stStale", no_data: "stNoData" }[s.status] || "stNoData");
+        },
+
+        get sortedSites() {
+          if (!this.distances) return this.sites;
+          const d = (s) => this.distances[s.code] ?? Infinity;
+          return [...this.sites].sort((a, b) => d(a) - d(b));
+        },
+
+        distanceText(s) {
+          const km = this.distances ? this.distances[s.code] : undefined;
+          if (km === undefined) return "";
+          return (km < 10 ? km.toFixed(1) : Math.round(km)) + " " + this.t("km");
+        },
+
+        // ตำแหน่งของผู้ใช้คำนวณระยะทางในเครื่องเท่านั้น ไม่ส่งไปที่เซิร์ฟเวอร์
+        sortByDistance() {
+          if (!navigator.geolocation) { this.geoError = this.t("geoDenied"); return; }
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              const { latitude, longitude } = pos.coords;
+              const rad = (x) => (x * Math.PI) / 180;
+              const out = {};
+              for (const s of this.sites) {
+                if (s.latitude === null || s.longitude === null) continue;
+                const dLat = rad(s.latitude - latitude);
+                const dLon = rad(s.longitude - longitude);
+                const a = Math.sin(dLat / 2) ** 2 + Math.cos(rad(latitude)) * Math.cos(rad(s.latitude)) * Math.sin(dLon / 2) ** 2;
+                out[s.code] = 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+              }
+              this.distances = out;
+              this.geoError = "";
+            },
+            () => { this.geoError = this.t("geoDenied"); },
+            { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 }
+          );
         },
 
         t(key) {
@@ -378,9 +582,12 @@
 
         async fetchSummary() {
           try {
-            const resp = await fetch("/api/public/summary");
+            if (!this.siteCode) return;
+            const requested = this.siteCode;
+            const resp = await fetch("/api/public/summary?site=" + encodeURIComponent(requested));
             if (!resp.ok) return;
             const data = await resp.json();
+            if (requested !== this.siteCode) return; // ผู้ใช้เปลี่ยนสถานที่ระหว่างรอ
             this.site = data.site;
             this.total = data.total;
             this.zones = data.zones;
@@ -393,8 +600,10 @@
 
         async fetchPeak() {
           try {
-            const resp = await fetch("/api/public/peak");
-            if (resp.ok) this.peak = await resp.json();
+            if (!this.siteCode) return;
+            const requested = this.siteCode;
+            const resp = await fetch("/api/public/peak?site=" + encodeURIComponent(requested));
+            if (resp.ok && requested === this.siteCode) this.peak = await resp.json();
           } catch (e) {
             // ไม่มีกราฟก็ยังใช้หน้าเว็บได้ปกติ
           }
@@ -412,13 +621,15 @@
         get counts() {
           let occupied = 0;
           let locked = 0;
+          let unknown = 0;
           for (const z of this.countableZones) {
             for (const s of z.slots || []) {
               if (s.state === "occupied") occupied++;
               if (s.state === "locked") locked++;
+              if (s.state === "unknown") unknown++;
             }
           }
-          return { occupied, locked };
+          return { occupied, locked, unknown };
         },
 
         get isFull() {
@@ -499,16 +710,11 @@
         },
 
         openMap(code) {
-          this.mapZoneCode = code;
-          this.selected = null;
-          this.view = "map";
-          if (location.hash !== "#map-" + encodeURIComponent(code)) history.pushState(null, "", "#map-" + encodeURIComponent(code));
-          window.scrollTo(0, 0);
+          this.go("#site-" + encodeURIComponent(this.siteCode) + "/map-" + encodeURIComponent(code));
         },
 
         closeMap() {
-          if (location.hash.startsWith("#map-")) history.back();
-          this.view = "overview";
+          this.go("#site-" + encodeURIComponent(this.siteCode));
         },
 
         // ---------- กราฟช่วงเวลาหนาแน่น ----------
@@ -542,7 +748,11 @@
         get formattedUpdatedAt() {
           if (!this.updatedAt) return this.t("never");
           const d = new Date(this.updatedAt + "Z");
-          return d.toLocaleTimeString(this.lang === "th" ? "th-TH" : "en-US", { hour: "2-digit", minute: "2-digit" });
+          const locale = this.lang === "th" ? "th-TH" : "en-GB";
+          const time = d.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
+          // ข้อมูลค้างข้ามวัน ต้องบอกวันที่ด้วย ไม่งั้นประชาชนเข้าใจผิดว่าเป็นข้อมูลวันนี้
+          if (d.toDateString() === new Date().toDateString()) return time + (this.lang === "th" ? " น." : "");
+          return d.toLocaleDateString(locale, { day: "numeric", month: "short" }) + " " + time + (this.lang === "th" ? " น." : "");
         },
       };
     }
