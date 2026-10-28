@@ -655,3 +655,5 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
 .card h3 { color: #1f2a44; font-weight: 700; }
 .data-table thead th { background: #f4f7fc; color: #4b5565; font-weight: 700; }
 .report-controls > *, .form-grid > * { min-width: 0; }
+/* โลโก้ + ชื่อหน่วยงาน + ที่อยู่ server ค้างด้านบนแถบเมนูเสมอ เวลาเลื่อนเมนูขึ้นลง */
+.sidebar > .brand { position: sticky; top: 0; z-index: 3; background: var(--color-surface); }
