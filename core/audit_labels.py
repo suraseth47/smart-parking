@@ -15,6 +15,8 @@ ACTION_LABELS: dict[str, str] = {
     "update_ip_allowlist": "แก้รายการ IP ที่อนุญาต",
     "update_system_settings": "แก้ตั้งค่าระบบและการแสดงผล",
     "check_cameras_now": "สั่งตรวจสถานะกล้องทันที",
+    "update_logo": "เปลี่ยนโลโก้",
+    "delete_logo": "ใช้โลโก้ตั้งต้น",
     "create_camera": "เพิ่มกล้อง",
     "update_camera": "แก้ไขกล้อง",
     "update_camera_detection": "แก้ตั้งค่าตรวจจับของกล้อง",

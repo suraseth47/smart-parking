@@ -6,7 +6,7 @@ import re
 from datetime import datetime, timedelta
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from pydantic import BaseModel, Field
 from sqlalchemy import update
 from sqlalchemy.orm import Session
@@ -15,7 +15,10 @@ from core.app_settings import (
     DISPLAY_SETTING_KEY,
     HEALTH_LIMITS,
     HEALTH_SETTING_KEY,
+    LOGO_MAX_BYTES,
     PUBLIC_TOGGLES,
+    detect_logo_type,
+    logo_dir,
     load_display,
     load_health,
     save_setting,
@@ -333,6 +336,8 @@ def update_system_settings(
     display["system_title"] = display["system_title"].strip()
     health = data.health.model_dump()
     before = _system_out(db)
+    display["logo_file"] = before["display"]["logo_file"]  # โลโก้แก้ผ่านปุ่มอัปโหลดเท่านั้น
+    display["logo_version"] = before["display"]["logo_version"]
     save_setting(db, DISPLAY_SETTING_KEY, display)
     save_setting(db, HEALTH_SETTING_KEY, health)
     changed = [k for k in display if before["display"].get(k) != display[k]]
@@ -353,3 +358,50 @@ def check_cameras_now(
     db.add(AuditLog(user_id=admin.id, action="check_cameras_now", target="cameras", detail={"rows": result.rowcount}))
     db.commit()
     return {"ok": True, "cameras": result.rowcount}
+
+
+@router.post("/system/logo")
+async def upload_logo(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    admin: CurrentUser = Depends(require_admin),
+    _csrf: None = Depends(verify_csrf),
+) -> dict:
+    """อัปโหลดโลโก้ (PNG/JPG/WebP ไม่เกิน 1 MB) แสดงแทนไอคอน P ในแถบเมนูและหน้าเข้าสู่ระบบ"""
+    data = await file.read(LOGO_MAX_BYTES + 1)
+    if len(data) > LOGO_MAX_BYTES:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "ไฟล์ใหญ่เกิน 1 MB — ย่อขนาดภาพก่อน (แนะนำ 256×256 พิกเซล)")
+    ext = detect_logo_type(data)
+    if ext is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "รองรับเฉพาะไฟล์ภาพ PNG, JPG หรือ WebP")
+    folder = logo_dir()
+    folder.mkdir(parents=True, exist_ok=True)
+    for old in folder.glob("logo.*"):
+        old.unlink(missing_ok=True)
+    (folder / f"logo.{ext}").write_bytes(data)
+
+    display = load_display(db)
+    display["logo_file"] = f"logo.{ext}"
+    display["logo_version"] = int(datetime.utcnow().timestamp())
+    save_setting(db, DISPLAY_SETTING_KEY, display)
+    db.add(AuditLog(user_id=admin.id, action="update_logo", target="settings:logo", detail={"format": ext}))
+    db.commit()
+    return _system_out(db)
+
+
+@router.delete("/system/logo")
+def delete_logo(
+    db: Session = Depends(get_db),
+    admin: CurrentUser = Depends(require_admin),
+    _csrf: None = Depends(verify_csrf),
+) -> dict:
+    """กลับไปใช้โลโก้ตั้งต้น"""
+    for old in logo_dir().glob("logo.*"):
+        old.unlink(missing_ok=True)
+    display = load_display(db)
+    display["logo_file"] = ""
+    display["logo_version"] = int(datetime.utcnow().timestamp())
+    save_setting(db, DISPLAY_SETTING_KEY, display)
+    db.add(AuditLog(user_id=admin.id, action="delete_logo", target="settings:logo", detail=None))
+    db.commit()
+    return _system_out(db)

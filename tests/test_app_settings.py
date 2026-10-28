@@ -63,3 +63,12 @@ def test_health_interval_is_used():
     assert not is_health_check_due(cam, now, 10)
     assert is_health_check_due(cam, now, 2)
     assert is_health_check_due(SimpleNamespace(last_health_check_at=None), now, 10)  # ปุ่ม "ตรวจเดี๋ยวนี้" ล้างค่านี้
+
+
+def test_detect_logo_type_checks_real_header():
+    from core.app_settings import detect_logo_type
+    assert detect_logo_type(b"\x89PNG\r\n\x1a\n" + b"0" * 20) == "png"
+    assert detect_logo_type(b"\xff\xd8\xff\xe0" + b"0" * 20) == "jpg"
+    assert detect_logo_type(b"RIFF\x00\x00\x00\x00WEBPVP8 ") == "webp"
+    assert detect_logo_type(b"<svg onload=alert(1)>") is None  # SVG ฝังสคริปต์ได้ ไม่รับ
+    assert detect_logo_type(b"GIF89a") is None

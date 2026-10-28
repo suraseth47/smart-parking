@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}หลังบ้าน{% endblock %} - Smart Parking · NASLINK</title>
-  <link rel="stylesheet" href="/static/css/admin.css?v=20261028v">
+  <link rel="stylesheet" href="/static/css/admin.css?v=20261028w">
   <script defer src="/static/js/vendor/alpine.min.js"></script>
   <script src="/static/js/api.js"></script>
   <script src="/static/js/export.js?v=20261028"></script>
@@ -54,9 +54,13 @@
     <aside class="sidebar" id="sidebar">
       <div class="brand">
         <a class="brand-link" href="/admin">
+          {% if brand.logo_file %}
+          <span class="brand-mark has-logo" aria-hidden="true"><img src="/branding/logo?v={{ brand.logo_version }}" alt=""></span>
+          {% else %}
           <span class="brand-mark" aria-hidden="true">
             <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9.5 16V8h3.2a2.6 2.6 0 0 1 0 5.2H9.5"/></svg>
           </span>
+          {% endif %}
           <span class="brand-text">
             <span class="brand-app">Smart Parking</span>
             <span class="brand-org">{{ brand.org_name or "NASLINK" }}</span>

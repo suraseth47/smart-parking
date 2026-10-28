@@ -44,6 +44,8 @@ def display_defaults() -> dict:
         "show_server_address": True,
         "show_sidebar_footer": True,
         "public": dict(PUBLIC_TOGGLES),
+        "logo_file": "",   # ชื่อไฟล์โลโก้ใน data/branding/ ("" = ใช้โลโก้ตั้งต้น)
+        "logo_version": 0,  # เปลี่ยนทุกครั้งที่อัปโหลด ใช้ต่อท้าย URL กันเบราว์เซอร์จำภาพเก่า
     }
 
 
@@ -59,6 +61,26 @@ def _merge(defaults: dict, saved: dict | None) -> dict:
         else:
             result[key] = value
     return result
+
+
+# ---------- โลโก้ ----------
+LOGO_MAX_BYTES = 1024 * 1024
+LOGO_TYPES = {"png": "image/png", "jpg": "image/jpeg", "webp": "image/webp"}
+
+
+def logo_dir():
+    return get_settings().data_dir / "branding"
+
+
+def detect_logo_type(data: bytes) -> str | None:
+    """ตรวจชนิดภาพจากหัวไฟล์จริง (ไม่เชื่อนามสกุล) — ไม่รับ SVG เพราะฝังสคริปต์ได้"""
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return "jpg"
+    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "webp"
+    return None
 
 
 def load_display(db: Session) -> dict:

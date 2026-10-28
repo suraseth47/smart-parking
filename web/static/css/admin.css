@@ -586,7 +586,7 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
 .card-head h2, .card-head h3 { margin: 0; }
 
 /* ---------- ธีมแบบ CCTV Manager: แถบชื่อหน่วยงาน + เมนูพับได้ + ชื่อระบบกลางหัวหน้า ---------- */
-.brand {
+.sidebar > .brand {
   display: grid;
   grid-template-columns: 1fr auto;
   align-items: start;
@@ -680,3 +680,16 @@ button .btn-icon { margin-right: 0.35rem; vertical-align: -3px; }
   padding: 0.75rem 1rem; border: 1px solid var(--color-border); border-radius: var(--radius-lg, 14px);
   background: rgba(255, 255, 255, 0.96); box-shadow: 0 -4px 14px rgba(15, 23, 42, 0.06);
 }
+/* โลโก้ที่อัปโหลดเอง (แทนไอคอน P) */
+.brand-mark.has-logo { background: transparent; box-shadow: none; border-radius: 10px; overflow: hidden; }
+.brand-mark.has-logo img, .logo-preview img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.logo-row { display: flex; gap: 1rem; align-items: flex-start; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--color-border); }
+.logo-preview {
+  width: 72px; height: 72px; flex-shrink: 0; display: grid; place-items: center; padding: 6px;
+  border-radius: 14px; background: linear-gradient(135deg, #3b7bff, #2354c9); color: #fff;
+}
+.logo-preview svg { width: 38px; height: 38px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.logo-preview.has-logo { background: #fff; border: 1px solid var(--color-border); }
+.file-btn { position: relative; overflow: hidden; margin: 0; cursor: pointer; }
+.file-btn input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.file-btn.disabled { opacity: 0.6; pointer-events: none; }

@@ -5,10 +5,12 @@ import time
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from core.app_settings import LOGO_TYPES, cached_display, logo_dir
 from core.config import local_utc_offset_hours
 from core.counting import SlotInfo, ZoneInfo, build_public_summary, build_slot_maps
 from core.db import get_db
@@ -78,6 +80,20 @@ class PublicSummaryOut(BaseModel):
 @router.get("/", include_in_schema=False)
 def public_page(request: Request):
     return templates.TemplateResponse(request, "public/index.html")
+
+
+@router.get("/branding/logo", include_in_schema=False)
+def branding_logo():
+    """โลโก้ที่อัปโหลดจากหน้า ตั้งค่าระบบ (เปิดได้ไม่ต้อง login เพราะหน้าเข้าสู่ระบบใช้ด้วย)"""
+    name = cached_display().get("logo_file") or ""
+    path = logo_dir() / name
+    ext = name.rsplit(".", 1)[-1] if "." in name else ""
+    if not name or ext not in LOGO_TYPES or not path.is_file():
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "ไม่มีโลโก้")
+    return FileResponse(
+        path, media_type=LOGO_TYPES[ext],
+        headers={"Cache-Control": "public, max-age=86400", "X-Content-Type-Options": "nosniff"},
+    )
 
 
 @router.get("/healthz")

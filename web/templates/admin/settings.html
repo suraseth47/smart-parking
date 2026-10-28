@@ -33,6 +33,26 @@
             <p class="hint">แสดงกลางแถบด้านบนของทุกเมนู (จอกว้างเท่านั้น) · เว้นว่าง = ไม่แสดง</p>
           </div>
         </div>
+        <div class="logo-row">
+          <div class="logo-preview" :class="sys.display.logo_file && 'has-logo'">
+            <template x-if="sys.display.logo_file"><img :src="'/branding/logo?v=' + sys.display.logo_version" alt="โลโก้ปัจจุบัน"></template>
+            <template x-if="!sys.display.logo_file">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M9.5 16V8h3.2a2.6 2.6 0 0 1 0 5.2H9.5"/></svg>
+            </template>
+          </div>
+          <div style="min-width:0;">
+            <label style="margin-top:0;">โลโก้</label>
+            <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+              <label class="btn btn-secondary file-btn" :class="logoBusy && 'disabled'">
+                <input type="file" accept="image/png,image/jpeg,image/webp" @change="uploadLogo($event)" :disabled="logoBusy">
+                <span x-text="logoBusy ? 'กำลังอัปโหลด...' : (sys.display.logo_file ? 'เปลี่ยนโลโก้...' : 'อัปโหลดโลโก้...')"></span>
+              </label>
+              <button type="button" class="btn-secondary" x-show="sys.display.logo_file" @click="deleteLogo()" :disabled="logoBusy">ใช้โลโก้ตั้งต้น</button>
+            </div>
+            <p class="hint">PNG, JPG หรือ WebP ไม่เกิน 1 MB · แนะนำภาพสี่เหลี่ยมจัตุรัส 256×256 พิกเซล พื้นหลังโปร่งใส · แสดงที่มุมซ้ายบนและหน้าเข้าสู่ระบบ · มีผลทันที</p>
+            <p class="error-text" x-show="logoError" x-text="logoError" style="margin:0;"></p>
+          </div>
+        </div>
         <div class="toggle-list">
           <label class="toggle-row">
             <span><b>แสดงข้อความหัวจอ</b><span class="sub-text">ตัวอักษรสีน้ำเงินกลางแถบด้านบน</span></span>
@@ -277,7 +297,7 @@
       isOperator: false,
       tab: "system",
       // ระบบและการแสดงผล
-      sys: null, movedMode: "on", sysSaving: false, sysSaved: "", sysError: "", checking: false, checkResult: "",
+      sys: null, movedMode: "on", logoBusy: false, logoError: "", sysSaving: false, sysSaved: "", sysError: "", checking: false, checkResult: "",
       publicItems: [
         { key: "lang_switch", title: "ปุ่มสลับภาษา ไทย / EN", detail: "ปิด = แสดงภาษาไทยอย่างเดียว" },
         { key: "directions", title: "ปุ่มนำทาง (Google Maps)", detail: "แสดงเมื่อสถานที่มีพิกัด" },
@@ -323,6 +343,50 @@
         } catch (e) {
           this.sysError = "บันทึกไม่สำเร็จ: " + e.message;
         } finally { this.sysSaving = false; }
+      },
+      async uploadLogo(event) {
+        const file = event.target.files && event.target.files[0];
+        event.target.value = "";
+        if (!file) return;
+        this.logoError = "";
+        if (file.size > 1024 * 1024) { this.logoError = "ไฟล์ใหญ่เกิน 1 MB — ย่อขนาดภาพก่อน"; return; }
+        const form = new FormData();
+        form.append("file", file);
+        this.logoBusy = true;
+        try {
+          const data = await apiJson("/api/admin/settings/system/logo", { method: "POST", body: form });
+          this.sys.display.logo_file = data.display.logo_file;
+          this.sys.display.logo_version = data.display.logo_version;
+          this.refreshBrandLogo();
+        } catch (e) {
+          this.logoError = "อัปโหลดไม่สำเร็จ: " + e.message;
+        } finally { this.logoBusy = false; }
+      },
+      async deleteLogo() {
+        this.logoBusy = true; this.logoError = "";
+        try {
+          const data = await apiJson("/api/admin/settings/system/logo", { method: "DELETE" });
+          this.sys.display.logo_file = data.display.logo_file;
+          this.sys.display.logo_version = data.display.logo_version;
+          this.refreshBrandLogo();
+        } catch (e) {
+          this.logoError = "ไม่สำเร็จ: " + e.message;
+        } finally { this.logoBusy = false; }
+      },
+      // เปลี่ยนโลโก้ในแถบเมนูทันทีโดยไม่โหลดหน้าใหม่ (ข้อมูลที่ยังไม่ได้กดบันทึกจะไม่หาย)
+      refreshBrandLogo() {
+        const mark = document.querySelector(".sidebar .brand-mark");
+        if (!mark) return;
+        if (this.sys.display.logo_file) {
+          mark.classList.add("has-logo");
+          mark.innerHTML = "";
+          const img = document.createElement("img");
+          img.src = "/branding/logo?v=" + this.sys.display.logo_version;
+          img.alt = "";
+          mark.appendChild(img);
+        } else {
+          location.reload();
+        }
       },
       async checkNow() {
         this.checking = true; this.checkResult = "";
