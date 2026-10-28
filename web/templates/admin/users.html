@@ -1,4 +1,5 @@
 {% extends "admin/base.html" %}
+{% from "admin/_export_buttons.html" import export_buttons %}
 {% block title %}ผู้ใช้และสิทธิ์{% endblock %}
 {% block content %}
 <div x-data="usersPage()" x-init="init()" @keydown.escape.window="closePanel()">
@@ -58,7 +59,10 @@
 
     <!-- ผู้ใช้ -->
     <div class="card" style="margin-bottom:1rem;">
-      <h2 style="margin-top:0;">ผู้ใช้ทั้งหมด (<span x-text="users.length"></span>)</h2>
+      <div class="card-head">
+        <h2>ผู้ใช้ทั้งหมด (<span x-text="users.length"></span>)</h2>
+        {{ export_buttons("exportUsers") }}
+      </div>
       <div class="table-scroll">
         <table class="data-table">
           <thead><tr><th>ผู้ใช้</th><th>อีเมล</th><th>บทบาท</th><th>เมนู</th><th>สถานะ</th><th>เข้าระบบล่าสุด</th><th></th></tr></thead>
@@ -108,7 +112,10 @@
 
     <!-- คำเชิญ -->
     <div class="card" style="margin-bottom:1rem;">
-      <h2 style="margin-top:0;">คำเชิญ</h2>
+      <div class="card-head">
+        <h2>คำเชิญ</h2>
+        {{ export_buttons("exportInvitations") }}
+      </div>
       <p class="muted" style="margin-top:0;">ลิงก์คำเชิญใช้ได้ครั้งเดียว ระบบเก็บเฉพาะรหัสที่เข้ารหัสแล้ว จึงดูลิงก์เดิมซ้ำไม่ได้ ถ้าลิงก์หายให้ยกเลิกแล้วสร้างใหม่</p>
       <p class="muted" x-show="invitations.length === 0">ยังไม่มีคำเชิญ</p>
       <div class="table-scroll" x-show="invitations.length > 0">
@@ -373,6 +380,31 @@
         this.formError = ""; this.panel = "edit";
       },
       closePanel() { if (!this.busy) this.panel = null; },
+
+      // ---------- ส่งออก Excel / PDF / พิมพ์ ----------
+      async exportUsers(kind) {
+        const multi = this.sites.length > 1;
+        const columns = ["ชื่อผู้ใช้", "ชื่อ-นามสกุล", "อีเมล", "บทบาท", "เมนูที่ใช้ได้", ...(multi ? ["สถานที่ที่ดูแล"] : []), "สถานะ", "เข้าระบบล่าสุด", "สร้างเมื่อ"];
+        const rows = this.users.map((u) => [
+          u.username, u.full_name || "", u.email || "", this.roleShort(u.role), this.permNames(u.permissions),
+          ...(multi ? [this.siteSummary(u.role, u.site_ids)] : []),
+          u.locked ? "ถูกล็อกชั่วคราว" : (u.is_active ? "ใช้งานได้" : "ปิดบัญชี"), this.fmt(u.last_login_at), this.fmt(u.created_at),
+        ]);
+        await this.runExport(kind, { title: "รายชื่อผู้ใช้และสิทธิ์", filename: "users", columns, rows });
+      },
+      async exportInvitations(kind) {
+        const columns = ["สถานะ", "ผู้รับ", "อีเมล", "วิธีส่ง", "บทบาท", "เมนูที่ใช้ได้", "สร้างโดย", "สร้างเมื่อ", "หมดอายุ / ใช้เมื่อ"];
+        const rows = this.invitations.map((inv) => [
+          this.statusLabel(inv), inv.full_name || "", inv.email || "", inv.method === "email" ? "อีเมล" : "ลิงก์",
+          this.roleShort(inv.role), this.permNames(inv.permissions), inv.created_by || "", this.fmt(inv.created_at),
+          inv.status === "accepted" ? this.fmt(inv.accepted_at) : this.fmt(inv.expires_at),
+        ]);
+        await this.runExport(kind, { title: "คำเชิญผู้ใช้", filename: "invitations", columns, rows });
+      },
+      async runExport(kind, spec) {
+        try { this.userError = ""; await ExportKit.run(kind, spec); }
+        catch (e) { this.userError = e.message; }
+      },
       toggleSite(id, on) {
         this.form.siteIds = on ? [...new Set([...this.form.siteIds, id])] : this.form.siteIds.filter((x) => x !== id);
       },

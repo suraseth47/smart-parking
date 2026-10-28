@@ -12,6 +12,7 @@ from web.routers import (
     calibration,
     cameras,
     cctv,
+    export,
     health,
     sites,
     live,
@@ -38,6 +39,7 @@ app.include_router(cctv.router)
 app.include_router(override.router)
 app.include_router(reports.router)
 app.include_router(audit.router)
+app.include_router(export.router)
 app.include_router(validation.router)
 app.include_router(calibration.router)
 app.include_router(settings.router)

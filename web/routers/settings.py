@@ -265,7 +265,7 @@ def security_status(
         item("rate", "จำกัดอัตราการเรียกหน้าสาธารณะ (Rate limit)", True,
              f"ไม่เกิน {RATE_LIMIT_MAX_REQUESTS} ครั้ง / {RATE_LIMIT_WINDOW_SECONDS} วินาที ต่อ IP (เกินได้รับ HTTP 429) + cache 10 วินาที"),
         item("backup", "สำรองฐานข้อมูลอัตโนมัติทุกวัน เก็บไม่น้อยกว่า 7 วัน", bool(last.get("ok")) and days_covered(files) >= 7,
-             (f"ล่าสุด {last.get('time', '-')} · มีไฟล์สำรอง {days_covered(files)} วัน (เก็บ {backup_keep()} ชุด)"
+             (f"ล่าสุด {str(last.get('time', '-')).replace('T', ' ')} · มีไฟล์สำรอง {days_covered(files)} วัน (เก็บ {backup_keep()} ชุด)"
               if last.get("ok") else f"ล่าสุด: {last.get('message', 'ยังไม่เคยสำรอง')}"),
              warn=bool(last.get("ok"))),
     ]

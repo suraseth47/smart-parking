@@ -1,0 +1,13 @@
+{# ปุ่มส่งออกตาราง ใช้ร่วมทุกเมนู: {% from "admin/_export_buttons.html" import export_buttons %} แล้ว {{ export_buttons() }}
+   หน้าที่ใช้ต้องมีเมธอด doExport(kind) ใน Alpine (kind = "excel" | "pdf" | "print") — ดู static/js/export.js #}
+{% macro export_buttons(fn="doExport", label="ส่งออก") %}
+<div class="export-btns no-print" role="group" aria-label="{{ label }}">
+  <span class="export-label">{{ label }}</span>
+  <button type="button" class="chip" @click="{{ fn }}('excel')" title="ดาวน์โหลดเป็นไฟล์ Excel (.xlsx)">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M9 12l4 5M13 12l-4 5"/></svg>Excel</button>
+  <button type="button" class="chip" @click="{{ fn }}('pdf')" title="บันทึกเป็นไฟล์ PDF">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M9 15h6M9 18h4"/></svg>PDF</button>
+  <button type="button" class="chip" @click="{{ fn }}('print')" title="พิมพ์ออกเครื่องพิมพ์">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 9V3h10v6M7 17H5a1 1 0 0 1-1-1v-5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v5a1 1 0 0 1-1 1h-2"/><path d="M7 14h10v7H7z"/></svg>พิมพ์</button>
+</div>
+{% endmacro %}

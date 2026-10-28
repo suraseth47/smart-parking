@@ -1,9 +1,10 @@
 {% extends "admin/base.html" %}
+{% from "admin/_export_buttons.html" import export_buttons %}
 {% block title %}แก้สถานะช่องด้วยมือ{% endblock %}
 {% block content %}
 <div x-data="overridePage()" x-init="init()">
-  <div class="card" style="margin-bottom:0.75rem;">
-    <div class="toolbar">
+  <div class="sticky-bar"><div class="card">
+    <div class="toolbar" style="margin-bottom:0;">
       <label class="muted" style="margin:0;">กรองตามโซน:</label>
       <select id="zone-filter" x-model="zoneFilter" @change="loadSlots()">
         <option value="">ทุกโซน</option>
@@ -14,8 +15,11 @@
       <button class="btn-secondary" @click="selectAll()">เลือกทั้งหมดที่เห็น</button>
       <button class="btn-secondary" @click="selectNone()">ยกเลิกการเลือก</button>
       <span class="muted">เลือกอยู่ <span x-text="selected.size"></span> ช่อง</span>
+      <span style="flex:1;"></span>
+      {{ export_buttons() }}
     </div>
-  </div>
+    <p class="error-text" x-show="exportError" x-text="exportError" style="margin:0.5rem 0 0;"></p>
+  </div></div>
 
   <div class="card" x-show="selected.size > 0" style="margin-bottom:0.75rem;">
     <h3 style="margin-top:0;">บังคับสถานะช่องที่เลือก (<span x-text="selected.size"></span> ช่อง)</h3>
@@ -36,7 +40,7 @@
   </div>
 
   <div class="card">
-    <table style="width:100%; border-collapse:collapse;">
+    <table class="data-table sticky-head" style="width:100%; border-collapse:collapse;">
       <thead>
         <tr style="text-align:left; border-bottom:1px solid var(--color-border);">
           <th style="padding:0.4rem;"></th>
@@ -66,5 +70,5 @@
   </div>
 </div>
 
-<script src="/static/js/override.js"></script>
+<script src="/static/js/override.js?v=20261028"></script>
 {% endblock %}

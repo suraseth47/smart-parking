@@ -1,4 +1,5 @@
 {% extends "admin/base.html" %}
+{% from "admin/_export_buttons.html" import export_buttons %}
 {% block title %}ภาพรวมทุกสถานที่{% endblock %}
 {% block content %}
 <div x-data="sitesPage()" x-init="init()">
@@ -31,6 +32,11 @@
         <div class="stat-note" x-text="'ไม่ทราบสถานะ ' + sum('unknown') + ' ช่อง'"></div></div></div>
       <div class="stat-card"><div><div class="stat-label">มีรถจอด</div><div class="stat-value red" x-text="sum('occupied')"></div>
         <div class="stat-note" x-text="sum('capacity') ? ('ใช้งาน ' + Math.round(sum('occupied') * 100 / sum('capacity')) + '%') : '-'"></div></div></div>
+    </div>
+
+    <div class="card-head" x-show="sites.length" style="margin-bottom:0.75rem;">
+      <span class="muted" x-text="'สถานที่ ' + sites.length + ' แห่ง'"></span>
+      {{ export_buttons() }}
     </div>
 
     <div class="card" x-show="!sites.length">
@@ -162,6 +168,18 @@
         } catch (e) {
           this.pageError = "โหลดข้อมูลสถานที่ไม่สำเร็จ: " + e.message;
         }
+      },
+      async doExport(kind) {
+        const columns = ["รหัส", "ชื่อสถานที่", "ที่อยู่", "เวลาให้บริการ", "พิกัด", "ช่องทั้งหมด", "ว่าง", "มีรถจอด", "ไม่ทราบ",
+                         "อัตราใช้งาน (%)", "โซน", "โซนที่ปิด", "กล้อง online", "กล้องมีปัญหา", "กล้องปิดใช้งาน", "แจ้งเตือนค้าง", "หน้าสาธารณะ"];
+        const rows = this.sites.map((s) => [
+          s.code, s.name_th, s.address || "", s.opening_hours || "", s.latitude !== null ? `${s.latitude}, ${s.longitude}` : "",
+          s.capacity, s.free, s.occupied, s.unknown, s.occupancy_pct ?? "", s.zone_count, s.closed_zones,
+          s.cameras.online || 0, (s.cameras.offline || 0) + (s.cameras.moved || 0), s.cameras.disabled || 0, s.open_alerts,
+          s.is_public ? "แสดง" : "ซ่อน",
+        ]);
+        try { this.pageError = ""; await ExportKit.run(kind, { title: "สถานะทุกสถานที่จอดรถ", filename: "sites-status", columns, rows }); }
+        catch (e) { this.pageError = e.message; }
       },
       sum(key) { return this.sites.reduce((n, s) => n + (s[key] || 0), 0); },
       ago(iso) {

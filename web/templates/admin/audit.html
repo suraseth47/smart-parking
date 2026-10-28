@@ -41,8 +41,10 @@
       <span style="flex:1;"></span>
       <button @click="download('xlsx')" :disabled="!!downloading" x-text="downloading === 'xlsx' ? 'กำลังสร้างไฟล์...' : 'ส่งออก Excel'"></button>
       <button class="btn-secondary" @click="download('csv')" :disabled="!!downloading">CSV</button>
+      <button class="btn-secondary" @click="printOut('pdf')" :disabled="!!downloading">PDF</button>
+      <button class="btn-secondary" @click="printOut('print')" :disabled="!!downloading">พิมพ์</button>
     </div>
-    <p class="hint">ส่งออกตามตัวกรองที่เลือก (สูงสุด 50,000 รายการต่อไฟล์)</p>
+    <p class="hint">ส่งออกตามตัวกรองที่เลือก — Excel/CSV สูงสุด 50,000 รายการ · PDF/พิมพ์ สูงสุด 2,000 รายการล่าสุด (เลือกช่วงวันที่ให้แคบลงถ้ามากกว่านี้)</p>
     <p class="notice warn" x-show="error" x-text="error" style="margin:0.5rem 0 0;"></p>
   </div>
 
@@ -81,5 +83,5 @@
   </template>
 </div>
 
-<script src="/static/js/audit.js?v=20261028"></script>
+<script src="/static/js/audit.js?v=20261028b"></script>
 {% endblock %}

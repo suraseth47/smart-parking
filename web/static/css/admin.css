@@ -557,3 +557,101 @@ button:disabled { opacity: 0.6; cursor: not-allowed; }
 .check-row.ok .check-icon { background: var(--color-success); }
 .check-row.warn .check-icon { background: var(--color-warning); }
 .check-row.fail .check-icon { background: var(--color-danger); }
+
+/* ---------- แถวสำคัญติดด้านบนเวลาเลื่อนจอ (ทุกหน้า) ----------
+   ลำดับจากบนลงล่าง: หัวหน้าเว็บ (.main-header) -> แถบเครื่องมือ (.sticky-bar) -> หัวตาราง (thead)
+   ความสูงจริงของหัวเว็บ/แถบเครื่องมือวัดด้วย JS ใน base.html แล้วเก็บใน --header-h / --bar-h */
+:root { --header-h: 64px; --bar-h: 0px; }
+.sticky-bar {
+  position: sticky; top: var(--header-h); z-index: 30;
+  background: var(--color-bg, #f5f7fb);
+  margin: -0.5rem -0.25rem 1rem; padding: 0.5rem 0.25rem;
+}
+.sticky-bar.is-stuck { box-shadow: 0 8px 12px -10px rgba(15, 23, 42, 0.35); }
+.sticky-bar > .card { margin-bottom: 0 !important; }
+.data-table thead th, .sticky-head th {
+  position: sticky; top: calc(var(--header-h) + var(--bar-h)); z-index: 20;
+  box-shadow: inset 0 -1px 0 var(--color-border);
+}
+.sticky-head th { background: #f8fafd; }
+/* กล่องเลื่อนแนวนอนทำให้หัวตารางติดไม่ได้ — จอกว้างไม่ต้องเลื่อนแนวนอนอยู่แล้ว จึงปิดไว้ */
+@media (min-width: 721px) { .table-scroll { overflow: visible; } }
+
+/* ---------- ปุ่มส่งออก Excel / PDF / พิมพ์ ---------- */
+.export-btns { display: inline-flex; align-items: center; gap: 0.35rem; flex-wrap: wrap; }
+.export-label { font-size: 0.78rem; color: var(--color-muted); margin-right: 0.1rem; }
+.export-btns .chip { display: inline-flex; align-items: center; gap: 0.3rem; }
+.export-btns svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.card-head { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: center; justify-content: space-between; margin-bottom: 0.75rem; }
+.card-head h2, .card-head h3 { margin: 0; }
+
+/* ---------- ธีมแบบ CCTV Manager: แถบชื่อหน่วยงาน + เมนูพับได้ + ชื่อระบบกลางหัวหน้า ---------- */
+.brand {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: start;
+  gap: 0.35rem 0.5rem;
+  padding: 1.1rem 1rem 0.9rem 1.1rem;
+}
+.brand-link { display: flex; align-items: flex-start; gap: 0.7rem; min-width: 0; color: var(--color-text); text-decoration: none; }
+.brand-link:hover { color: var(--color-text); }
+.brand-mark { width: 40px; height: 40px; border-radius: 11px; }
+.brand-text { display: flex; flex-direction: column; min-width: 0; letter-spacing: 0; }
+.brand-app { font-size: 0.8rem; font-weight: 600; color: var(--color-muted); line-height: 1.3; }
+.brand-org { font-size: 1.02rem; font-weight: 800; color: #1f2a44; line-height: 1.3; overflow-wrap: anywhere; }
+.brand-refresh {
+  width: 32px; height: 32px; padding: 0; display: grid; place-items: center;
+  border: 1px solid var(--color-border); border-radius: 8px;
+  background: var(--color-surface); color: var(--color-muted); cursor: pointer;
+}
+.brand-refresh svg { width: 16px; height: 16px; }
+.brand-refresh:hover { background: var(--color-primary-soft); color: var(--color-primary); border-color: var(--color-border); }
+.brand-host {
+  grid-column: 1 / -1;
+  font-family: ui-monospace, Consolas, "Cascadia Mono", monospace;
+  font-size: 0.74rem; color: #8a93a6; overflow-wrap: anywhere;
+}
+.brand-host:empty { display: none; }
+
+.side-nav { padding: 0.6rem 0.75rem; }
+.nav-group-label {
+  display: flex; align-items: center; justify-content: space-between; width: 100%;
+  margin: 0.25rem 0 0.15rem; padding: 0.5rem 0.6rem;
+  border: 0; border-radius: 8px; background: transparent;
+  font: inherit; font-size: 0.86rem; font-weight: 700; letter-spacing: 0.01em; color: #4b5565;
+  cursor: pointer; text-align: left;
+}
+.nav-group:not(:first-child) .nav-group-label { margin-top: 0.6rem; }
+.nav-group-label:hover { background: #f2f5fb; color: var(--color-text); border: 0; }
+.nav-group-label:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 1px; }
+.nav-chevron { width: 16px; height: 16px; flex-shrink: 0; transition: transform 0.15s; }
+.nav-group.collapsed .nav-chevron { transform: rotate(-90deg); }
+.nav-group.collapsed .nav-items { display: none; }
+.nav-items { display: flex; flex-direction: column; gap: 2px; }
+.side-nav a { font-size: 0.95rem; padding: 0.58rem 0.75rem; }
+.side-nav a.active { background: var(--color-primary-soft); color: var(--color-primary-dark); font-weight: 700; }
+.nav-en { display: none; }
+
+.system-title {
+  flex: 2 1 auto;
+  min-width: 0;
+  text-align: center;
+  font-size: 1.12rem;
+  font-weight: 800;
+  color: #1e40af;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.system-title:empty { display: none; }
+.main-header .main-title { flex: 0 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.main-header .header-actions { margin-left: auto; flex-shrink: 0; }
+.main-header .link-btn { white-space: nowrap; }
+@media (max-width: 1360px) { .system-title { font-size: 0.98rem; } }
+@media (max-width: 1180px) { .system-title { display: none; } }
+
+/* หัวการ์ด: ตัวหนาเข้มแบบ CCTV Manager */
+.card h2 { color: #1f2a44; font-weight: 800; }
+.card h3 { color: #1f2a44; font-weight: 700; }
+.data-table thead th { background: #f4f7fc; color: #4b5565; font-weight: 700; }
+.report-controls > *, .form-grid > * { min-width: 0; }

@@ -1,4 +1,5 @@
 {% extends "admin/base.html" %}
+{% from "admin/_export_buttons.html" import export_buttons %}
 {% block title %}การแจ้งเตือน{% endblock %}
 {% block content %}
 <div x-data="alertsPage()" x-init="init()">
@@ -22,6 +23,7 @@
         </button>
         <button type="button" role="tab" :class="tab === 'history' && 'active'" @click="go('history')">ประวัติ 30 วัน</button>
       </div>
+      <div style="flex-basis:100%;">{{ export_buttons() }}</div>
     </div>
 
     <p class="notice warn" x-show="pageError" x-text="pageError" style="margin:0 0 1rem;"></p>
@@ -137,6 +139,21 @@
         } catch (e) {
           this.pageError = "รับทราบไม่สำเร็จ: " + e.message;
         } finally { this.busy = false; }
+      },
+      async doExport(kind) {
+        const isHistory = this.tab === "history";
+        if (isHistory && !this.history.length) this.history = await apiJson("/api/admin/alerts?include_resolved=true").catch(() => []);
+        const columns = ["ระดับ", "เรื่อง", "รายละเอียด", "เริ่ม", "ปิดเมื่อ", "ใช้เวลา"];
+        const list = isHistory ? this.history : this.openAlerts;
+        const rows = [
+          ...(isHistory ? [] : this.system.map((w) => [w.level === "error" ? "ร้ายแรง" : "เตือน", "ระบบทำงานผิดปกติ", w.message, "ตอนนี้", "", ""])),
+          ...list.map((a) => [this.levelLabel(a), this.kindLabel(a), a.message, this.fmt(a.created_at),
+                              a.resolved_at ? this.fmt(a.resolved_at) : "ยังไม่แก้ไข", a.resolved_at ? this.duration(a.created_at, a.resolved_at) : ""]),
+        ];
+        try {
+          this.pageError = "";
+          await ExportKit.run(kind, { title: isHistory ? "ประวัติการแจ้งเตือน 30 วัน" : "การแจ้งเตือนที่ยังไม่แก้ไข", filename: isHistory ? "alerts-history" : "alerts-open", columns, rows });
+        } catch (e) { this.pageError = e.message; }
       },
       kindLabel(a) {
         return { connection: "กล้องขาดการเชื่อมต่อ", moved: "กล้องอาจถูกขยับ / เปลี่ยนมุม" }[a.kind] || "ระบบแจ้งเตือน";

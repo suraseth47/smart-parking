@@ -1,4 +1,5 @@
 {% extends "admin/base.html" %}
+{% from "admin/_export_buttons.html" import export_buttons %}
 {% block title %}โซนและการปิดโซน{% endblock %}
 {% block content %}
 <div x-data="zonesPage()" x-init="init()">
@@ -30,6 +31,10 @@
     <p class="notice warn" x-show="pageError" x-text="pageError" style="margin:0 0 1rem;"></p>
 
     <div class="card" style="margin-bottom:1rem;">
+      <div class="card-head" x-show="shownZones.length">
+        <h3>รายการโซน (<span x-text="shownZones.length"></span>)</h3>
+        {{ export_buttons() }}
+      </div>
       <p class="muted" x-show="!shownZones.length" style="margin:0;">ยังไม่มีโซน <span x-show="isAdmin">กด "+ เพิ่มโซน" เพื่อเริ่ม</span></p>
       <div class="table-scroll" x-show="shownZones.length">
         <table class="data-table stack-table">
@@ -235,6 +240,21 @@
         } catch (e) {
           this.pageError = "โหลดรายการโซนไม่สำเร็จ: " + e.message;
         }
+      },
+      async doExport(kind) {
+        const multi = this.sites.length > 1;
+        const columns = [...(multi ? ["สถานที่"] : []), "ลำดับ", "รหัสโซน", "ชื่อภาษาไทย", "ชื่อภาษาอังกฤษ", "ชั้น",
+                         "ช่องที่ Publish", "ช่องตามแผน", "หน้าสาธารณะ", "สถานะ", "ข้อความแจ้งประชาชน"];
+        const rows = this.shownZones.map((z) => [
+          ...(multi ? [this.siteName(z.site_id)] : []), z.sort_order, z.code, z.name_th, z.name_en, z.floor || "",
+          this.cov(z).published_slots, z.expected_slots || "", z.is_public ? "แสดง" : "ซ่อน",
+          z.is_closed ? "ปิดชั่วคราว" : "เปิดใช้งาน", z.is_closed ? (z.closed_note || DEFAULT_NOTE) : "",
+        ]);
+        const st = this.siteFilter && this.sites.find((s) => String(s.id) === this.siteFilter);
+        try {
+          this.pageError = "";
+          await ExportKit.run(kind, { title: "รายการโซนและสถานะการเปิด-ปิด", filename: "zones", columns, rows, meta: st ? ["สถานที่: " + st.name_th] : [] });
+        } catch (e) { this.pageError = e.message; }
       },
       get shownZones() {
         return this.siteFilter ? this.zones.filter((z) => String(z.site_id) === this.siteFilter) : this.zones;

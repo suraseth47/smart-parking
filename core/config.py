@@ -42,6 +42,8 @@ class Settings:
     detector_model: str  # ชื่อไฟล์โมเดลในโฟลเดอร์ models/ (ตั้งใน .env: DETECTOR_MODEL)
     public_admin_url: str | None  # ที่อยู่หลังบ้านจากภายนอก ใช้สร้างลิงก์คำเชิญ เช่น https://1.2.3.4:8010
     smtp: SmtpSettings  # บัญชีอีเมลที่ระบบใช้ส่งคำเชิญ (ไม่ตั้ง = ส่งเองไม่ได้ ใช้โปรแกรมอีเมลในเครื่องแทน)
+    system_title: str = "ระบบบริหารจัดการที่จอดรถอัจฉริยะ"  # หัวเว็บหลังบ้าน (ตัวอักษรสีน้ำเงิน)
+    org_name: str = ""  # ชื่อหน่วยงาน เช่น เทศบาลเมืองสระบุรี (แสดงในแถบเมนูและหัวเว็บ)
 
 
 @lru_cache
@@ -63,6 +65,8 @@ def get_settings() -> Settings:
         detector_model=os.environ.get("DETECTOR_MODEL", DEFAULT_DETECTOR_MODEL),
         public_admin_url=_public_admin_url(),
         smtp=_smtp_settings(),
+        system_title=os.environ.get("SYSTEM_TITLE", "ระบบบริหารจัดการที่จอดรถอัจฉริยะ").strip(),
+        org_name=os.environ.get("ORG_NAME", "").strip(),
     )
 
 

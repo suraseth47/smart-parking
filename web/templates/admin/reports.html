@@ -6,7 +6,7 @@
   .heatmap-table { border-collapse: collapse; font-size: 0.72rem; }
   .heatmap-table th, .heatmap-table td { padding: 2px 3px; text-align: center; }
   .heatmap-table th { color: var(--color-muted); font-weight: 400; }
-  .heatmap-table th.dow { text-align: right; padding-right: 6px; white-space: nowrap; }
+  .heatmap-table th.dow { text-align: right; padding-right: 6px; white-space: nowrap; position: sticky; left: 0; background: var(--color-surface); z-index: 1; }
   .heatmap-cell { width: 24px; height: 22px; border-radius: 3px; font-size: 0.62rem; line-height: 22px; color: #1f2937; }
   .heatmap-cell.empty { background: repeating-linear-gradient(135deg, #f1f3f7 0 3px, #fff 3px 6px); }
   .heat-legend { display: flex; align-items: center; gap: 0.5rem; font-size: 0.78rem; color: var(--color-muted); margin-top: 0.5rem; }
@@ -25,6 +25,7 @@
     @page { size: A4 portrait; margin: 12mm; }
     body { background: #fff !important; }
     .sidebar, .sidebar-backdrop, .main-header, .no-print { display: none !important; }
+    .sticky-bar { position: static !important; box-shadow: none !important; margin: 0 !important; padding: 0 !important; }
     .app, .main, .page { display: block !important; padding: 0 !important; margin: 0 !important; }
     .card { box-shadow: none !important; border: 1px solid #d5dbe6 !important; break-inside: avoid; margin-bottom: 8mm !important; }
     .print-head { display: block; margin-bottom: 6mm; }
@@ -48,7 +49,8 @@
     <p x-text="'พิมพ์เมื่อ ' + new Date().toLocaleString('th-TH', { dateStyle: 'long', timeStyle: 'short' }) + ' น. · เวลาในรายงานเป็นเวลาประเทศไทย'"></p>
   </div>
 
-  <div class="card" style="margin-bottom:0.75rem;">
+  <!-- แถวเลือกโซน/ช่วงวันที่ ติดด้านบนเวลาเลื่อนดูกราฟ -->
+  <div class="sticky-bar"><div class="card" style="padding-top:0.75rem; padding-bottom:0.75rem;">
     <div class="report-controls">
       <div>
         <label for="r-zone" class="muted">โซน</label>
@@ -73,13 +75,16 @@
         <button type="button" class="chip" @click="presetMonth(-1)">เดือนที่แล้ว</button>
       </div>
     </div>
-    <div class="kpis" x-show="summary">
+    <p class="error-text" x-show="error" x-text="error" style="margin-bottom:0;"></p>
+  </div></div>
+
+  <div class="card" style="margin-bottom:0.75rem;" x-show="summary">
+    <div class="kpis" style="margin-top:0;">
       <div class="kpi"><span>อัตราใช้งานเฉลี่ยช่วงนี้</span><b x-text="summary ? summary.avg + '%' : ''"></b></div>
       <div class="kpi"><span>สูงสุดในช่วงนี้</span><b x-text="summary ? summary.max + '%' : ''"></b></div>
       <div class="kpi"><span>วันที่ใช้งานมากที่สุด</span><b style="font-size:1rem;" x-text="summary ? summary.busiest : ''"></b></div>
       <div class="kpi"><span>จำนวนวันที่มีข้อมูล</span><b x-text="summary ? summary.days + ' วัน' : ''"></b></div>
     </div>
-    <p class="error-text" x-show="error" x-text="error"></p>
   </div>
 
   <!-- ส่งออกรายงาน -->

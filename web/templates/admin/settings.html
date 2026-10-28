@@ -8,7 +8,7 @@
 
   <template x-if="!isOperator">
   <div>
-    <div class="tab-bar" role="tablist">
+    <div class="tab-bar sticky-bar" role="tablist">
       <button type="button" role="tab" :class="tab === 'mail' && 'active'" :aria-selected="tab === 'mail'" @click="go('mail')">✉ อีเมลและลิงก์คำเชิญ</button>
       <button type="button" role="tab" :class="tab === 'security' && 'active'" :aria-selected="tab === 'security'" @click="go('security')">🛡 ความปลอดภัย</button>
       <button type="button" role="tab" :class="tab === 'backup' && 'active'" :aria-selected="tab === 'backup'" @click="go('backup')">💾 สำรองข้อมูล</button>

@@ -1,4 +1,5 @@
 {% extends "admin/base.html" %}
+{% from "admin/_export_buttons.html" import export_buttons %}
 {% block title %}กล้องและช่องจอด{% endblock %}
 {% block head %}
 <script src="/static/js/vendor/konva.min.js"></script>
@@ -65,6 +66,10 @@
         </select>
         <button @click="openCam(null)">+ เพิ่มกล้อง</button>
       </div>
+    </div>
+    <div style="display:flex; flex-wrap:wrap; gap:0.5rem 1.5rem; margin-bottom:0.75rem;">
+      {{ export_buttons("exportCameras", "รายการกล้อง") }}
+      {{ export_buttons("exportSlots", "ทะเบียนช่องจอด") }}
     </div>
     <p class="notice ok" x-show="camFlash" x-text="camFlash" style="margin:0 0 0.75rem;"></p>
     <p class="notice warn" x-show="camError" x-text="camError" style="margin:0 0 0.75rem; white-space:pre-line;"></p>
@@ -534,6 +539,50 @@
       camPanel: false, cf: {}, cfError: "", camBusy: false, formTest: null, formTesting: false,
       camFlash: "", camError: "", toggleTarget: null, deleteTarget: null,
       testingId: null, savedTest: null, highlightId: null,
+      // ---------- ส่งออก Excel / PDF / พิมพ์ ----------
+      async runExport(kind, spec) {
+        try { this.camError = ""; await ExportKit.run(kind, spec); }
+        catch (e) { this.camError = e.message; }
+      },
+      filterMeta() {
+        const st = this.camSiteFilter && this.sites.find((s) => String(s.id) === this.camSiteFilter);
+        return st ? ["สถานที่: " + st.name_th] : [];
+      },
+      async exportCameras(kind) {
+        const multi = this.sites.length > 1;
+        const columns = [...(multi ? ["สถานที่"] : []), "ชื่อกล้อง", "ยี่ห้อ", "การเชื่อมต่อ", "สถานะ", "เปิดใช้งาน", "จำนวนช่องจอด", "ตรวจทุก (วินาที)", "ภาพล่าสุด"];
+        const rows = this.shownCameras.map((c) => [
+          ...(multi ? [this.siteName(c.site_id)] : []), c.name, this.brandLabel(c.brand), this.camAddress(c),
+          this.statusLabel(c.status), c.enabled ? "เปิด" : "ปิด", c.slot_count, c.detect_interval_s,
+          c.last_frame_at ? new Date(c.last_frame_at + "Z").toLocaleString("th-TH") : "-",
+        ]);
+        await this.runExport(kind, { title: "รายการกล้อง", filename: "cameras", columns, rows, meta: this.filterMeta() });
+      },
+      async exportSlots(kind) {
+        try {
+          const [slots, zones] = await Promise.all([apiJson("/api/admin/slots"), apiJson("/api/admin/zones")]);
+          const zoneById = Object.fromEntries(zones.map((z) => [z.id, z]));
+          const camById = Object.fromEntries(this.cameras.map((c) => [c.id, c]));
+          const multi = this.sites.length > 1;
+          const TYPE = { normal: "ทั่วไป", disabled: "คนพิการ", ev: "รถไฟฟ้า (EV)", reserved: "สงวน" };
+          const STATE = { free: "ว่าง", occupied: "มีรถจอด", unknown: "ไม่ทราบ" };
+          let list = slots;
+          if (this.camSiteFilter) list = list.filter((s) => String((zoneById[s.zone_id] || {}).site_id) === this.camSiteFilter);
+          // เรียงตาม สถานที่ -> ลำดับโซน -> รหัสช่อง (อ่านง่ายเวลาพิมพ์)
+          const key = (s) => { const z = zoneById[s.zone_id] || {}; return [this.siteName(z.site_id), String(z.sort_order ?? 0).padStart(4, "0"), s.zone_code, s.code].join("|"); };
+          list = [...list].sort((a, b) => key(a).localeCompare(key(b), "th", { numeric: true }));
+          const columns = [...(multi ? ["สถานที่"] : []), "โซน", "ชื่อโซน", "รหัสช่อง", "ประเภท", "กล้อง", "สถานะตอนนี้", "บังคับสถานะ (Override)"];
+          const rows = list.map((s) => {
+            const z = zoneById[s.zone_id] || {};
+            return [
+              ...(multi ? [this.siteName(z.site_id)] : []), s.zone_code, z.name_th || "", s.code, TYPE[s.type] || s.type,
+              (camById[s.camera_id] || {}).name || "-", STATE[s.state] || s.state,
+              s.override_state ? `${STATE[s.override_state] || s.override_state}${s.override_note ? " (" + s.override_note + ")" : ""}` : "",
+            ];
+          });
+          await ExportKit.run(kind, { title: "ทะเบียนช่องจอด (เฉพาะช่องที่ Publish แล้ว)", filename: "parking-slots", columns, rows, meta: this.filterMeta() });
+        } catch (e) { this.camError = e.message; }
+      },
       get shownCameras() {
         return this.camSiteFilter ? this.cameras.filter((c) => String(c.site_id) === this.camSiteFilter) : this.cameras;
       },

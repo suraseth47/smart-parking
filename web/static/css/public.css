@@ -398,3 +398,17 @@ h1, h2 { margin: 0; }
   border: 1px solid var(--border); background: var(--surface-2); color: var(--text); text-decoration: none; font-weight: 600; font-size: 0.95rem; }
 .nav-btn .icon { width: 18px; height: 18px; }
 .nav-btn-wide { display: flex; margin: -4px 0 14px; }
+
+/* ---------- แถวสำคัญติดด้านบนเวลาเลื่อนจอ ---------- */
+.sticky-top {
+  position: sticky; top: 0; z-index: 20;
+  background: var(--bg);
+  margin-left: -1rem; margin-right: -1rem; padding: 10px 1rem 8px;
+  margin-top: -10px;
+}
+.sticky-top::after { content: ""; position: absolute; left: 0; right: 0; bottom: -10px; height: 10px; pointer-events: none;
+  background: linear-gradient(var(--bg), rgba(11, 17, 32, 0)); }
+.header.sticky-top { margin-bottom: 4px; align-items: center; }
+.site-sub { margin: 0 0 10px; }
+.map-sticky .map-header { margin-bottom: 8px; }
+.map-sticky .legend { margin-bottom: 0; }

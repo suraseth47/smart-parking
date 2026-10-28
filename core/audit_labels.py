@@ -41,6 +41,7 @@ ACTION_LABELS: dict[str, str] = {
     "export_report": "ส่งออกรายงาน",
     "backup_now": "สำรองฐานข้อมูลทันที",
     "export_audit": "ส่งออกประวัติการใช้งาน",
+    "export_table": "ส่งออกตาราง (Excel/PDF/พิมพ์)",
 }
 
 

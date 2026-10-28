@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0b1120">
   <title>ที่จอดรถว่าง - Smart Parking</title>
-  <link rel="stylesheet" href="/static/css/public.css?v=20261028b">
+  <link rel="stylesheet" href="/static/css/public.css?v=20261028c">
   <script defer src="/static/js/vendor/alpine.min.js"></script>
 </head>
 <body>
@@ -13,7 +13,7 @@
 
     <!-- ===================== รายการสถานที่ (มีหลายแห่ง) ===================== -->
     <div x-show="view === 'sites'" x-cloak>
-      <header class="header">
+      <header class="header sticky-top">
         <div>
           <div class="subtitle" x-text="t('subtitle')"></div>
           <h1 class="site-name" x-text="t('allSites')"></h1>
@@ -71,18 +71,20 @@
 
     <!-- ===================== หน้าภาพรวม ===================== -->
     <div x-show="view === 'overview'">
-      <header class="header">
+      <header class="header sticky-top">
         <button type="button" class="round-btn" x-show="multiSite" @click="backToSites()" :aria-label="t('backToSites')" style="margin-right:10px;">
           <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
         </button>
         <div style="flex:1; min-width:0;">
           <div class="subtitle" x-text="t('subtitle')"></div>
           <h1 class="site-name" x-text="lang === 'th' ? site.name_th : site.name_en">Smart Parking</h1>
-          <div class="muted-sm" x-show="site.address" x-text="site.address"></div>
-          <div class="muted-sm" x-show="site.opening_hours" x-text="t('openHours') + ' ' + site.opening_hours"></div>
         </div>
         <button type="button" class="pill-btn" @click="toggleLang()" x-text="lang === 'th' ? 'EN' : 'ไทย'"></button>
       </header>
+      <div class="site-sub" x-show="site.address || site.opening_hours">
+        <div class="muted-sm" x-show="site.address" x-text="site.address"></div>
+        <div class="muted-sm" x-show="site.opening_hours" x-text="t('openHours') + ' ' + site.opening_hours"></div>
+      </div>
       <a class="nav-btn nav-btn-wide" x-show="site.maps_url" :href="site.maps_url" target="_blank" rel="noopener noreferrer">
         <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l18-8-8 18-2-8z"/></svg>
         <span x-text="t('navigateHere')"></span>
@@ -215,6 +217,7 @@
 
     <!-- ===================== หน้าผังช่องจอด ===================== -->
     <div x-show="view === 'map'" x-cloak>
+      <div class="sticky-top map-sticky">
       <header class="map-header">
         <button type="button" class="round-btn" @click="closeMap()" :aria-label="t('back')">
           <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
@@ -240,6 +243,7 @@
         <span><i class="lg lg-acc"></i><span x-text="t('disabled')"></span></span>
         <span><i class="lg lg-ev"></i><span>EV</span></span>
         <span><i class="lg lg-unknown"></i><span x-text="t('unknown')"></span></span>
+      </div>
       </div>
 
       <div class="lot-heads">

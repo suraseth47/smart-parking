@@ -9,6 +9,7 @@ function overridePage() {
     overrideForm: { state: "occupied", note: "", until: "" },
     loading: false,
     error: "",
+    exportError: "",
 
     async init() {
       const user = await requireAuth();
@@ -29,6 +30,23 @@ function overridePage() {
       if (this.selected.has(slotId)) this.selected.delete(slotId);
       else this.selected.add(slotId);
       this.selected = new Set(this.selected); // trigger reactivity
+    },
+
+    // ส่งออกรายการช่องที่เห็นอยู่ (ตามตัวกรองโซน) เป็น Excel / PDF / พิมพ์
+    async doExport(kind) {
+      const STATE = { free: "ว่าง", occupied: "มีรถจอด", unknown: "ไม่ทราบ" };
+      const TYPE = { normal: "ทั่วไป", disabled: "คนพิการ", ev: "รถไฟฟ้า (EV)", reserved: "สงวน" };
+      const columns = ["รหัสช่อง", "โซน", "ประเภท", "สถานะตอนนี้", "บังคับสถานะ", "หมายเหตุ", "บังคับถึง"];
+      const rows = this.slots.map((s) => [
+        s.code, s.zone_code, TYPE[s.type] || s.type, STATE[s.state] || s.state,
+        s.override_state ? (STATE[s.override_state] || s.override_state) : "", s.override_note || "",
+        s.override_until ? new Date(s.override_until + (String(s.override_until).endsWith("Z") ? "" : "Z")).toLocaleString("th-TH") : "",
+      ]);
+      const z = this.zones.find((x) => String(x.id) === String(this.zoneFilter));
+      try {
+        this.exportError = "";
+        await ExportKit.run(kind, { title: "สถานะช่องจอดและการบังคับสถานะ", filename: "slot-status", columns, rows, meta: z ? [`โซน: ${z.code} - ${z.name_th}`] : [] });
+      } catch (e) { this.exportError = e.message; }
     },
 
     selectAll() {

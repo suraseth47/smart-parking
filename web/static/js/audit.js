@@ -92,6 +92,38 @@ function auditPage() {
       }
     },
 
+    // PDF / พิมพ์: ดึงรายการตามตัวกรอง (ไม่เกิน 2,000 รายการล่าสุด) แล้วเปิดหน้าพิมพ์
+    async printOut(kind) {
+      this.downloading = kind;
+      this.error = "";
+      try {
+        const items = [];
+        for (let offset = 0; offset < 2000; offset += 200) {
+          const p = this.params();
+          p.set("limit", 200);
+          p.set("offset", offset);
+          const page = await apiJson(`/api/admin/audit?${p.toString()}`);
+          items.push(...page.items);
+          if (items.length >= page.total || page.items.length < 200) break;
+        }
+        const meta = [];
+        if (this.f.from || this.f.to) meta.push(`ช่วงวันที่: ${this.f.from || "-"} ถึง ${this.f.to || "-"}`);
+        if (this.f.action) meta.push("การกระทำ: " + ((this.actions.find((a) => a.action === this.f.action) || {}).label || this.f.action));
+        if (this.f.username.trim()) meta.push("ผู้ใช้: " + this.f.username.trim());
+        if (this.total > items.length) meta.push(`แสดง ${items.length.toLocaleString("th-TH")} รายการล่าสุด จากทั้งหมด ${this.total.toLocaleString("th-TH")} รายการ`);
+        await ExportKit.run(kind, {
+          title: "ประวัติการใช้งานระบบ (Audit log)", filename: "audit-log",
+          columns: ["เวลา", "ผู้ใช้", "การกระทำ", "เป้าหมาย", "รายละเอียด"],
+          rows: items.map((e) => [this.formatTime(e.ts), e.username || "-", e.action_label, e.target || "-", this.detailText(e.detail)]),
+          meta,
+        });
+      } catch (e) {
+        this.error = e.message;
+      } finally {
+        this.downloading = "";
+      }
+    },
+
     detailText(detail) {
       if (!detail) return "";
       return Object.entries(detail)
