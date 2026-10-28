@@ -693,3 +693,10 @@ button .btn-icon { margin-right: 0.35rem; vertical-align: -3px; }
 .file-btn { position: relative; overflow: hidden; margin: 0; cursor: pointer; }
 .file-btn input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .file-btn.disabled { opacity: 0.6; pointer-events: none; }
+/* โลโก้ที่อัปโหลด: ขยายให้เห็นชัด (ตราหน่วยงานมักเป็นวงกลมรายละเอียดเยอะ) + ย้ายปุ่มรีเฟรชลงแถวที่อยู่ server ให้ชื่อหน่วยงานมีที่มากขึ้น */
+.sidebar > .brand { grid-template-columns: 1fr auto; align-items: center; row-gap: 0.4rem; }
+.sidebar > .brand .brand-link { grid-column: 1 / -1; align-items: center; }
+.sidebar > .brand .brand-host { grid-column: 1; }
+.sidebar > .brand .brand-refresh { grid-column: 2; grid-row: 2; width: 28px; height: 28px; }
+.sidebar > .brand .brand-mark.has-logo { width: 60px; height: 60px; border-radius: 0; }
+.login-box .brand-mark.has-logo { width: 64px; height: 64px; border-radius: 0; }
