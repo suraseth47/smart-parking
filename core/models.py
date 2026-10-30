@@ -33,6 +33,7 @@ class InvitationPurpose(str, enum.Enum):
 class CameraBrand(str, enum.Enum):
     HIKVISION = "hikvision"
     DAHUA = "dahua"
+    TVT = "tvt"  # TVT (กล้องต่อตรง) — เพิ่มทีหลัง เก็บเป็นข้อความ ไม่ต้อง migrate
     CUSTOM = "custom"
 
 

@@ -412,3 +412,11 @@ h1, h2 { margin: 0; }
 .site-sub { margin: 0 0 10px; }
 .map-sticky .map-header { margin-bottom: 8px; }
 .map-sticky .legend { margin-bottom: 0; }
+
+/* ปุ่มกลับหน้าหลังบ้าน (แสดงเฉพาะเมื่อเปิดจากเมนูหลังบ้าน) */
+.admin-back {
+  display: block; margin: 0 0 18px; padding: 9px 14px; border-radius: 12px;
+  background: rgba(96, 150, 255, 0.14); color: #a9c6ff; font-weight: 600; font-size: 0.92rem; text-decoration: none;
+  border: 1px solid rgba(96, 150, 255, 0.35);
+}
+.admin-back:active { background: rgba(96, 150, 255, 0.26); }

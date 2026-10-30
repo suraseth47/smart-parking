@@ -8,6 +8,16 @@
   .heatmap-table th { color: var(--color-muted); font-weight: 400; }
   .heatmap-table th.dow { text-align: right; padding-right: 6px; white-space: nowrap; position: sticky; left: 0; background: var(--color-surface); z-index: 1; }
   .heatmap-cell { width: 24px; height: 22px; border-radius: 3px; font-size: 0.62rem; line-height: 22px; color: #1f2937; }
+  /* มือถือ: ย่อช่องให้ 24 ชั่วโมงพอดีจอ (ซ่อนตัวเลขในช่อง ดูค่าจากสี / แตะค้างดูค่า) */
+  @media (max-width: 640px) {
+    .heatmap-table { width: 100%; table-layout: fixed; }
+    .card .heatmap-table th, .card .heatmap-table td { padding: 1px 0 !important; border: 0; }
+    .heatmap-table th { font-size: 0.55rem; overflow: visible; }
+    /* แสดงเลขชั่วโมงทุก 3 ชั่วโมง (00 03 06 ...) ไม่ให้ตัวเลขเบียดกัน */
+    .heatmap-table tr:first-child th:not(.dow):not(:nth-child(3n+2)) { font-size: 0; }
+    .heatmap-table th.dow { width: 3.4rem; padding-right: 3px; font-size: 0.62rem; overflow: hidden; text-overflow: ellipsis; }
+    .heatmap-cell { display: block; width: 100%; height: 18px; font-size: 0; border-radius: 2px; }
+  }
   .heatmap-cell.empty { background: repeating-linear-gradient(135deg, #f1f3f7 0 3px, #fff 3px 6px); }
   .heat-legend { display: flex; align-items: center; gap: 0.5rem; font-size: 0.78rem; color: var(--color-muted); margin-top: 0.5rem; }
   .heat-legend .bar { width: 160px; height: 10px; border-radius: 999px; background: linear-gradient(90deg, rgb(220,252,231), rgb(254,240,138), rgb(248,113,113)); }
@@ -144,5 +154,5 @@
   </div>
 </div>
 
-<script src="/static/js/reports.js?v=20261028b"></script>
+<script src="/static/js/reports.js?v=20261030a"></script>
 {% endblock %}

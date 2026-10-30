@@ -5,17 +5,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="referrer" content="no-referrer">
   <title>ตั้งค่าบัญชี - Smart Parking</title>
-  <link rel="stylesheet" href="/static/css/admin.css?v=20261028x">
+  <link rel="stylesheet" href="/static/css/admin.css?v=20261030a">
   <script defer src="/static/js/vendor/alpine.min.js"></script>
 </head>
 <body>
   <div class="login-wrap">
     <div class="login-box card" x-data="inviteForm()" x-init="init()">
       <div class="brand" style="padding:0 0 1rem; margin-bottom:0.5rem;">
+        {% set brand = branding() %}
+        {% if brand.logo_file %}
+        <span class="brand-mark has-logo" aria-hidden="true"><img src="/branding/logo?v={{ brand.logo_version }}" alt=""></span>
+        {% else %}
         <span class="brand-mark" aria-hidden="true">
           <svg viewBox="0 0 24 24" style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round"><rect x="3" y="8" width="18" height="8" rx="4"/><circle cx="8" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="16" cy="12" r="1.3" fill="currentColor" stroke="none"/></svg>
         </span>
-        <span class="brand-text">NASLINK<small>Smart Parking</small></span>
+        {% endif %}
+        <span class="brand-text">{{ brand.org_name or "NASLINK" }}<small>Smart Parking</small></span>
       </div>
 
       <p class="muted" x-show="loading">กำลังตรวจสอบลิงก์...</p>
@@ -30,8 +35,10 @@
       <template x-if="done">
         <div>
           <h1 x-text="info.purpose === 'reset' ? 'ตั้งรหัสผ่านใหม่แล้ว' : 'สร้างบัญชีเรียบร้อย'"></h1>
-          <p class="notice ok">บัญชี <strong x-text="done"></strong> พร้อมใช้งาน เข้าสู่ระบบด้วยชื่อผู้ใช้และรหัสผ่านที่เพิ่งตั้ง</p>
-          <a class="btn" href="/admin/login" style="display:block; text-align:center; margin-top:1rem;">ไปหน้าเข้าสู่ระบบ</a>
+          <p class="notice ok" x-show="loggedIn">บัญชี <strong x-text="done"></strong> พร้อมใช้งาน และเข้าสู่ระบบให้แล้ว — กำลังพาไปหน้าแรก...</p>
+          <p class="notice ok" x-show="!loggedIn">บัญชี <strong x-text="done"></strong> พร้อมใช้งาน เข้าสู่ระบบด้วยชื่อผู้ใช้และรหัสผ่านที่เพิ่งตั้ง</p>
+          <a class="btn" :href="loggedIn ? '/admin' : '/admin/login'" style="display:block; text-align:center; margin-top:1rem;"
+             x-text="loggedIn ? 'เข้าใช้งานระบบ' : 'ไปหน้าเข้าสู่ระบบ'"></a>
         </div>
       </template>
 
@@ -49,9 +56,22 @@
             สถานที่ที่ดูแล: <span x-text="info.site_labels.join(', ')"></span>
           </p>
           <p class="notice ok" x-show="info.message" style="white-space:pre-line;" x-text="'ข้อความจากผู้ดูแลระบบ: ' + (info.message || '')"></p>
-          <p class="muted" style="font-size:0.85rem;" x-show="info.email && info.purpose !== 'reset'">
-            เข้าสู่ระบบด้วยชื่อผู้ใช้ หรืออีเมล <strong x-text="info.email"></strong> ก็ได้
-          </p>
+          <template x-if="info.purpose !== 'reset'">
+            <div>
+              <template x-if="info.email">
+                <div>
+                  <label for="inv-email">อีเมล</label>
+                  <div class="locked-field" :class="info.email_verified && 'verified'">
+                    <input id="inv-email" type="email" :value="info.email" readonly>
+                    <span class="verified-tag" x-show="info.email_verified">✓ ยืนยันอีเมลแล้ว</span>
+                  </div>
+                  <p class="muted" style="margin:0.25rem 0 0; font-size:0.82rem;">เข้าสู่ระบบด้วยอีเมลนี้หรือชื่อผู้ใช้ก็ได้</p>
+                </div>
+              </template>
+              <label for="fullname">ชื่อ-นามสกุล</label>
+              <input id="fullname" type="text" x-model="fullName" maxlength="100" autocomplete="name" placeholder="เช่น สมชาย ใจดี">
+            </div>
+          </template>
 
           <template x-if="info.purpose === 'reset'">
             <div>
@@ -64,7 +84,8 @@
               <label for="username">ตั้งชื่อผู้ใช้ (Username)</label>
               <input id="username" type="text" x-model="username" autocomplete="username" required
                      minlength="3" maxlength="30" pattern="[A-Za-z0-9._\-]{3,30}" placeholder="เช่น somchai.j">
-              <p class="muted" style="margin:0.25rem 0 0; font-size:0.82rem;">3–30 ตัว ใช้ a-z, 0-9 และ . _ - (ใช้ตอนเข้าสู่ระบบ)</p>
+              <p class="muted" style="margin:0.25rem 0 0; font-size:0.82rem;">3–30 ตัว ใช้ a-z, 0-9 และ . _ - (ใช้ตอนเข้าสู่ระบบ)
+                <a href="#" x-show="info.email" @click.prevent="useEmailName()">· ใช้ชื่อจากอีเมล</a></p>
             </div>
           </template>
 
@@ -94,6 +115,8 @@
         fatal: "",
         done: "",
         username: "",
+        fullName: "",
+        loggedIn: false,
         password: "",
         password2: "",
         error: "",
@@ -107,12 +130,17 @@
             const resp = await fetch(`/api/invite/${encodeURIComponent(this.token)}`);
             const data = await resp.json().catch(() => ({}));
             if (!resp.ok) this.fatal = data.detail || "ลิงก์ไม่ถูกต้อง";
-            else this.info = data;
+            else { this.info = data; this.fullName = data.full_name || ""; }
           } catch (e) {
             this.fatal = "เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ ลองใหม่อีกครั้ง";
           } finally {
             this.loading = false;
           }
+        },
+        // ส่วนหน้า @ ของอีเมล ตัดอักษรที่ใช้ไม่ได้ออก (ชื่อผู้ใช้ใช้ได้เฉพาะ a-z 0-9 . _ -)
+        useEmailName() {
+          const name = (this.info.email || "").split("@")[0].replace(/[^A-Za-z0-9._-]/g, "").slice(0, 30);
+          this.username = name.length >= 3 ? name : name.padEnd(3, "0");
         },
         async submit() {
           this.error = "";
@@ -122,12 +150,14 @@
             const resp = await fetch(`/api/invite/${encodeURIComponent(this.token)}/accept`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ username: this.username.trim(), password: this.password, password_confirm: this.password2 }),
+              body: JSON.stringify({ username: this.username.trim(), full_name: this.fullName.trim(), password: this.password, password_confirm: this.password2 }),
             });
             const data = await resp.json().catch(() => ({}));
             if (resp.status === 410 || resp.status === 404) { this.fatal = data.detail; return; }
             if (!resp.ok) { this.error = data.detail || "บันทึกไม่สำเร็จ"; return; }
             this.done = data.username;
+            this.loggedIn = !!data.logged_in;
+            if (this.loggedIn) setTimeout(() => { location.href = "/admin"; }, 1500);
           } catch (e) {
             this.error = "เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ ลองใหม่อีกครั้ง";
           } finally {

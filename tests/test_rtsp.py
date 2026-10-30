@@ -48,3 +48,10 @@ def test_special_characters_in_password_are_encoded():
         CameraBrand.HIKVISION, "192.168.1.10", 554, 1, CameraStream.MAIN, "admin", "Adm@n#1:x", None
     )
     assert url == "rtsp://admin:Adm%40n%231%3Ax@192.168.1.10:554/Streaming/Channels/101"
+
+
+def test_tvt_main_and_sub_stream():
+    main = build_rtsp_url(CameraBrand.TVT, "192.168.1.30", 554, 1, CameraStream.MAIN, "admin", "P@ss#1", None)
+    sub = build_rtsp_url(CameraBrand.TVT, "192.168.1.30", 554, 1, CameraStream.SUB, "admin", "P@ss#1", None)
+    assert main == "rtsp://admin:P%40ss%231@192.168.1.30:554/profile1"
+    assert sub == "rtsp://admin:P%40ss%231@192.168.1.30:554/profile2"

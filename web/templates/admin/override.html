@@ -40,28 +40,29 @@
   </div>
 
   <div class="card">
-    <table class="data-table sticky-head" style="width:100%; border-collapse:collapse;">
+    <table class="data-table sticky-head stack-table override-table">
       <thead>
-        <tr style="text-align:left; border-bottom:1px solid var(--color-border);">
-          <th style="padding:0.4rem;"></th>
-          <th style="padding:0.4rem;">รหัสช่อง</th>
-          <th style="padding:0.4rem;">โซน</th>
-          <th style="padding:0.4rem;">ประเภท</th>
-          <th style="padding:0.4rem;">สถานะ</th>
-          <th style="padding:0.4rem;">Override</th>
+        <tr>
+          <th style="width:2.5rem;"></th>
+          <th>รหัสช่อง</th>
+          <th>โซน</th>
+          <th>ประเภท</th>
+          <th>สถานะ</th>
+          <th>Override</th>
         </tr>
       </thead>
       <tbody>
         <template x-for="slot in slots" :key="slot.id">
-          <tr style="border-bottom:1px solid var(--color-border);">
-            <td style="padding:0.4rem;">
-              <input type="checkbox" :checked="selected.has(slot.id)" @change="toggle(slot.id)">
+          <!-- แตะทั้งแถวเพื่อเลือก/ยกเลิก (สะดวกบนมือถือ) -->
+          <tr class="pick-row" :class="selected.has(slot.id) && 'is-picked'" @click="toggle(slot.id)">
+            <td class="pick-cell">
+              <input type="checkbox" :checked="selected.has(slot.id)" @click.stop @change="toggle(slot.id)" :aria-label="'เลือกช่อง ' + slot.code">
             </td>
-            <td style="padding:0.4rem;" x-text="slot.code"></td>
-            <td style="padding:0.4rem;" x-text="slot.zone_code"></td>
-            <td style="padding:0.4rem;" x-text="slot.type"></td>
-            <td style="padding:0.4rem;"><span class="badge" :class="'badge-' + slot.state" x-text="slot.state"></span></td>
-            <td style="padding:0.4rem;" x-text="slot.override_state ? (slot.override_state + (slot.override_note ? ' (' + slot.override_note + ')' : '')) : '-'"></td>
+            <td class="stack-title" x-text="slot.code"></td>
+            <td data-label="โซน" x-text="slot.zone_code"></td>
+            <td data-label="ประเภท" x-text="slot.type"></td>
+            <td data-label="สถานะ"><span class="badge" :class="'badge-' + slot.state" x-text="slot.state"></span></td>
+            <td data-label="Override" x-text="slot.override_state ? (slot.override_state + (slot.override_note ? ' (' + slot.override_note + ')' : '')) : '-'"></td>
           </tr>
         </template>
       </tbody>

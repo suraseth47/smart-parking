@@ -16,6 +16,7 @@ ACTION_LABELS: dict[str, str] = {
     "update_system_settings": "แก้ตั้งค่าระบบและการแสดงผล",
     "check_cameras_now": "สั่งตรวจสถานะกล้องทันที",
     "update_logo": "เปลี่ยนโลโก้",
+    "resend_invitation": "ส่งคำเชิญซ้ำ",
     "delete_logo": "ใช้โลโก้ตั้งต้น",
     "create_camera": "เพิ่มกล้อง",
     "update_camera": "แก้ไขกล้อง",

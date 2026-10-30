@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Literal
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from sqlalchemy import func, select
@@ -34,6 +34,7 @@ from core.sites import effective_site_ids, normalize_site_ids
 from core.permissions import PERMISSIONS, ROLE_MAX, effective_permissions, normalize_permissions
 from core.security import hash_password
 from web.deps import CurrentUser, require_admin, verify_csrf
+from web.routers.auth import register_successful_login, set_auth_cookies
 from web.mail_config import MAX_EXPIRY_DAYS, get_default_expiry_days, get_invite_base_url, get_smtp, smtp_source
 from web.templates_env import templates
 
@@ -146,10 +147,12 @@ class InviteInfoOut(BaseModel):
     message: str | None
     username: str | None  # มีค่าเมื่อเป็นลิงก์ตั้งรหัสผ่านใหม่ของผู้ใช้เดิม
     expires_at: datetime
+    email_verified: bool = False  # เปิดจากลิงก์ที่ส่งเข้าอีเมล = ยืนยันอีเมลแล้ว (แก้อีเมลไม่ได้)
 
 
 class AcceptIn(BaseModel):
     username: str | None = None
+    full_name: str | None = None  # ผู้รับแก้ชื่อ-นามสกุลเองได้ (ว่าง = ใช้ชื่อที่ผู้ดูแลใส่ไว้)
     password: str
     password_confirm: str
 
@@ -547,6 +550,7 @@ def create_invitation(
     if data.method == "email" and not email:
         raise HTTPException(422, "ส่งทางอีเมลต้องใส่อีเมลผู้รับ")
     _check_email(db, email)
+    _check_no_pending_invite(db, email)
     return _new_invitation(
         db, request, admin, purpose=InvitationPurpose.INVITE, role=data.role,
         full_name=_clean(data.full_name, 100), email=email, target_user_id=None,
@@ -554,6 +558,51 @@ def create_invitation(
         permissions=normalize_permissions(data.role.value, data.permissions),
         message=_clean(data.message, 500),
         site_ids=normalize_site_ids(data.role.value, data.site_ids, _site_id_set(db)),
+    )
+
+
+def _check_no_pending_invite(db: Session, email: str | None) -> None:
+    if not email:
+        return
+    now = datetime.utcnow()
+    rows = db.scalars(select(Invitation).where(
+        func.lower(Invitation.email) == email.lower(), Invitation.purpose == InvitationPurpose.INVITE,
+    )).all()
+    if any(invitation_status(r.accepted_at, r.revoked_at, r.expires_at, now) == "pending" for r in rows):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "มีคำเชิญที่ยังไม่ได้ตอบรับสำหรับอีเมลนี้อยู่แล้ว — กด \"ส่งซ้ำ\" หรือ \"ยกเลิก\" ที่รายการคำเชิญ",
+        )
+
+
+@admin_router.post("/invitations/{invitation_id}/resend", response_model=InvitationCreatedOut)
+def resend_invitation(
+    invitation_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin: CurrentUser = Depends(require_admin),
+    _csrf: None = Depends(verify_csrf),
+):
+    """ส่งคำเชิญซ้ำ: ระบบไม่ได้เก็บลิงก์เดิม จึงยกเลิกลิงก์เดิมแล้วออกลิงก์ใหม่ที่สิทธิ์เหมือนเดิม
+    (ใช้ได้ทั้งคำเชิญที่ยังรออยู่และที่หมดอายุแล้ว)"""
+    old = db.get(Invitation, invitation_id)
+    if old is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "ไม่พบคำเชิญนี้")
+    now = datetime.utcnow()
+    state = invitation_status(old.accepted_at, old.revoked_at, old.expires_at, now)
+    if state == "accepted":
+        raise HTTPException(status.HTTP_409_CONFLICT, "คำเชิญนี้ถูกตอบรับไปแล้ว")
+    if old.purpose == InvitationPurpose.INVITE:
+        _check_email(db, old.email)  # มีคนใช้อีเมลนี้สมัครไปแล้ว = ไม่ต้องเชิญซ้ำ
+    if state == "pending":
+        old.revoked_at = now
+    db.add(AuditLog(user_id=admin.id, action="resend_invitation", target=(old.email or old.full_name or "")[:100] or None,
+                    detail={"invitation_id": old.id}))
+    db.commit()
+    return _new_invitation(
+        db, request, admin, purpose=old.purpose, role=old.role, full_name=old.full_name, email=old.email,
+        target_user_id=old.target_user_id, expires_hours=None, method=old.method,
+        permissions=old.permissions, message=old.message, site_ids=old.site_ids,
     )
 
 
@@ -593,11 +642,12 @@ def get_invite_info(token: str, db: Session = Depends(get_db)):
         message=inv.message,
         username=target.username if target else None,
         expires_at=inv.expires_at,
+        email_verified=bool(inv.email) and inv.method == "email",
     )
 
 
 @public_router.post("/{token}/accept")
-def accept_invite(token: str, data: AcceptIn, db: Session = Depends(get_db)) -> dict:
+def accept_invite(token: str, data: AcceptIn, request: Request, response: Response, db: Session = Depends(get_db)) -> dict:
     inv = _usable_invitation(db, token)
     error = validate_password(data.password, data.password_confirm)
     if error:
@@ -623,7 +673,7 @@ def accept_invite(token: str, data: AcceptIn, db: Session = Depends(get_db)) -> 
             permissions=inv.permissions,
             site_ids=inv.site_ids,
             is_active=True,
-            full_name=inv.full_name,
+            full_name=_clean(data.full_name, 100) or inv.full_name,
             email=inv.email,
         )
         db.add(user)
@@ -634,4 +684,11 @@ def accept_invite(token: str, data: AcceptIn, db: Session = Depends(get_db)) -> 
     inv.accepted_user_id = user.id
     db.add(AuditLog(user_id=user.id, action=action, target=user.username, detail={"invitation_id": inv.id}))
     db.commit()
-    return {"username": user.username, "role": user.role.value}
+
+    # ตั้งบัญชี/รหัสเสร็จแล้วเข้าสู่ระบบให้ทันที (บัญชีที่ถูกปิดไว้ยังต้องให้ผู้ดูแลเปิดก่อน)
+    logged_in = False
+    if user.is_active:
+        register_successful_login(db, user)
+        set_auth_cookies(response, user_id=user.id, role=user.role.value)
+        logged_in = True
+    return {"username": user.username, "role": user.role.value, "logged_in": logged_in}

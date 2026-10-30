@@ -179,6 +179,7 @@
 |---|---|---|
 | Hikvision | `rtsp://{user}:{pass}@{ip}:554/Streaming/Channels/{ch}01` | `.../Streaming/Channels/{ch}02` |
 | Dahua | `rtsp://{user}:{pass}@{ip}:554/cam/realmonitor?channel={ch}&subtype=0` | `...&subtype=1` |
+| TVT (กล้องต่อตรง) | `rtsp://{user}:{pass}@{ip}:554/profile1` | `.../profile2` |
 | Custom | กรอก URL เอง | |
 
 ### 5.6 หลังบ้าน — กำหนดช่องจอด (Layout Editor)
@@ -265,7 +266,7 @@ zones            (id, code UNIQUE, name_th, name_en, floor, sort_order,
                   expected_slots,           -- จำนวนช่องจริง ใช้คำนวณ coverage
                   is_public, is_closed, closed_note)
 
-cameras          (id, name, brand[hikvision|dahua|custom], host, port, channel,
+cameras          (id, name, brand[hikvision|dahua|tvt|custom], host, port, channel,
                   stream[main|sub], rtsp_url_custom, username, password_enc,
                   enabled, detect_interval_s, conf_threshold, tiling_enabled,
                   roi_polygon JSON, reference_image_path,

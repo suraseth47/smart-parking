@@ -53,7 +53,10 @@
         ลิงก์นี้แสดงครั้งเดียว ระบบเก็บเฉพาะรหัสที่เข้ารหัสแล้ว จึงดูลิงก์เดิมซ้ำไม่ได้ ถ้าลิงก์หายให้ยกเลิกแล้วสร้างใหม่ ·
         ส่งให้เฉพาะเจ้าของบัญชี ใครได้ลิงก์ไปก็ใช้ได้จนกว่าจะหมดอายุหรือถูกใช้
       </p>
-      <button class="btn-secondary" @click="created = null; copied = ''" style="margin-top:0.5rem;">ปิด</button>
+      <div class="result-actions">
+        <button class="btn-secondary" x-show="created && !created.isReset" @click="created = null; copied = ''; openInvite()">+ สร้างคำเชิญอีกคน</button>
+        <button @click="created = null; copied = ''">เสร็จสิ้น</button>
+      </div>
     </div>
     <div class="notice ok" x-show="flash" x-text="flash" style="margin-bottom:1rem;"></div>
 
@@ -64,27 +67,27 @@
         {{ export_buttons("exportUsers") }}
       </div>
       <div class="table-scroll">
-        <table class="data-table">
+        <table class="data-table stack-table">
           <thead><tr><th>ผู้ใช้</th><th>อีเมล</th><th>บทบาท</th><th>เมนู</th><th>สถานะ</th><th>เข้าระบบล่าสุด</th><th></th></tr></thead>
           <tbody>
             <template x-for="u in users" :key="u.id">
               <tr>
-                <td>
+                <td class="stack-title">
                   <strong x-text="u.username"></strong><span class="muted" x-show="u.id === me.id"> (คุณ)</span>
                   <span class="sub-text" x-text="u.full_name || ''"></span>
                 </td>
-                <td x-text="u.email || '-'"></td>
-                <td><span class="role-tag" :class="u.role" x-text="roleShort(u.role)"></span></td>
-                <td :title="permNames(u.permissions)">
+                <td data-label="อีเมล" x-text="u.email || '-'"></td>
+                <td data-label="บทบาท"><span class="role-tag" :class="u.role" x-text="roleShort(u.role)"></span></td>
+                <td data-label="เมนู" :title="permNames(u.permissions)">
                   <span x-text="permSummary(u.role, u.permissions)"></span>
                   <span class="sub-text" x-show="sites.length > 1" x-text="siteSummary(u.role, u.site_ids)"></span>
                 </td>
-                <td>
+                <td data-label="สถานะ">
                   <span class="state-tag" :class="u.locked ? 'locked' : (u.is_active ? 'active' : 'inactive')"
                         x-text="u.locked ? 'ถูกล็อกชั่วคราว' : (u.is_active ? 'ใช้งานได้' : 'ปิดบัญชี')"></span>
                 </td>
-                <td x-text="fmt(u.last_login_at)"></td>
-                <td>
+                <td data-label="เข้าระบบล่าสุด" x-text="fmt(u.last_login_at)"></td>
+                <td class="stack-actions">
                   <div class="cell-actions">
                     <button class="btn-secondary" @click="openEdit(u)">แก้ไขสิทธิ์</button>
                     <button class="btn-secondary" @click="resetPassword(u)">ลิงก์ตั้งรหัสผ่านใหม่</button>
@@ -119,34 +122,37 @@
       <p class="muted" style="margin-top:0;">ลิงก์คำเชิญใช้ได้ครั้งเดียว ระบบเก็บเฉพาะรหัสที่เข้ารหัสแล้ว จึงดูลิงก์เดิมซ้ำไม่ได้ ถ้าลิงก์หายให้ยกเลิกแล้วสร้างใหม่</p>
       <p class="muted" x-show="invitations.length === 0">ยังไม่มีคำเชิญ</p>
       <div class="table-scroll" x-show="invitations.length > 0">
-        <table class="data-table">
+        <table class="data-table stack-table">
           <thead><tr><th>สถานะ</th><th>ผู้รับ</th><th>วิธี</th><th>บทบาท</th><th>เมนู</th><th>สร้างโดย</th><th>หมดอายุ</th><th></th></tr></thead>
           <tbody>
             <template x-for="inv in invitations" :key="inv.id">
               <tr>
-                <td><span class="state-tag" :class="inv.status" x-text="statusLabel(inv)"></span></td>
-                <td>
+                <td class="stack-title"><span class="state-tag" :class="inv.status" x-text="statusLabel(inv)"></span></td>
+                <td data-label="ผู้รับ">
                   <span x-text="inv.purpose === 'reset' ? 'ตั้งรหัสผ่านใหม่: ' + (inv.target_username || '-') : (inv.email || inv.full_name || '(ไม่ระบุ)')"></span>
                   <span class="sub-text" x-text="inv.purpose !== 'reset' && inv.email && inv.full_name ? inv.full_name : ''"></span>
                 </td>
-                <td>
+                <td data-label="วิธี">
                   <span x-text="inv.method === 'email' ? '✉ อีเมล' : '🔗 ลิงก์'"></span>
                   <span class="sub-text" x-show="inv.email_status === 'sent'" style="color:#15803d;">ระบบส่งแล้ว</span>
                   <span class="sub-text" x-show="inv.email_status === 'failed'" style="color:var(--color-danger);" :title="inv.email_error">ส่งไม่สำเร็จ</span>
                 </td>
-                <td><span class="role-tag" :class="inv.role" x-text="roleShort(inv.role)"></span></td>
-                <td :title="permNames(inv.permissions)" x-text="permSummary(inv.role, inv.permissions)"></td>
-                <td>
+                <td data-label="บทบาท"><span class="role-tag" :class="inv.role" x-text="roleShort(inv.role)"></span></td>
+                <td data-label="เมนู" :title="permNames(inv.permissions)" x-text="permSummary(inv.role, inv.permissions)"></td>
+                <td data-label="สร้างโดย">
                   <span x-text="inv.created_by || '-'"></span>
                   <span class="sub-text" x-text="fmt(inv.created_at)"></span>
                 </td>
-                <td>
+                <td data-label="หมดอายุ">
                   <span x-show="inv.status === 'accepted'" style="color:#15803d;" x-text="'ใช้เมื่อ ' + fmt(inv.accepted_at)"></span>
                   <span x-show="inv.status !== 'accepted'" x-text="fmt(inv.expires_at)"></span>
                 </td>
-                <td>
+                <td class="stack-actions">
                   <div class="cell-actions">
-                    <button class="btn-secondary" x-show="inv.status === 'pending'" @click="revoke(inv)">ยกเลิกลิงก์</button>
+                    <button class="btn-secondary" x-show="inv.status === 'pending' || inv.status === 'expired'" @click="resend(inv)" :disabled="busyInv === inv.id"
+                            :title="'ยกเลิกลิงก์เดิมแล้วออกลิงก์ใหม่' + (inv.method === 'email' ? ' และส่งอีเมลอีกครั้ง' : '')"
+                            x-text="busyInv === inv.id ? 'กำลังส่ง...' : 'ส่งซ้ำ'"></button>
+                    <button class="btn-secondary danger-text" x-show="inv.status === 'pending'" @click="revoke(inv)">ยกเลิก</button>
                   </div>
                 </td>
               </tr>
@@ -324,7 +330,7 @@
       roleCards: ROLE_CARDS,
       panel: null, form: {}, formError: "", busy: false, sites: [],
       mail: { configured: false }, testTo: "", testing: false, testResult: "", testOk: false,
-      created: null, copied: "", flash: "", userError: "", confirmDisable: null,
+      created: null, busyInv: null, copied: "", flash: "", userError: "", confirmDisable: null,
 
       async init() {
         const user = await requireAuth();
@@ -522,7 +528,7 @@
           subtitle: isReset
             ? `ส่งให้เจ้าของบัญชีตั้งรหัสผ่านเอง · ใช้ได้ถึง ${this.fmt(inv.expires_at)} · รหัสผ่านเดิมยังใช้ได้จนกว่าจะตั้งใหม่`
             : `สำหรับ ${inv.email || inv.full_name || "ผู้ใช้ใหม่"} · ${this.roleShort(inv.role)} · ${this.permSummary(inv.role, inv.permissions)} · ใช้ได้ถึง ${this.fmt(inv.expires_at)}`,
-          url: res.url, ...share,
+          url: res.url, isReset, ...share,
         };
         this.copied = ""; this.flash = "";
         window.scrollTo({ top: 0, behavior: "smooth" });
@@ -541,6 +547,18 @@
           await apiJson(`/api/admin/users/${u.id}`, { method: "PATCH", body: JSON.stringify({ is_active: active }) });
         } catch (e) { this.userError = e.message; }
         await this.reload();
+      },
+      // ส่งซ้ำ: ระบบไม่เก็บลิงก์เดิม จึงยกเลิกลิงก์เดิมแล้วออกลิงก์ใหม่ที่สิทธิ์เหมือนเดิม
+      async resend(inv) {
+        this.userError = ""; this.busyInv = inv.id;
+        try {
+          const res = await apiJson(`/api/admin/invitations/${inv.id}/resend`, { method: "POST" });
+          const isReset = inv.purpose === "reset";
+          this.showCreated(res, isReset, { username: inv.target_username, full_name: inv.full_name });
+          if (res.invitation.method === "email" && res.email_sent === null) window.location.href = this.created.mailto;
+          await this.reload();
+        } catch (e) { this.userError = e.message; }
+        finally { this.busyInv = null; }
       },
       async revoke(inv) {
         try { await apiJson(`/api/admin/invitations/${inv.id}`, { method: "DELETE" }); }

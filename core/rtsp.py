@@ -37,4 +37,9 @@ def build_rtsp_url(
             f"/cam/realmonitor?channel={channel}&subtype={subtype}"
         )
 
+    if brand == CameraBrand.TVT:
+        # คู่มือกล้อง TVT: main = /profile1, sub = /profile2 (กล้องต่อตรง ไม่ใช้เลข channel)
+        profile = 1 if stream == CameraStream.MAIN else 2
+        return f"rtsp://{username}:{password}@{host}:{port}/profile{profile}"
+
     raise ValueError(f"ไม่รู้จักยี่ห้อกล้อง: {brand}")

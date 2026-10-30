@@ -64,8 +64,8 @@ def login(data: LoginRequest, request: Request, response: Response, db: Session 
         _register_failed_login(db, user)
         raise invalid_credentials
 
-    _register_successful_login(db, user)
-    _set_auth_cookies(response, user_id=user.id, role=user.role.value)
+    register_successful_login(db, user)
+    set_auth_cookies(response, user_id=user.id, role=user.role.value)
     role = user.role.value
     return {"username": user.username, "role": role, "permissions": effective_permissions(role, user.permissions)}
 
@@ -97,7 +97,7 @@ def _register_failed_login(db: Session, user: User) -> None:
     db.commit()
 
 
-def _register_successful_login(db: Session, user: User) -> None:
+def register_successful_login(db: Session, user: User) -> None:
     user.failed_logins = 0
     user.locked_until = None
     user.last_login_at = datetime.utcnow()
@@ -105,7 +105,7 @@ def _register_successful_login(db: Session, user: User) -> None:
     db.commit()
 
 
-def _set_auth_cookies(response: Response, user_id: int, role: str) -> None:
+def set_auth_cookies(response: Response, user_id: int, role: str) -> None:
     response.set_cookie(
         SESSION_COOKIE_NAME,
         create_session_cookie(user_id, role),

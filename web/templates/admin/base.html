@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}หลังบ้าน{% endblock %} - Smart Parking · NASLINK</title>
-  <link rel="stylesheet" href="/static/css/admin.css?v=20261028x">
+  <link rel="stylesheet" href="/static/css/admin.css?v=20261030a">
   <script defer src="/static/js/vendor/alpine.min.js"></script>
   <script src="/static/js/api.js"></script>
   <script src="/static/js/export.js?v=20261028"></script>
@@ -98,7 +98,7 @@
           </div>
         {% endfor %}
         <div class="nav-divider"></div>
-        <a href="/" target="_blank" rel="noopener" class="nav-link-accent">
+        <a href="/?from=admin" target="_blank" rel="noopener" data-public-link class="nav-link-accent">
           <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>
           <span class="nav-text"><span>เปิดหน้าสาธารณะ</span><span class="nav-en" lang="en">Public Page</span></span>
         </a>
@@ -218,6 +218,16 @@
       });
       const host = document.getElementById("brand-host");
       if (host) host.textContent = location.host;
+    });
+    // ลิงก์ "เปิดหน้าสาธารณะ": บนมือถือเปิดในแท็บเดิม (ปุ่มย้อนกลับของมือถือจะกลับมาหน้านี้ได้)
+    // บนคอมพิวเตอร์เปิดแท็บใหม่ตามเดิม
+    document.addEventListener("click", (event) => {
+      const link = event.target.closest && event.target.closest("a[data-public-link]");
+      if (!link) return;
+      if (window.matchMedia("(max-width: 900px), (pointer: coarse)").matches) {
+        event.preventDefault();
+        location.href = link.href;
+      }
     });
     function toggleSidebar(open) {
       document.body.classList.toggle("sidebar-open", open);

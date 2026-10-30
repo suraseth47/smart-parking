@@ -5,11 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0b1120">
   <title>ที่จอดรถว่าง - Smart Parking</title>
-  <link rel="stylesheet" href="/static/css/public.css?v=20261028c">
+  <link rel="stylesheet" href="/static/css/public.css?v=20261030a">
   <script defer src="/static/js/vendor/alpine.min.js"></script>
 </head>
 <body>
   <div class="wrap" x-data="publicPage()" x-init="init()">
+    <!-- มาจากหลังบ้าน: ปุ่มกลับ (มือถือเปิดในแท็บเดิม) -->
+    <a class="admin-back" href="/admin" x-show="fromAdmin" x-cloak x-text="lang === 'th' ? '← กลับหน้าหลังบ้าน' : '← Back to admin'"></a>
 
     <!-- ===================== รายการสถานที่ (มีหลายแห่ง) ===================== -->
     <div x-show="view === 'sites'" x-cloak>
@@ -443,6 +445,7 @@
     function publicPage() {
       return {
         lang: "th",
+        fromAdmin: false,
         // ส่วนที่แสดง/ซ่อนได้ ตั้งที่หลังบ้าน: ตั้งค่าระบบ → ระบบและการแสดงผล
         show: window.PUBLIC_DISPLAY || {},
         view: "",  // กำหนดใน route() หลังโหลดรายการสถานที่ (กันหน้ากระพริบ)
@@ -461,6 +464,7 @@
         peak: { weekday: 0, now_hour: 0, weeks: 4, points: [] },
 
         async init() {
+          this.fromAdmin = this._detectFromAdmin();
           this.lang = this.show.lang_switch ? this._resolveLang() : "th";
           document.documentElement.lang = this.lang;
           await this.fetchSites();
@@ -468,6 +472,22 @@
           window.addEventListener("popstate", () => this.route());
           setInterval(() => (this.view === "sites" ? this.fetchSites() : this.fetchSummary()), 30000);
           setInterval(() => this.fetchPeak(), 600000);
+        },
+
+        // เปิดจากเมนูหลังบ้าน (?from=admin) -> จำไว้ในแท็บนี้ แล้วลบพารามิเตอร์ออกจาก URL ให้ลิงก์สะอาด
+        _detectFromAdmin() {
+          const params = new URLSearchParams(location.search);
+          let from = params.get("from") === "admin";
+          try {
+            if (from) sessionStorage.setItem("fromAdmin", "1");
+            else from = sessionStorage.getItem("fromAdmin") === "1";
+          } catch (e) { /* โหมดส่วนตัว: ใช้ค่าจาก URL อย่างเดียว */ }
+          if (params.has("from")) {
+            params.delete("from");
+            const query = params.toString();
+            history.replaceState(null, "", location.pathname + (query ? "?" + query : "") + location.hash);
+          }
+          return from;
         },
 
         // ---------- เส้นทางในหน้า: #site-CODE และ #site-CODE/map-ZONE ----------

@@ -211,7 +211,7 @@ function reportsPage() {
       for (const c of cells) byKey[`${c.day_of_week}-${c.hour}`] = c.avg_occ_pct;
 
       const table = document.getElementById("heatmap-table");
-      let html = "<tr><th></th>";
+      let html = "<tr><th class=\"dow\"></th>";
       for (let h = 0; h < 24; h++) html += `<th>${String(h).padStart(2, "0")}</th>`;
       html += "</tr>";
 

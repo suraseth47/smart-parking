@@ -308,7 +308,7 @@
                 </div>
               </div>
               <div class="form-grid" style="grid-template-columns: 1fr 1fr;">
-                <div>
+                <div x-show="cf.brand !== 'tvt'">
                   <label for="c-ch">Channel</label>
                   <input id="c-ch" type="number" min="1" max="256" x-model.number="cf.channel">
                   <p class="hint">กล้องเดี่ยว = 1 · ต่อผ่าน NVR = เลขช่องบน NVR</p>
@@ -336,6 +336,10 @@
                 <a href="#" @click.prevent="cf.clear_password = !cf.clear_password" x-text="cf.clear_password ? '· ยกเลิกการลบรหัส' : '· ลบรหัสที่บันทึกไว้'"></a>
               </p>
               <p class="hint" style="color:var(--color-danger);" x-show="cf.clear_password">จะลบรหัสผ่านกล้องเมื่อกดบันทึก</p>
+              <p class="hint" x-show="cf.brand === 'tvt'">
+                TVT: ใช้ Username/Password ที่ตั้งตอนเปิดใช้งานกล้อง ถ้ากล้องเปิด "ผู้ใช้ ONVIF" แยกไว้ ให้ใช้บัญชี ONVIF นั้น ·
+                ถ้าทดสอบแล้วต่อไม่ได้ ให้เลือก "กรอก RTSP URL เอง" แล้วลอง <code>rtsp://user:pass@IP:554/chID=1&amp;streamType=main&amp;linkType=tcp</code> (กล้อง TVT รุ่นเก่า)
+              </p>
               <label>RTSP URL ที่ระบบจะใช้</label>
               <div class="url-preview" x-text="urlPreview()"></div>
             </div>
@@ -386,6 +390,7 @@
   const CAMERA_BRANDS = [
     { value: "hikvision", label: "Hikvision / HiLook", desc: "ระบบสร้าง RTSP URL ให้อัตโนมัติ (ใช้กับ NVR Hikvision ได้)" },
     { value: "dahua", label: "Dahua / Imou", desc: "ระบบสร้าง RTSP URL ให้อัตโนมัติ (ใช้กับ NVR Dahua ได้)" },
+    { value: "tvt", label: "TVT", desc: "กล้อง TVT ต่อตรง ระบบสร้าง RTSP URL ให้อัตโนมัติ (ถ้าดึงผ่าน NVR TVT ให้เลือก \"กรอก RTSP URL เอง\")" },
     { value: "custom", label: "ยี่ห้ออื่น / กรอก RTSP URL เอง", desc: "เช่น Uniview, Axis, TP-Link VIGI, กล้อง ONVIF ทั่วไป" },
   ];
   // ซ่อนรหัสผ่านใน RTSP URL ก่อนแสดงบนจอ (rtsp://user:pass@host -> rtsp://user:••••@host)
@@ -626,6 +631,7 @@
         const host = (f.host || "<IP>") + ":" + (f.port || 554);
         if (f.brand === "hikvision") return `rtsp://${auth}${host}/Streaming/Channels/${f.channel || 1}${f.stream === "sub" ? "02" : "01"}`;
         if (f.brand === "dahua") return `rtsp://${auth}${host}/cam/realmonitor?channel=${f.channel || 1}&subtype=${f.stream === "sub" ? 1 : 0}`;
+        if (f.brand === "tvt") return `rtsp://${auth}${host}/profile${f.stream === "sub" ? 2 : 1}`;
         return "";
       },
       errText(e) {
