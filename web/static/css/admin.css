@@ -744,3 +744,21 @@ button .btn-icon { margin-right: 0.35rem; vertical-align: -3px; }
   .data-table td, .data-table th { overflow-wrap: anywhere; }
   img, canvas, svg, video { max-width: 100%; }
 }
+
+/* หน้าต่างแก้ไข/สร้าง (คำเชิญ, ผู้ใช้, กล้อง, โซน, สถานที่): จอคอมพิวเตอร์แสดงกลางจอ — มือถือยังเต็มจอเหมือนเดิม */
+@media (min-width: 641px) {
+  .drawer {
+    top: 50%; left: 50%; right: auto; bottom: auto;
+    transform: translate(-50%, -50%);
+    width: min(720px, 94vw);
+    max-height: min(90vh, 960px);
+    border-radius: 16px; overflow: hidden;
+    box-shadow: 0 24px 64px rgba(15, 23, 42, 0.32);
+    animation: modal-in 0.16s ease-out;
+  }
+  .drawer-body { min-height: 0; }
+}
+@keyframes modal-in { from { opacity: 0; transform: translate(-50%, -48%); } to { opacity: 1; transform: translate(-50%, -50%); } }
+/* ฉากหลังมืดคลุมแถบเมนูซ้ายด้วย (แถบเมนู z-index 60) */
+.drawer-backdrop { z-index: 70; }
+.drawer { z-index: 71; }
