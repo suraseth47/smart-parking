@@ -32,3 +32,7 @@ Caddyfile.d/*.caddy
 
 # รุ่นที่ติดตั้ง (เขียนโดย scripts/sp-upgrade.sh บน Server)
 .deploy-version
+
+# คู่มือ PDF / Word (ไฟล์ใหญ่ เก็บในโน้ตบุ๊กอย่างเดียว ไม่ขึ้น GitHub และไม่ส่งขึ้น Server ตอนอัปเดต)
+docs/*.pdf
+docs/*.docx
