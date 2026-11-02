@@ -12,7 +12,7 @@ from __future__ import annotations
 import enum
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, func
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -174,12 +174,19 @@ class Camera(Base):
     password_enc: Mapped[str | None] = mapped_column(String(255), nullable=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     detect_interval_s: Mapped[int] = mapped_column(Integer, default=30)
+    # ลำดับการแสดงในรายการกล้อง / กล้องวงจรปิด / สถานะช่องจอดสด (น้อย = อยู่บน · เท่ากันเรียงตาม id)
+    sort_order: Mapped[int] = mapped_column(Integer, default=100, server_default="100")
     conf_threshold: Mapped[float] = mapped_column(Float, default=0.35)
     tiling_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     # โหมด "นับวัตถุขนาดใหญ่เป็นรถ": None = ปิด, ตัวเลข = ขนาดกรอบขั้นต่ำ (สัดส่วนของพื้นที่ภาพ 0-1)
     large_object_min_area: Mapped[float | None] = mapped_column(Float, nullable=True)
     # ROI อัตโนมัติจากช่องจอด (FR-4): None = ปิด, ตัวเลข = ขอบเผื่อรอบช่อง (สัดส่วนของภาพ 0-1)
     roi_auto_margin: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # เกณฑ์ตัดกรอบซ้ำ (NMS) ของ AI: None = ค่าเริ่ม 0.45 · ลานที่รถจอดชิดกันควรตั้ง ~0.65
+    # (กรอบของรถที่จอดติดกันซ้อนกันมาก ค่าต่ำจะทิ้งรถคันข้างไปเพราะคิดว่าเป็นคันเดียวกัน)
+    nms_threshold: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # ช่องจำรถ: AI บอกว่าว่าง แต่ภาพช่องยังเหมือนตอนเห็นรถ → คงสถานะมีรถ (worker/slot_memory.py)
+    slot_memory_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
     roi_polygon: Mapped[list | None] = mapped_column(JSON, nullable=True)
     reference_image_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[CameraStatus] = mapped_column(
@@ -235,6 +242,9 @@ class SlotState(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now()
     )
+    # ช่องจำรถ: ภาพย่อของช่องรอบล่าสุดที่ AI เห็นรถชัด (base64) และเวลาที่เริ่มคงสถานะด้วยความจำ
+    memory_sig: Mapped[str | None] = mapped_column(Text, nullable=True)
+    held_since: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     override_state: Mapped[OccupancyState | None] = mapped_column(
         SAEnum(OccupancyState, native_enum=False, length=20), nullable=True
     )

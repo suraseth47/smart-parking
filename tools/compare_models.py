@@ -7,6 +7,7 @@
 
 แสดง: เวลาประมวลผลต่อภาพ, กรอบที่นับเป็นรถ และคะแนน/สถานะของทุกช่องที่ Publish แล้ว
 ใช้ค่า "นับวัตถุขนาดใหญ่เป็นรถ" ของกล้องนั้นตามที่ตั้งไว้จริง
+ทุกโมเดลทดสอบ 2 แบบ: NMS ค่าเริ่ม 0.45 และ 0.65 (ลานที่รถจอดชิดกัน) — ดูว่าแบบไหนนับรถครบกว่า
 """
 import sys
 import time
@@ -24,6 +25,7 @@ from worker.occupancy import compute_slot_score, is_occupied
 from worker.vehicle_boxes import analyze_vehicle_boxes, camera_roi, effective_roi
 
 RUNS = 3
+NMS_VALUES = (0.45, 0.65)  # ค่าเริ่ม / แนะนำสำหรับรถจอดชิดกัน
 
 camera_id = int(sys.argv[1]) if len(sys.argv) > 1 else 3
 db = SessionLocal()
@@ -61,15 +63,20 @@ if not model_files:
     sys.exit("ไม่พบไฟล์ .onnx ในโฟลเดอร์ models/")
 
 summary = []
-for model_path in model_files:
-    detector = OnnxYoloxDetector(model_path)
-    analyze_vehicle_boxes(detector, frame, large, roi)  # รอบแรกช้ากว่าปกติ ไม่นับเวลา
+print(f"NMS ที่กล้องตั้งไว้: {'ค่าเริ่ม 0.45' if camera.nms_threshold is None else camera.nms_threshold}")
+runs = [(m, nms) for m in model_files for nms in NMS_VALUES]
+detectors = {}
+for model_path, nms in runs:
+    detector = detectors.get(model_path)
+    if detector is None:
+        detector = detectors[model_path] = OnnxYoloxDetector(model_path)
+        analyze_vehicle_boxes(detector, frame, large, roi)  # รอบแรกช้ากว่าปกติ ไม่นับเวลา
     start = time.perf_counter()
     for _ in range(RUNS):
-        boxes = analyze_vehicle_boxes(detector, frame, large, roi)
+        boxes = analyze_vehicle_boxes(detector, frame, large, roi, nms)
     ms = (time.perf_counter() - start) / RUNS * 1000
 
-    print(f"\n=== {model_path.name}  ({ms:.0f} ms ต่อภาพ) ===")
+    print(f"\n=== {model_path.name} · NMS {nms}  ({ms:.0f} ms ต่อภาพ) ===")
     for b in sorted(boxes, key=lambda v: v.box[0]):
         kind = "รถ" if b.kind == "vehicle" else "วัตถุใหญ่→รถ"
         print(f"  {kind:<12} {b.class_name:<12} {b.score:.2f}  x {b.box[0]:.2f}-{b.box[2]:.2f}  y {b.box[1]:.2f}-{b.box[3]:.2f}")
@@ -80,11 +87,11 @@ for model_path in model_files:
         state = "occupied" if is_occupied(score, slot.threshold) else "free"
         states.append(f"{slot.code} {score:.2f}/{slot.threshold} {state}")
     print("  ช่องจอด: " + (" | ".join(states) if states else "(ยังไม่มีช่องที่ Publish)"))
-    summary.append((model_path.name, ms, len(boxes), sum(s.endswith("occupied") for s in states)))
+    summary.append((f"{model_path.name} NMS {nms}", ms, len(boxes), sum(s.endswith("occupied") for s in states)))
 
 print("\n=== สรุป ===")
-print(f"{'โมเดล':<16}{'ms/ภาพ':>8}{'กรอบรถ':>8}{'ช่องมีรถ':>10}")
+print(f"{'โมเดล':<26}{'ms/ภาพ':>8}{'กรอบรถ':>8}{'ช่องมีรถ':>10}")
 for name, ms, n_boxes, n_occ in summary:
-    print(f"{name:<16}{ms:>8.0f}{n_boxes:>8}{n_occ:>10}")
+    print(f"{name:<26}{ms:>8.0f}{n_boxes:>8}{n_occ:>10}")
 print(f"(เวลาวัดเมื่อ {datetime.now():%H:%M:%S} บน CPU ของเครื่องนี้)")
 db.close()

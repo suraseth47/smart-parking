@@ -118,7 +118,7 @@ def create_job(
                 raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"ดึงภาพจากกล้องไม่สำเร็จ: {exc}")
             break  # ถ่ายได้บ้างแล้ว เก็บผลเท่าที่มีไว้ก่อน
 
-        footprints = detect_vehicle_footprints(detector, frame, camera.large_object_min_area, roi)
+        footprints = detect_vehicle_footprints(detector, frame, camera.large_object_min_area, roi, camera.nms_threshold)
 
         slot_results = []
         for slot in slots:

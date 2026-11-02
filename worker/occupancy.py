@@ -113,10 +113,12 @@ def update_raw_history(history: list[str], new_raw: str) -> list[str]:
     return (history + [new_raw])[-MAX_RAW_HISTORY:]
 
 
-def apply_debounce(history: list[str], current_state: str) -> str:
+def apply_debounce(history: list[str], current_state: str, free_confirm: int | None = None) -> str:
     """เปลี่ยนสถานะเมื่อผลดิบ >= 2 ใน 3 รอบล่าสุดตรงกัน ไม่งั้นคงสถานะเดิมไว้ (FR-8)
 
     กันตัวเลขกระพริบจากรถวิ่งผ่าน/คนเดินบังชั่วขณะ
+    free_confirm: ถ้าส่งมา การเปลี่ยน "มีรถ → ว่าง" ต้องได้ผลว่างติดกัน free_confirm รอบล่าสุด
+    (ใช้กับโหมดช่องจำรถ — รถที่จอดอยู่ไม่ควรหลุดเป็นว่างเพราะ AI พลาดรอบสองรอบ)
     """
     if not history:
         return current_state
@@ -125,8 +127,13 @@ def apply_debounce(history: list[str], current_state: str) -> str:
     for raw in history:
         counts[raw] = counts.get(raw, 0) + 1
     majority_state, majority_count = max(counts.items(), key=lambda kv: kv[1])
+    new_state = majority_state if majority_count >= DEBOUNCE_MAJORITY else current_state
 
-    return majority_state if majority_count >= DEBOUNCE_MAJORITY else current_state
+    if free_confirm and current_state == "occupied" and new_state == "free":
+        recent = history[-free_confirm:]
+        if len(recent) < free_confirm or any(raw != "free" for raw in recent):
+            return current_state
+    return new_state
 
 
 def resolve_override(

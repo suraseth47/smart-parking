@@ -762,3 +762,43 @@ button .btn-icon { margin-right: 0.35rem; vertical-align: -3px; }
 /* ฉากหลังมืดคลุมแถบเมนูซ้ายด้วย (แถบเมนู z-index 60) */
 .drawer-backdrop { z-index: 70; }
 .drawer { z-index: 71; }
+
+/* ---------- แถบสถานะ Server ที่หัวเว็บ ---------- */
+.srv { position: relative; }
+.srv[hidden] { display: none; }
+.srv-btn { display: inline-flex; align-items: center; gap: 0.7rem; padding: 0.35rem 0.7rem; margin-right: 0.25rem;
+  background: #f6f8fc; border: 1px solid var(--color-border); border-radius: 10px; cursor: pointer; color: var(--color-text); }
+.srv-btn:hover { border-color: var(--color-primary); background: var(--color-primary-soft); }
+.srv-m { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.74rem; white-space: nowrap; }
+.srv-l { color: var(--color-muted); }
+.srv-bar { width: 38px; height: 6px; border-radius: 999px; background: #e4e8f0; overflow: hidden; }
+.srv-bar i, .srv-track i { display: block; height: 100%; width: 0; border-radius: 999px; background: var(--color-success); transition: width .4s; }
+.srv-v { font-weight: 700; min-width: 2.4em; font-variant-numeric: tabular-nums; }
+.lv-warn .srv-bar i, .srv-row.lv-warn .srv-track i { background: var(--color-warning); }
+.lv-crit .srv-bar i, .srv-row.lv-crit .srv-track i { background: var(--color-danger); }
+.srv-m.lv-warn .srv-v { color: var(--color-warning); }
+.srv-m.lv-crit .srv-v { color: var(--color-danger); }
+.srv-m.lv-none .srv-v { color: var(--color-muted); font-weight: 500; }
+.srv-dot { display: none; width: 10px; height: 10px; border-radius: 50%; background: var(--color-success); }
+.srv-dot.lv-warn { background: var(--color-warning); }
+.srv-dot.lv-crit { background: var(--color-danger); }
+.srv-panel { position: absolute; right: 0; top: calc(100% + 6px); width: min(360px, 92vw); z-index: 60; background: var(--color-surface);
+  border: 1px solid var(--color-border); border-radius: 12px; box-shadow: 0 12px 32px rgba(15, 23, 42, .16); padding: 0.9rem 1rem; }
+.srv-panel[hidden] { display: none; }
+.srv-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.6rem; }
+.srv-time { font-size: 0.75rem; color: var(--color-muted); }
+.srv-row { margin-bottom: 0.7rem; }
+.srv-row-top { display: flex; justify-content: space-between; font-size: 0.88rem; }
+.srv-row.lv-warn .srv-row-top b, .srv-row.lv-warn .srv-lv { color: var(--color-warning); }
+.srv-row.lv-crit .srv-row-top b, .srv-row.lv-crit .srv-lv { color: var(--color-danger); }
+.srv-row.lv-ok .srv-lv { color: var(--color-success); }
+.srv-track { height: 8px; border-radius: 999px; background: #e4e8f0; overflow: hidden; margin: 0.25rem 0; }
+.srv-row-detail { font-size: 0.76rem; color: var(--color-muted); }
+.srv-note { font-size: 0.74rem; color: var(--color-muted); margin: 0.3rem 0 0; line-height: 1.5; }
+@media (max-width: 1280px) { .srv-m[data-k="temp"] .srv-bar, .srv-m[data-k="disk"] .srv-bar { display: none; } }
+@media (max-width: 960px) { .srv-m[data-k="disk"], .srv-m[data-k="temp"] { display: none; } }
+@media (max-width: 640px) { .srv-m { display: none !important; } .srv-dot { display: inline-block; } .srv-btn { padding: 0.55rem; } }
+/* หัวเว็บ: เมื่อมีแถบสถานะ Server ให้ชื่อหน้าแสดงเต็มเสมอ และซ่อนชื่อระบบเมื่อจอไม่กว้างพอ */
+.main-header .main-title { flex-shrink: 0; }
+@media (max-width: 1700px) { body.has-srv .system-title { display: none; } }
+@media (max-width: 640px) { .srv-panel { position: fixed; left: 8px; right: 8px; top: 60px; width: auto; } }

@@ -27,6 +27,7 @@ class LiveSlotOut(BaseModel):
     polygon: list[list[float]]
     state: str
     score: float | None
+    held: bool = False  # ช่องจำรถกำลังคงสถานะ "มีรถ" ไว้ (AI ไม่เห็นรถรอบนี้ แต่ภาพช่องยังเหมือนเดิม)
     updated_at: str | None
 
 
@@ -48,7 +49,7 @@ def list_live_cameras(db: Session = Depends(get_db), user: CurrentUser = Depends
     """รายชื่อกล้องแบบย่อ ใช้เป็นตัวเลือกในหน้า Live (Operator เข้าได้ ต่างจาก /cameras ที่ Admin เท่านั้น)
     เฉพาะกล้องของสถานที่ที่ผู้ใช้ดูแล"""
     query = restrict(select(Camera).where(Camera.enabled.is_(True)), Camera.site_id, user)
-    cameras = db.scalars(query.order_by(Camera.name)).all()
+    cameras = db.scalars(query.order_by(Camera.sort_order, Camera.name)).all()
     return [{"id": c.id, "name": c.name, "status": c.status.value, "site_id": c.site_id} for c in cameras]
 
 
@@ -76,6 +77,7 @@ def get_live(
             "polygon": slot.polygon,
             "state": state.state.value if state else "unknown",
             "score": state.score if state else None,
+            "held": bool(state and state.held_since),
             "updated_at": state.updated_at.isoformat() if state and state.updated_at else None,
         }
         for slot, state in rows

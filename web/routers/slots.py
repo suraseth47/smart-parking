@@ -181,7 +181,7 @@ def preview_slots(
 
     # ROI คิดจากช่องที่กำลังแก้อยู่บนหน้าจอ (ยังไม่ publish ก็เห็นผลได้)
     roi = camera_roi([slot.polygon for slot in data.slots], camera.roi_auto_margin)
-    vehicle_boxes = analyze_vehicle_boxes(_get_detector(), frame, camera.large_object_min_area, roi)
+    vehicle_boxes = analyze_vehicle_boxes(_get_detector(), frame, camera.large_object_min_area, roi, camera.nms_threshold)
     used_roi = effective_roi(roi, frame)
     footprints = [v.footprint for v in vehicle_boxes]
 

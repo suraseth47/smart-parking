@@ -40,6 +40,14 @@ from worker.vehicle_boxes import camera_roi, detect_vehicle_footprints
 from core.app_settings import load_health
 from worker.health import detect_camera_moved, is_health_check_due, raise_alert, resolve_alerts
 from worker.stats import maybe_prune_old_stats, maybe_record_minute_stats
+from worker.slot_memory import (
+    FREE_CONFIRM_ROUNDS,
+    decode_signature,
+    encode_signature,
+    is_strong_detection,
+    patch_signature,
+    should_hold,
+)
 from worker.occupancy import (
     apply_debounce,
     compute_slot_score,
@@ -170,11 +178,12 @@ def process_camera(db: Session, camera: Camera, detector: OnnxYoloxDetector) -> 
 
     roi = camera_roi([slot.polygon for slot in slots], camera.roi_auto_margin)
     infer_start = time.perf_counter()
-    footprints = detect_vehicle_footprints(detector, frame, camera.large_object_min_area, roi)
+    footprints = detect_vehicle_footprints(detector, frame, camera.large_object_min_area, roi, camera.nms_threshold)
     camera.last_infer_ms = (time.perf_counter() - infer_start) * 1000
 
+    memory_frame = frame if camera.slot_memory_enabled else None
     for slot in slots:
-        _update_slot_state(db, slot, footprints, now)
+        _update_slot_state(db, slot, footprints, now, memory_frame)
 
     db.commit()
 
@@ -208,7 +217,7 @@ def _process_calib_jobs(db: Session, detector: OnnxYoloxDetector, now: datetime)
         except RuntimeError:
             continue  # ดึงภาพไม่ได้รอบนี้ ข้ามไปก่อน ไม่ถือเป็นความล้มเหลวของ job
 
-        boxes = detect_vehicle_footprints(detector, frame, camera.large_object_min_area)
+        boxes = detect_vehicle_footprints(detector, frame, camera.large_object_min_area, nms_threshold=camera.nms_threshold)
         record_calib_sample(db, job, boxes, frame, now)
 
 
@@ -221,8 +230,11 @@ def _check_camera_moved(camera: Camera, frame, threshold_px: float) -> bool:
     return detect_camera_moved(reference, frame, threshold_px)
 
 
-def _update_slot_state(db: Session, slot: Slot, footprints: list, now: datetime) -> None:
-    """คำนวณ score + debounce + override แล้วอัปเดต slot_state 1 ช่อง (FR-6..11)"""
+def _update_slot_state(db: Session, slot: Slot, footprints: list, now: datetime, memory_frame=None) -> None:
+    """คำนวณ score + ช่องจำรถ + debounce + override แล้วอัปเดต slot_state 1 ช่อง (FR-6..11)
+
+    memory_frame: ภาพของรอบนี้ (ส่งมาเมื่อกล้องเปิดช่องจำรถ) — None = ปิดช่องจำรถ ทำงานแบบเดิม
+    """
     state_row = db.get(SlotState, slot.id)
     if state_row is None:
         state_row = SlotState(slot_id=slot.id, state=OccupancyState.UNKNOWN, raw_history=[])
@@ -230,10 +242,15 @@ def _update_slot_state(db: Session, slot: Slot, footprints: list, now: datetime)
 
     score = compute_slot_score(slot.polygon, footprints)
     raw_state = "occupied" if is_occupied(score, slot.threshold) else "free"
+    if memory_frame is not None:
+        raw_state = _apply_slot_memory(state_row, slot, memory_frame, score, raw_state, now)
+    else:
+        state_row.memory_sig = None
+        state_row.held_since = None
 
     previous_state = (state_row.state or OccupancyState.UNKNOWN).value
     history = update_raw_history(state_row.raw_history or [], raw_state)
-    debounced_state = apply_debounce(history, previous_state)
+    debounced_state = apply_debounce(history, previous_state, FREE_CONFIRM_ROUNDS if memory_frame is not None else None)
     final_state = resolve_override(debounced_state, state_row.override_state, state_row.override_until, now)
 
     if final_state != previous_state:
@@ -251,6 +268,25 @@ def _update_slot_state(db: Session, slot: Slot, footprints: list, now: datetime)
     state_row.score = score
     state_row.raw_history = history
     state_row.updated_at = now
+
+
+def _apply_slot_memory(state_row: SlotState, slot: Slot, frame, score: float, raw_state: str, now: datetime) -> str:
+    """ช่องจำรถ: จำภาพช่องเมื่อ AI เห็นรถชัด · AI บอกว่าง แต่ภาพช่องยังเหมือนเดิม → คืน occupied"""
+    current = patch_signature(frame, slot.polygon)
+    if raw_state == "occupied":
+        if current is not None and is_strong_detection(score, slot.threshold):
+            state_row.memory_sig = encode_signature(current)  # อัปเดตทุกรอบ ตามแสงที่เปลี่ยนไปตลอดวัน
+        state_row.held_since = None
+        return raw_state
+    stored = decode_signature(state_row.memory_sig)
+    if should_hold(raw_state, stored, current, state_row.held_since, now):
+        if state_row.held_since is None:
+            state_row.held_since = now
+        return "occupied"
+    # ภาพช่องเปลี่ยนแล้ว (รถออก) หรือจำนานเกินกำหนด → ลืมภาพเดิม ใช้ผล AI ตามปกติ
+    state_row.memory_sig = None
+    state_row.held_since = None
+    return raw_state
 
 
 def _mark_camera_slots_unknown(db: Session, camera: Camera) -> None:

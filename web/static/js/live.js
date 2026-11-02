@@ -95,7 +95,7 @@ class LiveView {
         new Konva.Text({
           x: centroid[0] * this.imgWidth - 20,
           y: centroid[1] * this.imgHeight - 7,
-          text: `${slot.code} ${scoreText}`,
+          text: `${slot.code} ${scoreText}${slot.held ? " จำ" : ""}`,
           fontSize: 12,
           fill: "#fff",
           fontStyle: "bold",
@@ -110,7 +110,9 @@ class LiveView {
     for (const slot of slots) {
       const li = document.createElement("li");
       const scoreText = slot.score !== null && slot.score !== undefined ? slot.score.toFixed(2) : "-";
-      li.innerHTML = `<span>${slot.code}</span><span class="badge badge-${slot.state}">${slot.state} (${scoreText})</span>`;
+      // "จำ" = AI ไม่เห็นรถรอบนี้ แต่ภาพช่องยังเหมือนตอนที่เห็นรถ ระบบจึงคงสถานะมีรถไว้ (ช่องจำรถ)
+      const heldText = slot.held ? " · จำ" : "";
+      li.innerHTML = `<span>${slot.code}</span><span class="badge badge-${slot.state}" title="${slot.held ? "ช่องจำรถ: AI ไม่เห็นรถรอบนี้ แต่ภาพช่องยังเหมือนตอนที่มีรถ" : ""}">${slot.state} (${scoreText})${heldText}</span>`;
       ul.appendChild(li);
     }
   }

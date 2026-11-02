@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from core import server_stats
 from core.config import get_settings
 from core.db import get_db
 from core.models import Alert, AuditLog, Camera
@@ -119,6 +120,33 @@ def get_health(db: Session = Depends(get_db), user: CurrentUser = Depends(get_cu
     return {"cameras": cameras, "server": _get_server_stats()}
 
 
+@router.get("/server-stats")
+def get_server_stats(db: Session = Depends(get_db), _user: CurrentUser = Depends(get_current_user)):
+    """แถบสถานะ Server ที่หัวเว็บหลังบ้าน: CPU / RAM / ดิสก์ / อุณหภูมิ + ภาระของ AI (เรียกทุก 30 วินาที)"""
+    m = server_stats.read_machine(get_settings().data_dir)
+    cameras = [c for c in db.scalars(select(Camera).where(Camera.enabled.is_(True))).all()]
+    infer = [c.last_infer_ms for c in cameras if c.last_infer_ms is not None]
+    ai_load = server_stats.ai_load_percent([c.last_infer_ms for c in cameras], [c.detect_interval_s for c in cameras])
+    return {
+        **m,
+        "levels": {
+            "cpu": server_stats.level("cpu", m["cpu_percent"]),
+            "ram": server_stats.level("ram", m["ram_percent"]),
+            "disk": server_stats.level("disk", m["disk_percent"]),
+            "temp": server_stats.level("temp", m["temperature_c"]),
+            "ai": server_stats.ai_level(ai_load),
+        },
+        "ai": {
+            "model": get_settings().detector_model,
+            "cameras": len(cameras),
+            "infer_ms_avg": round(sum(infer) / len(infer)) if infer else None,
+            "infer_ms_max": round(max(infer)) if infer else None,
+            "load_percent": ai_load,
+        },
+        "time": datetime.utcnow().isoformat(),
+    }
+
+
 @router.get("/alerts", response_model=list[AlertOut])
 def list_alerts(
     include_resolved: bool = False,
@@ -177,11 +205,11 @@ def _get_server_stats() -> dict:
         "cpu_percent": psutil.cpu_percent(interval=0.2),
         "ram_percent": psutil.virtual_memory().percent,
         "disk_percent": round(disk.used / disk.total * 100, 1),
-        "temperature_c": _read_temperature(),
+        "temperature_c": server_stats.read_temperature(),
     }
 
 
-def _read_temperature() -> float | None:
+def _read_temperature() -> float | None:  # คงไว้เพื่อความเข้ากันได้ — ใช้ core.server_stats.read_temperature แทน
     """อ่านอุณหภูมิ CPU ถ้าเครื่องรองรับ (ส่วนใหญ่ใช้ได้แค่บน Linux) ตาม FR-31 'ถ้าอ่านได้'"""
     sensors_fn = getattr(psutil, "sensors_temperatures", None)
     if sensors_fn is None:

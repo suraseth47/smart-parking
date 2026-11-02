@@ -45,6 +45,7 @@ class CameraIn(BaseModel):
     clear_password: bool = False
     enabled: bool = True
     detect_interval_s: int = Field(default=30, ge=5, le=3600)
+    sort_order: int = Field(default=100, ge=0, le=9999)  # ลำดับการแสดง (น้อย = อยู่บน)
     conf_threshold: float = Field(default=0.35, ge=0.05, le=0.95)
     tiling_enabled: bool = False
     roi_polygon: list | None = None
@@ -67,10 +68,13 @@ class CameraOut(BaseModel):
     username: str | None
     enabled: bool
     detect_interval_s: int
+    sort_order: int = 100
     conf_threshold: float
     tiling_enabled: bool
     large_object_min_area: float | None = None
     roi_auto_margin: float | None = None
+    nms_threshold: float | None = None
+    slot_memory_enabled: bool = True
     roi_polygon: list | None
     status: str
     reference_image_path: str | None
@@ -93,7 +97,7 @@ def _camera_out(db: Session, camera: Camera) -> dict:
 
 @router.get("", response_model=list[CameraOut])
 def list_cameras(db: Session = Depends(get_db), _admin: CurrentUser = Depends(require_admin)):
-    return [_camera_out(db, c) for c in db.scalars(select(Camera).order_by(Camera.id)).all()]
+    return [_camera_out(db, c) for c in db.scalars(select(Camera).order_by(Camera.sort_order, Camera.id)).all()]
 
 
 @router.post("", response_model=CameraOut, status_code=status.HTTP_201_CREATED)
@@ -240,6 +244,10 @@ class DetectionSettingsIn(BaseModel):
     large_object_min_area: float | None = Field(default=None, ge=0.005, le=0.5)
     # roi_auto_margin: ขอบเผื่อรอบช่องจอดของ ROI อัตโนมัติ (สัดส่วนของภาพ, FR-4)
     roi_auto_margin: float | None = Field(default=None, ge=0.0, le=0.5)
+    # nms_threshold: เกณฑ์ตัดกรอบซ้ำของ AI (null = ค่าเริ่ม 0.45) · ลานที่รถจอดชิดกันแนะนำ 0.65
+    nms_threshold: float | None = Field(default=None, ge=0.3, le=0.9)
+    # slot_memory_enabled: ช่องจำรถ (คงสถานะมีรถเมื่อภาพช่องยังเหมือนตอนเห็นรถ)
+    slot_memory_enabled: bool | None = None
 
 
 @router.patch("/{camera_id}/detection", response_model=CameraOut)
@@ -253,6 +261,8 @@ def update_detection_settings(
     """ตั้งค่าการตรวจจับรายกล้อง โดยไม่แตะข้อมูลเชื่อมต่อกล้อง (รหัสผ่านกล้องไม่หาย)"""
     camera = _get_camera_or_404(db, camera_id)
     changes = data.model_dump(include=data.model_fields_set)
+    if changes.get("slot_memory_enabled", True) is None:
+        changes.pop("slot_memory_enabled")  # คอลัมน์นี้ห้ามว่าง — ไม่ส่งค่า = คงเดิม
     for key, value in changes.items():
         setattr(camera, key, value)
     db.add(AuditLog(user_id=admin.id, action="update_camera_detection", target=camera.name, detail=changes))

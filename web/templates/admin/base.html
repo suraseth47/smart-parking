@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}หลังบ้าน{% endblock %} - Smart Parking · NASLINK</title>
-  <link rel="stylesheet" href="/static/css/admin.css?v=20261031a">
+  <link rel="stylesheet" href="/static/css/admin.css?v=20261102c">
   <script defer src="/static/js/vendor/alpine.min.js"></script>
   <script src="/static/js/api.js"></script>
   <script src="/static/js/export.js?v=20261028"></script>
@@ -14,20 +14,25 @@
   {% set path = request.url.path.rstrip('/') %}
   {# เมนู: (ลิงก์, ชื่อไทย, ชื่ออังกฤษตัวเล็ก, path ที่ให้ไฮไลต์, ไอคอน, คีย์สิทธิ์ใน core/permissions.py)
      การซ่อนเมนูเป็นแค่ความสะดวก — สิทธิ์จริงตรวจที่ API ทุกครั้ง #}
+  {# เมนู 4 กลุ่ม: เฝ้าดู / งานประจำวัน / ตั้งค่าลานจอด / ผู้ดูแลระบบ — กลุ่มที่บัญชีไม่มีสิทธิ์สักเมนูจะถูกซ่อนเอง #}
   {% set nav_groups = [
-    ("Operations", [
+    ("เฝ้าดู", [
       ("/admin/sites", "ภาพรวมทุกสถานที่", "All Sites", ["/admin/sites"], "sites", "live"),
       ("/admin/live", "สถานะช่องจอดสด", "Live Status", ["/admin/live"], "live", "live"),
       ("/admin/cctv", "กล้องวงจรปิด", "CCTV Monitor", ["/admin/cctv"], "cctv", "cctv"),
-      ("/admin/override", "แก้สถานะช่องด้วยมือ", "Manual Override", ["/admin/override"], "override", "override"),
       ("/admin/alerts", "การแจ้งเตือน", "Alerts", ["/admin/alerts"], "bell", "alerts"),
+    ]),
+    ("งานประจำวัน", [
+      ("/admin/override", "แก้สถานะช่องด้วยมือ", "Manual Override", ["/admin/override"], "override", "override"),
       ("/admin/reports", "รายงานและสถิติ", "Reports", ["/admin/reports"], "reports", "reports"),
     ]),
-    ("System", [
+    ("ตั้งค่าลานจอด", [
       ("/admin", "กล้องและช่องจอด", "Cameras & Slots", ["/admin", "/admin/layout"], "camera", "cameras"),
       ("/admin/zones", "โซนและการปิดโซน", "Zones", ["/admin/zones"], "zones", "zones"),
       ("/admin/calibration", "ช่วยวาดช่องอัตโนมัติ", "Auto Slot Setup", ["/admin/calibration"], "auto", "calibration"),
       ("/admin/validation", "ทดสอบความแม่นยำ", "Accuracy Test", ["/admin/validation"], "check", "validation"),
+    ]),
+    ("ผู้ดูแลระบบ", [
       ("/admin/users", "ผู้ใช้และสิทธิ์", "Users & Access", ["/admin/users"], "users", "users"),
       ("/admin/audit", "ประวัติการใช้งาน", "Audit Log", ["/admin/audit"], "audit", "audit"),
       ("/admin/settings", "ตั้งค่าระบบ", "System Settings", ["/admin/settings"], "settings", "settings"),
@@ -121,6 +126,20 @@
         <h1 class="main-title">{% block page_title %}{{ self.title() }}{% endblock %}</h1>
         {% if brand.show_system_title and brand.system_title %}<div class="system-title" title="{{ brand.system_title }}">{{ brand.system_title }}</div>{% endif %}
         <div class="header-actions">
+          <div class="srv" id="srv" hidden>
+            <button type="button" class="srv-btn" id="srv-btn" onclick="toggleServerPanel()" aria-expanded="false" aria-controls="srv-panel" title="สถานะเครื่อง Server — กดดูรายละเอียด">
+              <span class="srv-m" data-k="cpu"><span class="srv-l">CPU</span><span class="srv-bar"><i></i></span><span class="srv-v">–</span></span>
+              <span class="srv-m" data-k="ram"><span class="srv-l">RAM</span><span class="srv-bar"><i></i></span><span class="srv-v">–</span></span>
+              <span class="srv-m" data-k="disk"><span class="srv-l">ดิสก์</span><span class="srv-bar"><i></i></span><span class="srv-v">–</span></span>
+              <span class="srv-m" data-k="temp"><span class="srv-l">อุณหภูมิ</span><span class="srv-bar"><i></i></span><span class="srv-v">–</span></span>
+              <span class="srv-dot" aria-hidden="true"></span>
+            </button>
+            <div class="srv-panel" id="srv-panel" hidden>
+              <div class="srv-head"><b>สถานะเครื่อง Server</b><span class="srv-time" id="srv-time"></span></div>
+              <div id="srv-rows"></div>
+              <p class="srv-note" id="srv-note"></p>
+            </div>
+          </div>
           <a href="/admin/alerts" class="link-btn bell-btn" id="alert-bell" hidden aria-label="การแจ้งเตือน">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16V11a6 6 0 1 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>
             <span>แจ้งเตือน</span>
@@ -162,6 +181,63 @@
       refresh();
       setInterval(refresh, 60000);
       document.addEventListener("alerts-changed", refresh);
+    }
+    // แถบสถานะ Server ที่หัวเว็บ: CPU / RAM / ดิสก์ / อุณหภูมิ (ดึงทุก 30 วินาที) — กดดูรายละเอียด + ภาระของ AI
+    function toggleServerPanel(force) {
+      const panel = document.getElementById("srv-panel");
+      const open = force === undefined ? panel.hidden : force;
+      panel.hidden = !open;
+      document.getElementById("srv-btn").setAttribute("aria-expanded", String(open));
+    }
+    function startServerStatus() {
+      const box = document.getElementById("srv");
+      box.hidden = false;
+      document.body.classList.add("has-srv");
+      const LEVEL_TEXT = { ok: "ปกติ", warn: "เริ่มสูง", crit: "สูงมาก", none: "อ่านไม่ได้" };
+      const pct = (v) => (v === null || v === undefined ? "–" : Math.round(v) + "%");
+      const bar = (k, ratio, lv, text) => {
+        const m = box.querySelector(`.srv-m[data-k="${k}"]`);
+        m.className = "srv-m lv-" + lv;
+        m.querySelector("i").style.width = ratio === null ? "0%" : Math.max(3, Math.min(100, ratio)) + "%";
+        m.querySelector(".srv-v").textContent = text;
+      };
+      const row = (label, value, ratio, lv, detail) =>
+        `<div class="srv-row lv-${lv}"><div class="srv-row-top"><span>${label}</span><b>${value}</b></div>` +
+        `<div class="srv-track"><i style="width:${ratio === null ? 0 : Math.max(2, Math.min(100, ratio))}%"></i></div>` +
+        `<div class="srv-row-detail">${detail} · <span class="srv-lv">${LEVEL_TEXT[lv]}</span></div></div>`;
+      async function refresh() {
+        try {
+          const resp = await fetch("/api/admin/server-stats", { credentials: "same-origin" });
+          if (!resp.ok) return;
+          const d = await resp.json();
+          const L = d.levels;
+          const temp = d.temperature_c;
+          bar("cpu", d.cpu_percent, L.cpu, pct(d.cpu_percent));
+          bar("ram", d.ram_percent, L.ram, pct(d.ram_percent));
+          bar("disk", d.disk_percent, L.disk, pct(d.disk_percent));
+          bar("temp", temp, L.temp, temp === null ? "–" : Math.round(temp) + "°C");
+          const worst = ["crit", "warn", "ok"].find((lv) => [L.cpu, L.ram, L.disk, L.temp, L.ai].includes(lv)) || "ok";
+          box.querySelector(".srv-dot").className = "srv-dot lv-" + worst;
+          const ai = d.ai;
+          document.getElementById("srv-rows").innerHTML =
+            row("CPU", pct(d.cpu_percent), d.cpu_percent, L.cpu, `${d.cpu_count} คอร์${d.load1 !== null ? " · load " + d.load1 : ""}`) +
+            row("หน่วยความจำ (RAM)", pct(d.ram_percent), d.ram_percent, L.ram, `ใช้ ${d.ram_used_gb} / ${d.ram_total_gb} GB`) +
+            row("พื้นที่ดิสก์", pct(d.disk_percent), d.disk_percent, L.disk, d.disk_total_gb ? `ใช้ ${d.disk_used_gb} / ${d.disk_total_gb} GB` : "อ่านไม่ได้") +
+            row("อุณหภูมิ CPU", temp === null ? "–" : temp + " °C", temp, L.temp, temp === null ? "เครื่องนี้ไม่มีเซนเซอร์ (VM)" : "เกณฑ์ เหลือง ≥70 · แดง ≥85 °C") +
+            row("ภาระของ AI", ai.load_percent === null ? "–" : ai.load_percent + "%", ai.load_percent, L.ai,
+              ai.infer_ms_avg === null ? `${ai.model} · ยังไม่มีข้อมูล` : `${ai.model} · ${ai.infer_ms_avg} ms/ภาพ (สูงสุด ${ai.infer_ms_max}) · ${ai.cameras} กล้อง`);
+          document.getElementById("srv-note").textContent =
+            (temp === null ? "Server เป็น VM อ่านอุณหภูมิไม่ได้ ดูอุณหภูมิเครื่องจริงที่ Proxmox → ntserver → Summary · " : "") +
+            "ภาระของ AI = เวลาประมวลผลรวมทุกกล้องเทียบกับรอบตรวจจับ (เกิน 80% = ประมวลผลไม่ทันรอบ) · " +
+            `เปิดเครื่องมาแล้ว ${d.uptime_h >= 48 ? Math.floor(d.uptime_h / 24) + " วัน" : d.uptime_h + " ชม."}`;
+          document.getElementById("srv-time").textContent = "อัปเดต " + new Date().toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+          document.getElementById("srv-btn").title = `CPU ${pct(d.cpu_percent)} · RAM ${pct(d.ram_percent)} · ดิสก์ ${pct(d.disk_percent)} · อุณหภูมิ ${temp === null ? "อ่านไม่ได้" : temp + "°C"} — กดดูรายละเอียด`;
+        } catch (e) { /* ไม่เป็นไร รอบหน้าลองใหม่ */ }
+      }
+      refresh();
+      setInterval(refresh, 30000);
+      document.addEventListener("click", (e) => { if (!box.contains(e.target)) toggleServerPanel(false); });
+      document.addEventListener("keydown", (e) => { if (e.key === "Escape") toggleServerPanel(false); });
     }
     // วัดความสูงหัวเว็บ + แถบเครื่องมือที่ติดด้านบน ให้หัวตารางติดต่อจากนั้นพอดี (ไม่ซ้อนทับกัน)
     (function stickyOffsets() {
@@ -252,6 +328,7 @@
         });
         window.currentUser = user;
         if (perms.includes("alerts")) startAlertBell();
+        if (user.role !== "viewer") startServerStatus();
         document.dispatchEvent(new CustomEvent("user-loaded", { detail: user }));
       } catch (e) {
         // ไม่เป็นไร หน้ายังใช้งานได้

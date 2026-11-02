@@ -45,7 +45,7 @@ class Detector(Protocol):
     """สัญญากลางของตัวตรวจจับรถ เพื่อให้สลับโมเดลได้ภายหลังโดยไม่แก้โค้ดส่วนอื่น"""
 
     def detect(
-        self, image: np.ndarray, other_classes_min_score: float | None = None
+        self, image: np.ndarray, other_classes_min_score: float | None = None, nms_threshold: float | None = None
     ) -> list[Detection]: ...
 
 
@@ -64,19 +64,19 @@ class OnnxYoloxDetector:
         self.nms_threshold = nms_threshold
 
     def detect(
-        self, image: np.ndarray, other_classes_min_score: float | None = None
+        self, image: np.ndarray, other_classes_min_score: float | None = None, nms_threshold: float | None = None
     ) -> list[Detection]:
         """ตรวจจับรถ (car/bus/truck) — ถ้าส่ง other_classes_min_score มา จะคืนวัตถุคลาสอื่น
         ที่ score ถึงเกณฑ์นี้มาด้วย (ใช้ inference รอบเดียวกัน ไม่เปลืองเพิ่ม)
+        nms_threshold: เกณฑ์ตัดกรอบซ้ำรายกล้อง (None = ค่าเริ่มของตัวตรวจจับ)
         """
+        nms = nms_threshold if nms_threshold is not None else self.nms_threshold
         padded, ratio = _preprocess(image, INPUT_SIZE)
         raw_output = self.session.run(None, {self.input_name: padded[None, :, :, :]})[0]
         decoded = _decode_outputs(raw_output[0], INPUT_SIZE)
-        detections = _postprocess(decoded, ratio, self.conf_threshold, self.nms_threshold)
+        detections = _postprocess(decoded, ratio, self.conf_threshold, nms)
         if other_classes_min_score is not None:
-            detections += _postprocess_other_classes(
-                decoded, ratio, other_classes_min_score, self.nms_threshold
-            )
+            detections += _postprocess_other_classes(decoded, ratio, other_classes_min_score, nms)
         return detections
 
 

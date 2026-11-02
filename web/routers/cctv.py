@@ -32,7 +32,7 @@ class CctvCameraOut(BaseModel):
 @router.get("/cameras", response_model=list[CctvCameraOut])
 def list_cctv_cameras(db: Session = Depends(get_db), user: CurrentUser = Depends(require_permission("cctv"))):
     query = restrict(select(Camera).where(Camera.enabled.is_(True)), Camera.site_id, user)
-    cameras = db.scalars(query.order_by(Camera.id)).all()
+    cameras = db.scalars(query.order_by(Camera.sort_order, Camera.id)).all()
     return [{"id": c.id, "name": c.name, "status": c.status.value} for c in cameras]
 
 

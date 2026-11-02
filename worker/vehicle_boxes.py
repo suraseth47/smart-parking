@@ -53,6 +53,7 @@ def analyze_vehicle_boxes(
     frame: np.ndarray,
     large_object_min_area: float | None = None,
     roi: BoxXYXY | None = None,
+    nms_threshold: float | None = None,
 ) -> list[VehicleBox]:
     """ตรวจจับ -> คัดกรอบที่นับเป็นรถ พร้อมบอกชนิดและ footprint (ใช้แสดงผลใน Preview ได้ด้วย)
 
@@ -65,7 +66,9 @@ def analyze_vehicle_boxes(
     image = frame[pixels[1]:pixels[3], pixels[0]:pixels[2]] if pixels else frame
 
     other_min_score = LARGE_OBJECT_MIN_SCORE if large_object_min_area is not None else None
-    detections = detector.detect(image, other_classes_min_score=other_min_score)
+    # ส่ง nms_threshold เฉพาะเมื่อกล้องตั้งไว้ (ตัวตรวจจับจำลองใน test รุ่นเก่าไม่รับพารามิเตอร์นี้)
+    extra = {"nms_threshold": nms_threshold} if nms_threshold is not None else {}
+    detections = detector.detect(image, other_classes_min_score=other_min_score, **extra)
 
     result: list[VehicleBox] = []
     for detection in detections:
@@ -84,6 +87,7 @@ def detect_vehicle_footprints(
     frame: np.ndarray,
     large_object_min_area: float | None = None,
     roi: BoxXYXY | None = None,
+    nms_threshold: float | None = None,
 ) -> list[BoxXYXY]:
     """ตรวจจับ -> เลือกกรอบที่เป็นรถ -> แปลงเป็น footprint (ครึ่งล่างของกรอบ, normalized)"""
-    return [v.footprint for v in analyze_vehicle_boxes(detector, frame, large_object_min_area, roi)]
+    return [v.footprint for v in analyze_vehicle_boxes(detector, frame, large_object_min_area, roi, nms_threshold)]

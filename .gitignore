@@ -29,3 +29,6 @@ Thumbs.db
 
 # ค่าโดเมนเฉพาะเครื่อง (สร้างจาก Caddyfile.d/domain.caddy.example)
 Caddyfile.d/*.caddy
+
+# รุ่นที่ติดตั้ง (เขียนโดย scripts/sp-upgrade.sh บน Server)
+.deploy-version
