@@ -28,7 +28,7 @@ COCO_CLASS_NAMES = (
     "oven toaster sink refrigerator book clock vase scissors teddy_bear hair_drier toothbrush"
 ).split()
 
-INPUT_SIZE = (640, 640)  # (height, width) ตามที่โมเดล yolox_s ถูกเทรนมา
+INPUT_SIZE = (640, 640)  # (height, width) ตามที่โมเดล YOLOX-s / YOLOX-m ถูกเทรนมา (ใช้ขนาดเดียวกัน)
 STRIDES = (8, 16, 32)
 
 

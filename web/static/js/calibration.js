@@ -33,6 +33,47 @@ class CalibrationPage {
     this._fillSelect("prop-zone", this.zones, (z) => z.id, (z) => `${z.code} ${z.name_th}`);
     await this.loadJobs();
     this._wireButtons();
+    this._renderSteps();
+  }
+
+  // แถบขั้นตอน: เริ่ม job → รอเก็บข้อมูล → Accept/Reject กรอบที่เสนอ → ไป Preview + Publish ที่หน้ากำหนดช่องจอด
+  _renderSteps() {
+    const steps = ["เลือกโหมด + กล้อง แล้วเริ่ม", "รอระบบเก็บข้อมูล", "Accept / Reject กรอบที่เสนอ", "Preview + Publish"];
+    const lines = document.getElementById("method-lines").checked;
+    let active = 0;
+    let hint = lines
+      ? "เลือกกล้อง (ภาพตอนลานค่อนข้างว่าง) กด \"Preview\" ปรับค่าจนกรอบดูถูก แล้วกด \"สร้าง proposals\""
+      : "เลือกกล้อง ตั้งระยะเวลา (แนะนำ 48 ชม.) แล้วกด \"เริ่ม job\" · หรือคลิก Job เดิมในรายการด้านซ้าย";
+    let action = null;
+    let next = lines ? "btn-create-lines-job" : "btn-start-job";
+    const job = this.selectedJob;
+    if (job) {
+      const pending = this.proposals.filter((p) => p.status === "pending").length;
+      const accepted = this.proposals.filter((p) => p.status === "accepted").length;
+      next = null;
+      if (job.status === "running") {
+        active = 1;
+        hint = `ระบบกำลังเก็บตำแหน่งรถจอดจริง ${Math.round(job.progress * 100)}% — ปล่อยไว้ได้เลย กลับมาดูเมื่อครบเวลา`;
+      } else if (pending > 0) {
+        active = 2;
+        hint = `คลิกกรอบสีเหลืองบนภาพ ตั้งรหัสช่อง/โซน แล้วกด Accept (ใช้) หรือ Reject (ทิ้ง) · เหลือ ${pending} กรอบ · หรือใช้ "Accept ทั้งหมด"`;
+        next = "btn-accept-proposal";
+      } else if (accepted > 0) {
+        active = 3;
+        hint = `Accept แล้ว ${accepted} ช่อง (เป็น Draft) — ไปหน้ากำหนดช่องจอด กด Preview ตรวจ แล้วกด Publish`;
+        action = { href: `/admin/layout?camera_id=${job.camera_id}`, label: "ไปหน้ากำหนดช่องจอด →" };
+      } else {
+        active = 0;
+        hint = job.status === "done"
+          ? "Job นี้ไม่มีกรอบที่ใช้ได้ (รถจอดนิ่งซ้ำกันไม่พอ) — เริ่ม job ใหม่ให้นานขึ้น หรือวาดช่องเองที่หน้ากำหนดช่องจอด"
+          : "Job นี้ถูกยกเลิก/ล้มเหลว — เริ่ม job ใหม่ด้านบน";
+        next = "btn-start-job";
+      }
+    }
+    StepBar.render(document.getElementById("calib-steps"), steps, active, hint, action);
+    for (const id of ["btn-start-job", "btn-create-lines-job", "btn-accept-proposal"]) {
+      document.getElementById(id).classList.toggle("btn-next", id === next);
+    }
   }
 
   _fillSelect(elementId, items, valueFn, labelFn) {
@@ -89,6 +130,7 @@ class CalibrationPage {
   }
 
   toggleMethodForm() {
+    setTimeout(() => this._renderSteps(), 0);
     const isLines = document.getElementById("method-lines").checked;
     document.getElementById("observation-form").style.display = isLines ? "none" : "block";
     document.getElementById("lines-form").style.display = isLines ? "block" : "none";
@@ -209,6 +251,7 @@ class CalibrationPage {
     this.proposals = await apiJson(`/api/admin/calib/jobs/${jobId}/proposals`);
     await this._renderStage();
     await this.loadJobs();
+    this._renderSteps();
   }
 
   async _renderStage() {
@@ -352,6 +395,7 @@ class CalibrationPage {
       Object.assign(this.selectedProposal, updated);
       this._selectProposal(this.selectedProposal);
       await this.loadJobs();
+      this._renderSteps();
     } catch (e) {
       alert("Accept ไม่สำเร็จ: " + e.message);
     }
@@ -366,6 +410,7 @@ class CalibrationPage {
       Object.assign(this.selectedProposal, updated);
       this._selectProposal(this.selectedProposal);
       await this.loadJobs();
+      this._renderSteps();
     } catch (e) {
       alert("Reject ไม่สำเร็จ: " + e.message);
     }

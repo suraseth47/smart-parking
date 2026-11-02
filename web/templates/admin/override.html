@@ -1,8 +1,10 @@
 {% extends "admin/base.html" %}
 {% from "admin/_export_buttons.html" import export_buttons %}
+{% from "admin/_stepbar.html" import stepbar %}
 {% block title %}แก้สถานะช่องด้วยมือ{% endblock %}
 {% block content %}
 <div x-data="overridePage()" x-init="init()">
+  {{ stepbar("['เลือกช่องในตาราง', 'ตั้งสถานะ / หมายเหตุ / เวลา', 'กดบังคับสถานะ']", "ovStep", "ovHint") }}
   <div class="sticky-bar"><div class="card">
     <div class="toolbar" style="margin-bottom:0;">
       <label class="muted" style="margin:0;">กรองตามโซน:</label>
@@ -71,5 +73,5 @@
   </div>
 </div>
 
-<script src="/static/js/override.js?v=20261028"></script>
+<script src="/static/js/override.js?v=20261103"></script>
 {% endblock %}

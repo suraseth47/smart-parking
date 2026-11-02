@@ -5,6 +5,7 @@
 <script src="/static/js/vendor/konva.min.js"></script>
 {% endblock %}
 {% block content %}
+{% from "admin/_stepbar.html" import stepbar %}
 <div x-data="dashboard()" x-init="init()">
   <section class="hero">
     <div>
@@ -14,6 +15,7 @@
     </div>
     <div class="hero-side" x-text="updatedLabel"></div>
   </section>
+  <div data-setup-guide="cameras" x-show="!isOperator" style="margin-bottom:1rem;"></div>
 
   <div class="stat-grid">
     <div class="stat-card">
@@ -301,6 +303,8 @@
         <div class="drawer-head">
           <h2 x-text="cf.id ? 'แก้ไขกล้อง ' + cf.name : 'เพิ่มกล้องใหม่'"></h2>
           <p>รองรับกล้อง IP ทั่วไปผ่าน RTSP — เลือกยี่ห้อเพื่อให้ระบบสร้าง URL ให้ หรือกรอก RTSP URL เอง</p>
+          <!-- แถบขั้นตอนเพิ่มกล้อง -->
+          {{ stepbar("['กรอกข้อมูลกล้อง', 'ทดสอบการเชื่อมต่อ', 'กดเพิ่มกล้อง', 'กำหนดช่องจอด']", "camStep", "camStepHint", show="!cf.id", style="margin:0.75rem 0 0;") }}
         </div>
         <div class="drawer-body">
           <div x-show="sites.length > 1">
@@ -403,7 +407,7 @@
           </label>
 
           <div class="section-title">ทดสอบก่อนบันทึก</div>
-          <button type="button" class="btn-secondary" style="width:100%;" @click="testForm()" :disabled="formTesting"
+          <button type="button" class="btn-secondary" style="width:100%;" @click="testForm()" :disabled="formTesting" :class="!cf.id && camStep === 1 ? 'btn-next' : ''"
                   x-text="formTesting ? 'กำลังเชื่อมต่อกล้อง (ไม่เกิน 15 วินาที)...' : 'ทดสอบการเชื่อมต่อ'"></button>
           <p id="c-test-result" class="notice" :class="formTest && formTest.ok ? 'ok' : 'warn'" x-show="formTest" x-text="formTest && formTest.message" style="margin:0.5rem 0 0;"></p>
           <img x-show="formTest && formTest.preview" :src="formTest && formTest.preview" @load="scrollDrawerEnd()" alt="ภาพทดสอบจากกล้อง" style="width:100%; margin-top:0.5rem; border-radius:8px;">
@@ -411,7 +415,7 @@
         </div>
         <div class="drawer-foot">
           <button class="btn-secondary" @click="closeCam()" :disabled="camBusy">ยกเลิก</button>
-          <button @click="saveCam()" :disabled="camBusy" x-text="camBusy ? 'กำลังบันทึก...' : (cf.id ? 'บันทึก' : 'เพิ่มกล้อง')"></button>
+          <button @click="saveCam()" :disabled="camBusy" :class="!cf.id && camStep === 2 ? 'btn-next' : ''" x-text="camBusy ? 'กำลังบันทึก...' : (cf.id ? 'บันทึก' : 'เพิ่มกล้อง')"></button>
         </div>
       </aside>
     </div>
@@ -660,6 +664,22 @@
         this.cfError = ""; this.formTest = null; this.camPanel = true;
       },
       closeCam() { if (!this.camBusy) this.camPanel = false; },
+      // ขั้นตอนเพิ่มกล้องใหม่: 0 กรอกข้อมูล → 1 ทดสอบ → 2 กดเพิ่มกล้อง (ขั้น 4 ทำที่หน้ากำหนดช่องจอด)
+      get camStep() {
+        const f = this.cf || {};
+        const filled = (f.name || "").trim() && ((f.brand === "custom" ? f.rtsp_url_custom : f.host) || "").trim();
+        if (!filled) return 0;
+        return this.formTest && this.formTest.ok ? 2 : 1;
+      },
+      get camStepHint() {
+        return [
+          "เลือกยี่ห้อ ตั้งชื่อกล้อง กรอก IP และ Username / Password ของกล้อง",
+          this.formTest && !this.formTest.ok
+            ? "ทดสอบไม่ผ่าน — ตรวจ IP / รหัสผ่าน / Channel แล้วกด \"ทดสอบการเชื่อมต่อ\" อีกครั้ง"
+            : "กดปุ่ม \"ทดสอบการเชื่อมต่อ\" (ด้านล่าง) ต้องเห็นภาพจากกล้องก่อนบันทึก",
+          "เห็นภาพแล้ว กดปุ่ม \"เพิ่มกล้อง\" — จากนั้นกด \"กำหนดช่องจอด\" ของกล้องนี้เพื่อวาดช่อง",
+        ][this.camStep];
+      },
       camBody() {
         const f = this.cf;
         const body = { site_id: f.site_id ? Number(f.site_id) : null, name: f.name, brand: f.brand, host: f.brand === "custom" ? "" : f.host, port: Number(f.port) || 554,
@@ -713,6 +733,7 @@
           this.flash(f.id ? `บันทึกกล้อง ${saved.name} แล้ว — มีผลในรอบตรวจจับถัดไป`
                           : `เพิ่มกล้อง ${saved.name} แล้ว ขั้นต่อไปกด "กำหนดช่องจอด" เพื่อวาดช่อง`);
           await this.loadCameras(); this.loadOverview();
+          if (window.StepBar) StepBar.refreshSetupGuide();
         } catch (e) {
           this.cfError = this.errText(e);
         } finally { this.camBusy = false; }

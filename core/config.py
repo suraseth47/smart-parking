@@ -11,7 +11,9 @@ from dotenv import load_dotenv
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
 MODELS_DIR = PROJECT_ROOT / "models"
-DEFAULT_DETECTOR_MODEL = "yolox_s.onnx"
+# ค่าเริ่ม YOLOX-m (แม่นกว่ากับรถไกลกล้อง/ฝนตก — ใช้ตั้งแต่ 3 พ.ย. 2569) · ถ้ายังไม่มีไฟล์ จะถอยไปใช้ yolox_s.onnx เอง
+DEFAULT_DETECTOR_MODEL = "yolox_m.onnx"
+FALLBACK_DETECTOR_MODEL = "yolox_s.onnx"
 
 
 @dataclass
@@ -99,13 +101,18 @@ def _public_admin_url() -> str | None:
 
 
 def get_detector_model_path() -> Path:
-    """path ของโมเดลที่ตั้งไว้ใน .env — ถ้าไม่มีไฟล์ ให้กลับไปใช้ yolox_s.onnx (ระบบยังทำงานต่อได้)"""
+    """path ของโมเดล: ค่าใน .env (DETECTOR_MODEL) → yolox_m.onnx → yolox_s.onnx ตัวแรกที่มีไฟล์จริง
+
+    ไม่มีไฟล์ที่ตั้งไว้ ระบบยังทำงานต่อได้ด้วยโมเดลถัดไป (แจ้งใน log ของ worker)
+    """
     name = Path(get_settings().detector_model).name  # กันใส่ path แปลกๆ ให้อยู่ใน models/ เสมอ
-    path = MODELS_DIR / name
-    if path.exists():
-        return path
-    print(f"[detector] ไม่พบโมเดล {path} ใช้ {DEFAULT_DETECTOR_MODEL} แทน", flush=True)
-    return MODELS_DIR / DEFAULT_DETECTOR_MODEL
+    for candidate in dict.fromkeys([name, DEFAULT_DETECTOR_MODEL, FALLBACK_DETECTOR_MODEL]):
+        path = MODELS_DIR / candidate
+        if path.exists():
+            if candidate != name:
+                print(f"[detector] ไม่พบโมเดล {MODELS_DIR / name} ใช้ {candidate} แทน", flush=True)
+            return path
+    return MODELS_DIR / FALLBACK_DETECTOR_MODEL
 
 
 def local_utc_offset_hours() -> float:

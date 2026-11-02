@@ -57,6 +57,19 @@ function overridePage() {
       this.selected = new Set();
     },
 
+    // แถบขั้นตอน: เลือกช่อง → ตั้งสถานะ/หมายเหตุ/เวลา → กดบังคับสถานะ
+    doneMsg: "",
+    get ovStep() {
+      if (this.selected.size > 0) return 1;
+      return this.doneMsg ? 3 : 0;
+    },
+    get ovHint() {
+      if (this.selected.size > 0) {
+        return `เลือกแล้ว ${this.selected.size} ช่อง — เลือกสถานะ ใส่หมายเหตุ/เวลาหมดอายุ (ถ้ามี) แล้วกด "บังคับสถานะ" · กด "ยกเลิก Override" เพื่อคืนให้ AI ตรวจตามปกติ`;
+      }
+      return this.doneMsg || "แตะแถวในตารางด้านล่างเพื่อเลือกช่องที่ต้องการ (เลือกได้หลายช่อง หรือกด \"เลือกทั้งหมดที่เห็น\")";
+    },
+
     async applyOverride() {
       this.loading = true;
       this.error = "";
@@ -68,6 +81,8 @@ function overridePage() {
             body: JSON.stringify({ state: this.overrideForm.state, note: this.overrideForm.note || null, until }),
           });
         }
+        this.doneMsg = `บังคับสถานะ ${this.selected.size} ช่องแล้ว — มีผลทันที รวมถึงหน้าสาธารณะ`;
+        this.selected = new Set();
         await this.loadSlots();
       } catch (e) {
         this.error = e.message;
@@ -87,6 +102,8 @@ function overridePage() {
             if (e.status !== 400) throw e; // 400 = ช่องนี้ไม่มี override อยู่แล้ว ข้ามไปได้
           }
         }
+        this.doneMsg = `ยกเลิก Override ${this.selected.size} ช่องแล้ว — กลับไปใช้ผลตรวจจับของ AI`;
+        this.selected = new Set();
         await this.loadSlots();
       } catch (e) {
         this.error = e.message;

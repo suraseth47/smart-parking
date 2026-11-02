@@ -2,6 +2,7 @@
 {% from "admin/_export_buttons.html" import export_buttons %}
 {% block title %}ผู้ใช้และสิทธิ์{% endblock %}
 {% block content %}
+{% from "admin/_stepbar.html" import stepbar %}
 <div x-data="usersPage()" x-init="init()" @keydown.escape.window="closePanel()">
   <div class="card" x-show="forbidden" style="margin-bottom:1rem;">
     <p style="margin:0;">หน้านี้สำหรับผู้ดูแลระบบเท่านั้น</p>
@@ -39,6 +40,7 @@
 
     <!-- ผลลัพธ์: ลิงก์ (แสดงครั้งเดียว) -->
     <div class="card" x-show="created" style="margin-bottom:1rem; border-color:#bbf7d0;">
+      {{ stepbar("['เลือกวิธีส่ง', 'ข้อมูลผู้รับ', 'บทบาทและสิทธิ์', 'สร้างคำเชิญ', 'ส่งลิงก์ให้ผู้รับ']", "4", "'คัดลอกลิงก์ / ส่งทาง LINE หรืออีเมล ให้ผู้รับ — ผู้รับกดลิงก์แล้วตั้งชื่อผู้ใช้และรหัสผ่านเอง (เข้าระบบได้ทันที)'", show="created && !created.isReset", style="margin-bottom:0.75rem;") }}
       <h2 style="margin-top:0;" x-text="created && created.title"></h2>
       <p class="muted" style="margin-top:0;" x-text="created && created.subtitle"></p>
       <p class="notice warn" x-show="created && created.mailError" x-text="created && created.mailError" style="margin-top:0;"></p>
@@ -67,7 +69,7 @@
         {{ export_buttons("exportUsers") }}
       </div>
       <div class="table-scroll">
-        <table class="data-table stack-table">
+        <div class="x-scroll"><table class="data-table stack-table">
           <thead><tr><th>ผู้ใช้</th><th>อีเมล</th><th>บทบาท</th><th>เมนู</th><th>สถานะ</th><th>เข้าระบบล่าสุด</th><th></th></tr></thead>
           <tbody>
             <template x-for="u in users" :key="u.id">
@@ -108,7 +110,7 @@
               </tr>
             </template>
           </tbody>
-        </table>
+        </table></div>
       </div>
       <p class="error-text" x-show="userError" x-text="userError"></p>
     </div>
@@ -122,7 +124,7 @@
       <p class="muted" style="margin-top:0;">ลิงก์คำเชิญใช้ได้ครั้งเดียว ระบบเก็บเฉพาะรหัสที่เข้ารหัสแล้ว จึงดูลิงก์เดิมซ้ำไม่ได้ ถ้าลิงก์หายให้ยกเลิกแล้วสร้างใหม่</p>
       <p class="muted" x-show="invitations.length === 0">ยังไม่มีคำเชิญ</p>
       <div class="table-scroll" x-show="invitations.length > 0">
-        <table class="data-table stack-table">
+        <div class="x-scroll"><table class="data-table stack-table">
           <thead><tr><th>สถานะ</th><th>ผู้รับ</th><th>วิธี</th><th>บทบาท</th><th>เมนู</th><th>สร้างโดย</th><th>หมดอายุ</th><th></th></tr></thead>
           <tbody>
             <template x-for="inv in invitations" :key="inv.id">
@@ -158,7 +160,7 @@
               </tr>
             </template>
           </tbody>
-        </table>
+        </table></div>
       </div>
     </div>
   </div>
@@ -172,6 +174,7 @@
         <div class="drawer-head">
           <h2 x-text="panelTitle()"></h2>
           <p x-text="panelSubtitle()"></p>
+          {{ stepbar("['เลือกวิธีส่ง', 'ข้อมูลผู้รับ', 'บทบาทและสิทธิ์', 'สร้างคำเชิญ', 'ส่งลิงก์ให้ผู้รับ']", "inviteStep", "inviteStepHint", show="panel === 'invite'", style="margin:0.75rem 0 0;") }}
         </div>
 
         <div class="drawer-body">
@@ -433,6 +436,16 @@
           create: "กำหนดชื่อผู้ใช้และรหัสผ่านให้เอง (ถ้าต้องการให้ผู้ใช้ตั้งเอง ใช้ \"สร้างคำเชิญ\")",
           edit: "เปลี่ยนบทบาท เมนูที่ใช้ได้ และข้อมูลติดต่อ มีผลทันทีโดยไม่ต้องเข้าสู่ระบบใหม่",
         }[this.panel] || "";
+      },
+      // ขั้นตอนสร้างคำเชิญ: วิธีส่ง → ข้อมูลผู้รับ → บทบาท → กดสร้าง → (ผลลัพธ์) ส่งลิงก์ให้ผู้รับ
+      get inviteStep() {
+        const f = this.form || {};
+        if (f.method === "email" && !(f.email || "").trim()) return 1;
+        return 3;
+      },
+      get inviteStepHint() {
+        if (this.inviteStep === 1) return "กรอกอีเมลผู้รับ (และชื่อ-นามสกุล ถ้ามี)";
+        return `ตรวจบทบาทและเมนูที่ให้ใช้ แล้วกดปุ่ม "${this.submitLabel()}" ด้านล่าง`;
       },
       submitLabel() {
         if (this.panel === "invite") return this.form.method === "email" ? "ส่งคำเชิญ" : "สร้างลิงก์";

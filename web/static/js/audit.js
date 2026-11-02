@@ -107,7 +107,7 @@ function auditPage() {
           if (items.length >= page.total || page.items.length < 200) break;
         }
         const meta = [];
-        if (this.f.from || this.f.to) meta.push(`ช่วงวันที่: ${this.f.from || "-"} ถึง ${this.f.to || "-"}`);
+        if (this.f.from || this.f.to) meta.push(`ช่วงวันที่: ${DateDDMM.toDisplay(this.f.from) || "-"} ถึง ${DateDDMM.toDisplay(this.f.to) || "-"}`);
         if (this.f.action) meta.push("การกระทำ: " + ((this.actions.find((a) => a.action === this.f.action) || {}).label || this.f.action));
         if (this.f.username.trim()) meta.push("ผู้ใช้: " + this.f.username.trim());
         if (this.total > items.length) meta.push(`แสดง ${items.length.toLocaleString("th-TH")} รายการล่าสุด จากทั้งหมด ${this.total.toLocaleString("th-TH")} รายการ`);

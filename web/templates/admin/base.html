@@ -4,13 +4,15 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}หลังบ้าน{% endblock %} - Smart Parking · NASLINK</title>
-  <link rel="stylesheet" href="/static/css/admin.css?v=20261102c">
+  <link rel="stylesheet" href="/static/css/admin.css?v=20261103b">
   <script defer src="/static/js/vendor/alpine.min.js"></script>
   <script src="/static/js/api.js"></script>
-  <script src="/static/js/export.js?v=20261028"></script>
+  <script src="/static/js/datefield.js?v=20261102b"></script>
+  <script src="/static/js/steps.js?v=20261103"></script>
+  <script src="/static/js/export.js?v=20261103b"></script>
   {% block head %}{% endblock %}
 </head>
-<body>
+<body data-app-title="{{ branding().system_title }}">
   {% set path = request.url.path.rstrip('/') %}
   {# เมนู: (ลิงก์, ชื่อไทย, ชื่ออังกฤษตัวเล็ก, path ที่ให้ไฮไลต์, ไอคอน, คีย์สิทธิ์ใน core/permissions.py)
      การซ่อนเมนูเป็นแค่ความสะดวก — สิทธิ์จริงตรวจที่ API ทุกครั้ง #}
@@ -132,6 +134,7 @@
               <span class="srv-m" data-k="ram"><span class="srv-l">RAM</span><span class="srv-bar"><i></i></span><span class="srv-v">–</span></span>
               <span class="srv-m" data-k="disk"><span class="srv-l">ดิสก์</span><span class="srv-bar"><i></i></span><span class="srv-v">–</span></span>
               <span class="srv-m" data-k="temp"><span class="srv-l">อุณหภูมิ</span><span class="srv-bar"><i></i></span><span class="srv-v">–</span></span>
+              <span class="srv-m" data-k="ai"><span class="srv-l">AI</span><span class="srv-bar"><i></i></span><span class="srv-v">–</span></span>
               <span class="srv-dot" aria-hidden="true"></span>
             </button>
             <div class="srv-panel" id="srv-panel" hidden>
@@ -140,16 +143,16 @@
               <p class="srv-note" id="srv-note"></p>
             </div>
           </div>
-          <a href="/admin/alerts" class="link-btn bell-btn" id="alert-bell" hidden aria-label="การแจ้งเตือน">
+          <a href="/admin/alerts" class="link-btn bell-btn" id="alert-bell" hidden aria-label="การแจ้งเตือน" title="การแจ้งเตือน">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16V11a6 6 0 1 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>
             <span>แจ้งเตือน</span>
             <span class="bell-count" id="alert-count" hidden>0</span>
           </a>
-          <button type="button" class="link-btn" onclick="location.reload()">
+          <button type="button" class="link-btn" onclick="location.reload()" title="Refresh" aria-label="Refresh">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg>
             <span>Refresh</span>
           </button>
-          <button type="button" class="link-btn" onclick="logout()">
+          <button type="button" class="link-btn" onclick="logout()" title="ออกจากระบบ" aria-label="ออกจากระบบ">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4M10 17l5-5-5-5M15 12H3"/></svg>
             <span>ออกจากระบบ</span>
           </button>
@@ -182,7 +185,7 @@
       setInterval(refresh, 60000);
       document.addEventListener("alerts-changed", refresh);
     }
-    // แถบสถานะ Server ที่หัวเว็บ: CPU / RAM / ดิสก์ / อุณหภูมิ (ดึงทุก 30 วินาที) — กดดูรายละเอียด + ภาระของ AI
+    // แถบสถานะ Server ที่หัวเว็บ: CPU / RAM / ดิสก์ / อุณหภูมิ / AI (ดึงทุก 30 วินาที) — กดดูรายละเอียด + ภาระของ AI
     function toggleServerPanel(force) {
       const panel = document.getElementById("srv-panel");
       const open = force === undefined ? panel.hidden : force;
@@ -216,6 +219,7 @@
           bar("ram", d.ram_percent, L.ram, pct(d.ram_percent));
           bar("disk", d.disk_percent, L.disk, pct(d.disk_percent));
           bar("temp", temp, L.temp, temp === null ? "–" : Math.round(temp) + "°C");
+          bar("ai", d.ai.load_percent, L.ai, pct(d.ai.load_percent));  // ภาระของ AI (เวลาประมวลผลเทียบรอบตรวจจับ)
           const worst = ["crit", "warn", "ok"].find((lv) => [L.cpu, L.ram, L.disk, L.temp, L.ai].includes(lv)) || "ok";
           box.querySelector(".srv-dot").className = "srv-dot lv-" + worst;
           const ai = d.ai;
@@ -231,7 +235,7 @@
             "ภาระของ AI = เวลาประมวลผลรวมทุกกล้องเทียบกับรอบตรวจจับ (เกิน 80% = ประมวลผลไม่ทันรอบ) · " +
             `เปิดเครื่องมาแล้ว ${d.uptime_h >= 48 ? Math.floor(d.uptime_h / 24) + " วัน" : d.uptime_h + " ชม."}`;
           document.getElementById("srv-time").textContent = "อัปเดต " + new Date().toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-          document.getElementById("srv-btn").title = `CPU ${pct(d.cpu_percent)} · RAM ${pct(d.ram_percent)} · ดิสก์ ${pct(d.disk_percent)} · อุณหภูมิ ${temp === null ? "อ่านไม่ได้" : temp + "°C"} — กดดูรายละเอียด`;
+          document.getElementById("srv-btn").title = `CPU ${pct(d.cpu_percent)} · RAM ${pct(d.ram_percent)} · ดิสก์ ${pct(d.disk_percent)} · อุณหภูมิ ${temp === null ? "อ่านไม่ได้" : temp + "°C"} · ภาระ AI ${pct(d.ai.load_percent)} — กดดูรายละเอียด`;
         } catch (e) { /* ไม่เป็นไร รอบหน้าลองใหม่ */ }
       }
       refresh();

@@ -28,6 +28,34 @@ class ValidationPage {
     select.innerHTML = this.cameras.map((c) => `<option value="${c.id}">${c.name}</option>`).join("");
     await this.loadJobs();
     this._wireButtons();
+    this._renderSteps();
+  }
+
+  // แถบขั้นตอน: เริ่ม job → (ถ่ายภาพ) → ยืนยันสถานะจริงทีละช่อง → ดู % ความแม่นยำ
+  _renderSteps(busy = false) {
+    const steps = ["เลือกกล้อง แล้วกดเริ่ม", "ระบบถ่ายภาพ + ตรวจจับ", "คลิกช่องบนภาพ แล้วยืนยันสถานะจริง", "ดูผลความแม่นยำ"];
+    let active = 0;
+    let hint = this.jobs.length
+      ? "เลือกกล้องและจำนวนภาพ แล้วกด \"เริ่ม\" · หรือคลิก Job เดิมในรายการด้านซ้ายเพื่อยืนยันต่อ"
+      : "เลือกกล้องและจำนวนภาพ (แนะนำ 20) แล้วกดปุ่ม \"เริ่ม\"";
+    let next = "btn-start-job";
+    if (busy) {
+      active = 1; hint = "กำลังถ่ายภาพและตรวจจับ ใช้เวลาประมาณ 1 วินาทีต่อภาพ กรุณารอจนเสร็จ"; next = null;
+    } else if (this.selectedJob) {
+      const all = this.selectedJob.samples.flatMap((sm) => sm.slot_results);
+      const done = all.filter((x) => x.confirmed_state).length;
+      if (all.length && done < all.length) {
+        active = 2;
+        hint = `คลิกช่องบนภาพ แล้วกด "ยืนยัน: ว่าง" หรือ "ยืนยัน: มีรถ" ตามที่เห็นจริง · ยืนยันแล้ว ${done}/${all.length} ช่อง · ใช้ปุ่ม "ถัดไป ›" เปลี่ยนภาพ`;
+        next = null;
+      } else {
+        active = 4;
+        hint = `ยืนยันครบทุกช่องแล้ว — ความแม่นยำ ${document.getElementById("accuracy-text").textContent} (เป้าหมาย ≥ 90%)`;
+        next = null;
+      }
+    }
+    StepBar.render(document.getElementById("validation-steps"), steps, active, hint);
+    document.getElementById("btn-start-job").classList.toggle("btn-next", next === "btn-start-job");
   }
 
   async loadJobs() {
@@ -52,6 +80,7 @@ class ValidationPage {
     const statusEl = document.getElementById("start-status");
 
     btn.disabled = true;
+    this._renderSteps(true);
     statusEl.textContent = `กำลังถ่ายภาพ+ตรวจจับ ${sampleCount} ภาพ (ใช้เวลาประมาณ ${sampleCount} วินาที กรุณารอ)...`;
     try {
       const job = await apiJson("/api/admin/validation/jobs", {
@@ -65,6 +94,7 @@ class ValidationPage {
       statusEl.textContent = "ผิดพลาด: " + e.message;
     } finally {
       btn.disabled = false;
+      this._renderSteps();
     }
   }
 
@@ -77,6 +107,7 @@ class ValidationPage {
     document.getElementById("confirm-card").style.display = "none";
     await this._renderSample();
     await this._renderAccuracy();
+    this._renderSteps();
     await this.loadJobs();
   }
 
@@ -191,6 +222,7 @@ class ValidationPage {
       document.getElementById("confirm-confirmed").textContent = state;
       this._renderSlots(sample.slot_results);
       await this._renderAccuracy();
+      this._renderSteps();
     } catch (e) {
       alert("ยืนยันไม่สำเร็จ: " + e.message);
     }

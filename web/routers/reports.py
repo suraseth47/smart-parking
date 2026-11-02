@@ -15,6 +15,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from core.config import get_settings, local_utc_offset_hours
+from core.count_scope import counted_slots
 from core.counting import COUNTABLE_TYPES
 from core.db import get_db
 from core.models import AuditLog, LayoutStatus, Site, Slot, SlotType, Zone, ZoneStatHour
@@ -134,6 +135,7 @@ def export_report(
                 Slot.layout_status == LayoutStatus.PUBLISHED,
                 Slot.is_active.is_(True),
                 Slot.type.in_([SlotType(t) for t in COUNTABLE_TYPES]),
+                counted_slots(db),
             )
             .group_by(Slot.zone_id)
         ).all()

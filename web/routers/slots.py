@@ -17,6 +17,7 @@ from worker.camera_connection import check_camera_connection
 from worker.capture import grab_frame
 from worker.detector import OnnxYoloxDetector
 from worker.occupancy import compute_slot_score, is_occupied
+from worker.no_parking import DEFAULT_DWELL_MIN, footprint_zone, validate_zones, zone_shape
 from worker.vehicle_boxes import analyze_vehicle_boxes, camera_roi, effective_roi
 
 router = APIRouter(prefix="/api/admin", tags=["layout"])
@@ -66,8 +67,20 @@ class SlotPreviewIn(BaseModel):
     threshold: float = 0.30
 
 
+class NoParkingZoneIn(BaseModel):
+    id: str | None = None
+    name: str = ""
+    polygon: list[list[float]]
+
+
 class SlotPreviewRequest(BaseModel):
     slots: list[SlotPreviewIn]
+    no_parking_zones: list[NoParkingZoneIn] = []
+
+
+class NoParkingSaveRequest(BaseModel):
+    zones: list[NoParkingZoneIn]
+    dwell_min: int = DEFAULT_DWELL_MIN
 
 
 class SlotPreviewResult(BaseModel):
@@ -179,8 +192,10 @@ def preview_slots(
     except RuntimeError as exc:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"ดึงภาพจากกล้องไม่สำเร็จ: {exc}")
 
-    # ROI คิดจากช่องที่กำลังแก้อยู่บนหน้าจอ (ยังไม่ publish ก็เห็นผลได้)
-    roi = camera_roi([slot.polygon for slot in data.slots], camera.roi_auto_margin)
+    # ROI คิดจากช่อง + เขตห้ามจอดที่กำลังแก้อยู่บนหน้าจอ (ยังไม่ publish ก็เห็นผลได้)
+    roi = camera_roi(
+        [slot.polygon for slot in data.slots] + [z.polygon for z in data.no_parking_zones], camera.roi_auto_margin
+    )
     vehicle_boxes = analyze_vehicle_boxes(_get_detector(), frame, camera.large_object_min_area, roi, camera.nms_threshold)
     used_roi = effective_roi(roi, frame)
     footprints = [v.footprint for v in vehicle_boxes]
@@ -193,11 +208,21 @@ def preview_slots(
             SlotPreviewResult(code=slot.code, score=round(score, 3), threshold=slot.threshold, state=state)
         )
 
+    # รถในเขตห้ามจอด "ตอนนี้" (Preview ภาพเดียว ยังไม่รู้ว่าจอดนิ่งนานแค่ไหน)
+    shapes = [(z.id or f"npz-{i}", zone_shape(z.polygon)) for i, z in enumerate(data.no_parking_zones, start=1)]
+    shapes = [(zid, shape) for zid, shape in shapes if shape is not None]
+    zone_counts = {zid: 0 for zid, _ in shapes}
+    for fp in footprints:
+        zid = footprint_zone(fp, shapes) if shapes else None
+        if zid:
+            zone_counts[zid] += 1
+
     path = snapshot_path(camera_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     cv2.imencode(".jpg", frame)[1].tofile(str(path))
 
     return {
+        "no_parking": [{"id": zid, "vehicles": count} for zid, count in zone_counts.items()],
         "snapshot_url": f"/api/admin/cameras/{camera_id}/snapshot",
         "detected_vehicle_count": len(footprints),
         "roi": [round(v, 4) for v in used_roi] if used_roi else None,
@@ -214,6 +239,49 @@ def preview_slots(
         ],
         "results": results,
     }
+
+
+@router.put("/cameras/{camera_id}/no-parking-zones")
+def save_no_parking_zones(
+    camera_id: int,
+    data: NoParkingSaveRequest,
+    db: Session = Depends(get_db),
+    admin: CurrentUser = Depends(require_admin),
+    _csrf: None = Depends(verify_csrf),
+):
+    """บันทึกเขตห้ามจอดของกล้อง (ทางวิ่ง หน้าทางออก ฯลฯ) — มีผลทันที ไม่ต้อง Publish
+
+    worker นับรถที่จอดนิ่งในเขตนี้นานเกิน dwell_min นาที แล้วแจ้งเตือนหลังบ้าน (worker/no_parking.py)
+    """
+    camera = _get_camera_or_404(db, camera_id)
+    if not 1 <= data.dwell_min <= 120:
+        raise HTTPException(422, "เวลาจอดก่อนแจ้งเตือนต้องอยู่ระหว่าง 1-120 นาที")
+    try:
+        zones = validate_zones([z.model_dump() for z in data.zones])
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+
+    old_ids = {z.get("id") for z in (camera.no_parking_zones or [])}
+    changed = old_ids != {z["id"] for z in zones} or camera.no_parking_dwell_min != data.dwell_min \
+        or (camera.no_parking_zones or []) != zones
+    camera.no_parking_zones = zones or None
+    camera.no_parking_dwell_min = data.dwell_min
+    if changed:
+        # รูปเขตเปลี่ยน → เริ่มติดตามใหม่ (รถที่นับไว้อาจไม่อยู่ในเขตใหม่แล้ว)
+        state = camera.no_parking_state or {}
+        keep = {z["id"] for z in zones}
+        tracks = [t for t in state.get("tracks") or [] if t.get("zone") in keep]
+        camera.no_parking_state = {**state, "tracks": tracks} if zones else None
+        db.add(
+            AuditLog(
+                user_id=admin.id,
+                action="save_no_parking_zones",
+                target=f"camera:{camera_id}",
+                detail={"zone_count": len(zones), "names": [z["name"] for z in zones], "dwell_min": data.dwell_min},
+            )
+        )
+    db.commit()
+    return {"zones": zones, "dwell_min": camera.no_parking_dwell_min}
 
 
 @router.post("/cameras/{camera_id}/slots/publish")

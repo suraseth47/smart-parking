@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from core.count_scope import counted_slots
 from core.counting import COUNTABLE_TYPES
 from core.db import get_db
 from core.models import (
@@ -38,7 +39,7 @@ def _site_base(site: Site) -> dict:
         "id": site.id, "code": site.code, "name_th": site.name_th, "name_en": site.name_en,
         "address": site.address, "opening_hours": site.opening_hours,
         "latitude": site.latitude, "longitude": site.longitude,
-        "sort_order": site.sort_order, "is_public": site.is_public,
+        "sort_order": site.sort_order, "is_public": site.is_public, "counted": site.counted is not False,
         "maps_url": google_maps_directions_url(site.latitude, site.longitude),
     }
 
@@ -56,7 +57,8 @@ def site_overview(db: Session, sites: list[Site]) -> list[dict]:
     slot_rows = db.execute(
         select(Slot.zone_id, Slot.type, SlotState.state)
         .outerjoin(SlotState, SlotState.slot_id == Slot.id)
-        .where(Slot.layout_status == LayoutStatus.PUBLISHED, Slot.is_active.is_(True), Slot.zone_id.in_(list(zone_site) or [-1]))
+        .where(Slot.layout_status == LayoutStatus.PUBLISHED, Slot.is_active.is_(True), Slot.zone_id.in_(list(zone_site) or [-1]),
+               counted_slots(db))
     ).all()
 
     open_alerts = db.scalars(select(Alert).where(Alert.resolved_at.is_(None))).all()

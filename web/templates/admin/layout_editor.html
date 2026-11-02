@@ -9,10 +9,12 @@
 </div>
 
 <div id="editor-root" style="display:none;">
+  <div id="editor-steps"></div>
   <div class="toolbar sticky-bar">
     <strong id="camera-name">กล้อง</strong>
     <button id="btn-fetch-snapshot" class="btn-secondary">ดึงภาพล่าสุด</button>
     <button id="btn-draw">+ วาดช่องใหม่</button>
+    <button id="btn-draw-npz" class="btn-secondary npz-btn">⛔ วาดเขตห้ามจอด</button>
     <button id="btn-save" class="btn-secondary">บันทึก Draft</button>
     <button id="btn-preview" class="btn-secondary">Preview</button>
     <button id="btn-publish">Publish</button>
@@ -45,6 +47,7 @@
         <span style="color:#d97706; font-weight:600;">┅ เหลือง</span> = วัตถุใหญ่ที่นับเป็นรถ ·
         <span style="color:#0284c7; font-weight:600;">┅ ฟ้า</span> = กรอบ ROI (ถ้าเปิด) ·
         แถบโปร่งในกรอบ = ส่วนที่ใช้คิดคะแนนจริง ·
+        <span style="color:#dc2626; font-weight:600;">┅ แดง</span> = เขตห้ามจอด ·
         ตัวเลขบนช่อง = คะแนน (เทียบกับ Threshold ในรายการด้านขวา)
       </div>
     </div>
@@ -107,6 +110,25 @@
         <button id="btn-repeat" class="btn-secondary" style="margin-top:0.5rem;">ทำซ้ำ</button>
       </div>
 
+      <div class="card npz-card" style="margin-bottom:0.75rem;">
+        <h3 style="margin-top:0;">⛔ เขตห้ามจอด (<span id="npz-count">0</span>)</h3>
+        <p class="muted" style="font-size:0.85rem; margin-top:0;">
+          ทางวิ่ง หน้าทางเข้าออก หน้าช่องคนพิการ — รถที่จอดนิ่งในเขตนี้ (เช่น จอดซ้อนคัน) จะแจ้งเตือนที่หน้า
+          <a href="/admin/alerts">แจ้งเตือน</a> · รถที่แค่ขับผ่านไม่นับ
+        </p>
+        <label for="npz-dwell">แจ้งเตือนเมื่อจอดนานเกิน (นาที)</label>
+        <input type="number" id="npz-dwell" min="1" max="120" value="5">
+        <ul class="slot-list" id="npz-list"></ul>
+        <p class="muted" id="npz-empty" style="font-size:0.85rem;">ยังไม่มีเขต — กดปุ่ม "⛔ วาดเขตห้ามจอด" แล้วคลิกรอบพื้นที่ (กี่จุดก็ได้) จากนั้นกดปุ่มเดิมอีกครั้งเพื่อจบ</p>
+        <div id="npz-selected" style="display:none; margin-top:0.5rem;">
+          <label for="npz-name">ชื่อเขตที่เลือก</label>
+          <input type="text" id="npz-name" maxlength="50" placeholder="เช่น ทางวิ่งฝั่งทิศเหนือ">
+          <button id="btn-npz-delete" class="btn-danger" style="margin-top:0.5rem;">ลบเขตนี้</button>
+        </div>
+        <button id="btn-npz-save" style="margin-top:0.75rem; width:100%;">บันทึกเขตห้ามจอด</button>
+        <p class="muted" style="font-size:0.8rem; margin-bottom:0;">ปุ่มนี้บันทึกเฉพาะเขตห้ามจอด มีผลทันที — ช่องจอดที่ใช้งานอยู่ไม่ถูกแตะต้อง</p>
+      </div>
+
       <div class="card">
         <h3 style="margin-top:0;">ช่องทั้งหมด (<span id="slot-count">0</span>)</h3>
         <ul class="slot-list" id="slot-list"></ul>
@@ -115,5 +137,5 @@
   </div>
 </div>
 
-<script src="/static/js/layout_editor.js?v=20261028"></script>
+<script src="/static/js/layout_editor.js?v=20261103"></script>
 {% endblock %}

@@ -1,9 +1,11 @@
 {% extends "admin/base.html" %}
+{% from "admin/_page_tools.html" import page_tools %}
 {% block title %}สถานะช่องจอดสด{% endblock %}
 {% block head %}
 <script src="/static/js/vendor/konva.min.js"></script>
 {% endblock %}
 {% block content %}
+{{ page_tools("30 วินาที", id="tools") }}
 <div class="toolbar sticky-bar">
   <label for="camera-select" class="muted" style="margin:0;">กล้อง:</label>
   <select id="camera-select"></select>
@@ -28,6 +30,13 @@
       <p class="muted" style="margin-top:0.5rem;">รีเฟรชอัตโนมัติทุก 30 วินาที</p>
     </div>
 
+    <div class="card npz-card" id="npz-card" style="display:none; margin-bottom:0.75rem;">
+      <h3 style="margin-top:0;">⛔ เขตห้ามจอด</h3>
+      <p style="margin:0 0 0.5rem;"><span id="npz-summary" class="npz-badge ok"></span></p>
+      <ul class="slot-list" id="npz-list"></ul>
+      <p class="muted" style="font-size:0.82rem; margin-bottom:0;">นับเฉพาะรถที่จอดนิ่งในเขตนานเกิน <span id="npz-dwell-text">5</span> นาที (รถขับผ่านไม่นับ) — แจ้งเตือนที่หน้า <a href="/admin/alerts">แจ้งเตือน</a></p>
+    </div>
+
     <div class="card">
       <h3 style="margin-top:0;">ช่องทั้งหมด (<span id="slot-count">0</span>)</h3>
       <ul class="slot-list" id="slot-list"></ul>
@@ -35,5 +44,5 @@
   </div>
 </div>
 
-<script src="/static/js/live.js"></script>
+<script src="/static/js/live.js?v=20261103b"></script>
 {% endblock %}

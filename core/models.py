@@ -131,6 +131,8 @@ class Site(Base):
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     is_public: Mapped[bool] = mapped_column(Boolean, default=True)
+    # นับรวมในยอดช่องจอด (False = สถานที่ทดสอบ ไม่นับ/ไม่แสดงหน้าสาธารณะ) — core/count_scope.py
+    counted: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
 
     zones: Mapped[list["Zone"]] = relationship(back_populates="site")
 
@@ -187,6 +189,14 @@ class Camera(Base):
     nms_threshold: Mapped[float | None] = mapped_column(Float, nullable=True)
     # ช่องจำรถ: AI บอกว่าว่าง แต่ภาพช่องยังเหมือนตอนเห็นรถ → คงสถานะมีรถ (worker/slot_memory.py)
     slot_memory_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
+    # นับรวมในยอดช่องจอด (False = กล้องทดสอบ เช่น ValidationTestCam ยังตรวจจับได้แต่ไม่นับยอด) — core/count_scope.py
+    counted: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
+    # เขตห้ามจอด (ทางวิ่ง หน้าทางออก ฯลฯ): [{"id": "npz-1", "name": "ทางวิ่ง", "polygon": [[x,y], ...]}, ...]
+    # รถที่จอดนิ่งในเขตนี้นานเกิน no_parking_dwell_min นาที → แจ้งเตือนหลังบ้าน (worker/no_parking.py)
+    no_parking_zones: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    no_parking_dwell_min: Mapped[int] = mapped_column(Integer, default=5, server_default="5")
+    # สถานะที่ worker ติดตามอยู่: {"updated_at": iso, "tracks": [{"zone", "box", "first", "last", "miss"}, ...]}
+    no_parking_state: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     roi_polygon: Mapped[list | None] = mapped_column(JSON, nullable=True)
     reference_image_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[CameraStatus] = mapped_column(
@@ -327,6 +337,9 @@ class Alert(Base):
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     # None = ระบบปิดเองเพราะกลับมาปกติ, มีค่า = เจ้าหน้าที่กด "รับทราบ" (user id)
     resolved_by: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # อีเมลแจ้งเตือน (core/alert_mail.py): เวลาที่ส่งอีเมล "แจ้งเตือนใหม่" และ "กลับมาปกติ" ไปแล้ว
+    emailed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    resolved_emailed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class ValidationJobStatus(str, enum.Enum):

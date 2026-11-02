@@ -405,3 +405,179 @@ def delete_logo(
     db.add(AuditLog(user_id=admin.id, action="delete_logo", target="settings:logo", detail=None))
     db.commit()
     return _system_out(db)
+
+
+# ---------- การนับช่องจอด: เลือกสถานที่ / กล้องที่นับรวม (ไม่นับกล้องทดสอบ เช่น ValidationTestCam) ----------
+
+class CountingItem(BaseModel):
+    id: int
+    counted: bool
+
+
+class CountingIn(BaseModel):
+    sites: list[CountingItem] = []
+    cameras: list[CountingItem] = []
+
+
+def _counting_out(db: Session) -> dict:
+    from sqlalchemy import func, select as sa_select
+
+    from core.models import LayoutStatus, Site, Slot
+
+    slot_count = dict(
+        db.execute(
+            sa_select(Slot.camera_id, func.count()).where(Slot.layout_status == LayoutStatus.PUBLISHED, Slot.is_active.is_(True))
+            .group_by(Slot.camera_id)
+        ).all()
+    )
+    sites = db.scalars(sa_select(Site).order_by(Site.sort_order, Site.id)).all()
+    cameras = db.scalars(sa_select(Camera).order_by(Camera.sort_order, Camera.name)).all()
+    return {
+        "sites": [{"id": s.id, "code": s.code, "name": s.name_th, "counted": s.counted is not False} for s in sites],
+        "cameras": [
+            {"id": c.id, "name": c.name, "site_id": c.site_id, "enabled": c.enabled, "counted": c.counted is not False,
+             "slot_count": slot_count.get(c.id, 0)}
+            for c in cameras
+        ],
+    }
+
+
+@router.get("/counting")
+def get_counting(db: Session = Depends(get_db), _admin: CurrentUser = Depends(require_admin)):
+    return _counting_out(db)
+
+
+@router.put("/counting")
+def put_counting(
+    data: CountingIn,
+    db: Session = Depends(get_db),
+    admin: CurrentUser = Depends(require_admin),
+    _csrf: None = Depends(verify_csrf),
+):
+    """บันทึกว่าสถานที่/กล้องไหนนับรวมยอดช่องจอด — มีผลทันทีกับหน้าสาธารณะ ภาพรวม และสถิตินาทีถัดไป"""
+    from core.models import Site
+
+    changes = []
+    for item in data.sites:
+        site = db.get(Site, item.id)
+        if site is not None and (site.counted is not False) != item.counted:
+            site.counted = item.counted
+            changes.append(f"สถานที่ {site.name_th}: {'นับ' if item.counted else 'ไม่นับ'}")
+    for item in data.cameras:
+        camera = db.get(Camera, item.id)
+        if camera is not None and (camera.counted is not False) != item.counted:
+            camera.counted = item.counted
+            changes.append(f"กล้อง {camera.name}: {'นับ' if item.counted else 'ไม่นับ'}")
+    if changes:
+        db.add(AuditLog(user_id=admin.id, action="update_counting_scope", target="counting", detail={"changes": changes}))
+    db.commit()
+    from web.routers import public as public_router  # ยอดหน้าสาธารณะ cache ไว้สั้น ๆ — ล้างให้เห็นผลทันที
+
+    public_router._cache.clear()
+    return {**_counting_out(db), "changed": len(changes)}
+
+
+# ---------- อีเมลแจ้งเตือนผู้ดูแล (กล้องขาด / ถูกขยับ / รถจอดในเขตห้ามจอด) — core/alert_mail.py ----------
+
+class AlertMailIn(BaseModel):
+    enabled: bool = False
+    kinds: dict[str, bool] = {}
+    delay_min: int = Field(5, ge=0, le=120)
+    send_resolved: bool = True
+    to_admins: bool = True
+    extra: str = ""
+
+
+def _alert_mail_out(db: Session) -> dict:
+    from core.alert_mail import KINDS, load_alert_mail, recipients
+    from web.mail_config import smtp_source
+
+    cfg = load_alert_mail(db)
+    return {
+        **cfg,
+        "extra": "\n".join(cfg["extra"]),
+        "kind_labels": KINDS,
+        "recipients": recipients(db, cfg),
+        "smtp_ready": smtp_source(db) != "none",
+    }
+
+
+@router.get("/alert-mail")
+def get_alert_mail(db: Session = Depends(get_db), _admin: CurrentUser = Depends(require_admin)):
+    return _alert_mail_out(db)
+
+
+@router.put("/alert-mail")
+def put_alert_mail(
+    data: AlertMailIn,
+    db: Session = Depends(get_db),
+    admin: CurrentUser = Depends(require_admin),
+    _csrf: None = Depends(verify_csrf),
+):
+    from sqlalchemy import select as sa_select
+
+    from core.alert_mail import ALERT_MAIL_KEY, KINDS, load_alert_mail, parse_extra, reset_retry
+    from core.models import Alert
+
+    try:
+        extra = parse_extra(data.extra)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+    was_enabled = load_alert_mail(db)["enabled"]
+    value = {
+        "enabled": data.enabled,
+        "kinds": {k: bool(data.kinds.get(k, True)) for k in KINDS},
+        "delay_min": data.delay_min,
+        "send_resolved": data.send_resolved,
+        "to_admins": data.to_admins,
+        "extra": extra,
+    }
+    _save_setting(db, ALERT_MAIL_KEY, value)
+    if data.enabled and not was_enabled:
+        # เพิ่งเปิดใช้: เรื่องที่ค้างอยู่ก่อนหน้านี้ไม่ต้องส่ง (ส่งเฉพาะเรื่องที่เกิดหลังเปิด)
+        now = datetime.utcnow()
+        for alert in db.scalars(sa_select(Alert).where(Alert.resolved_at.is_(None), Alert.emailed_at.is_(None))).all():
+            alert.emailed_at = now
+            alert.resolved_emailed_at = now
+    reset_retry()
+    db.add(AuditLog(user_id=admin.id, action="update_alert_mail", target="settings:alert_mail",
+                    detail={**value, "extra_count": len(extra), "extra": None}))
+    db.commit()
+    return _alert_mail_out(db)
+
+
+@router.post("/alert-mail/test")
+def test_alert_mail(
+    db: Session = Depends(get_db),
+    admin: CurrentUser = Depends(require_admin),
+    _csrf: None = Depends(verify_csrf),
+):
+    """ส่งอีเมลตัวอย่างหน้าตาแจ้งเตือนจริง ถึงผู้รับทุกคนที่ตั้งไว้ (ใช้ค่าที่บันทึกแล้ว)"""
+    from core.alert_mail import build_alert_email, load_alert_mail, recipients, thai_time
+    from core.mailer import MailError, send_email
+    from web.mail_config import get_invite_base_url, get_smtp
+
+    cfg = load_alert_mail(db)
+    to = recipients(db, cfg)
+    if not to:
+        raise HTTPException(422, "ยังไม่มีผู้รับ — ติ๊ก \"ส่งถึง Admin ทุกคนที่มีอีเมล\" หรือใส่อีเมลเพิ่มเติม แล้วกดบันทึกก่อน")
+    now = thai_time(datetime.utcnow())
+    content = build_alert_email(
+        [{"kind_label": "ทดสอบอีเมลแจ้งเตือน", "message": "นี่คืออีเมลทดสอบ ถ้าได้รับแปลว่าการแจ้งเตือนทางอีเมลใช้งานได้", "started": now}],
+        [], (get_invite_base_url(db) or "").rstrip("/") + "/admin/alerts" if get_invite_base_url(db) else None,
+    )
+    content.subject = "[ทดสอบ] " + content.subject
+    smtp = get_smtp(db)
+    sent, failed = [], []
+    for address in to:
+        try:
+            send_email(smtp, address, content)
+            sent.append(address)
+        except MailError as exc:
+            failed.append(f"{address}: {exc}")
+    db.add(AuditLog(user_id=admin.id, action="test_alert_mail", target="settings:alert_mail",
+                    detail={"sent": len(sent), "failed": len(failed)}))
+    db.commit()
+    if failed and not sent:
+        raise HTTPException(502, "ส่งไม่สำเร็จ: " + failed[0])
+    return {"sent": sent, "failed": failed}

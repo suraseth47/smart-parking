@@ -1,0 +1,19 @@
+{# แถบขั้นตอน ① ② ③ สำหรับหน้า Alpine — หน้าตาเดียวกับ StepBar.render() ใน static/js/steps.js
+   ใช้: {% from "admin/_stepbar.html" import stepbar %}
+        {{ stepbar("['ขั้น 1', 'ขั้น 2', 'ขั้น 3']", "activeIndex", "hintText", show="เงื่อนไข x-show") }}
+   ทุกพารามิเตอร์เป็นนิพจน์ JavaScript ของ Alpine (activeIndex = จำนวนขั้นที่เสร็จแล้ว) #}
+{% macro stepbar(labels, active, hint, show="true", style="") -%}
+<div class="stepbar" x-show="{{ show }}" style="{{ style }}">
+  <ol class="steps">
+    <template x-for="(label, i) in {{ labels }}" :key="i">
+      <li style="display:contents;">
+        <span class="step" :class="i < ({{ active }}) ? 'done' : (i === ({{ active }}) ? 'active' : '')" :aria-current="i === ({{ active }}) ? 'step' : null">
+          <span class="step-num" x-text="i < ({{ active }}) ? '✓' : i + 1"></span><span class="step-label" x-text="label"></span>
+        </span>
+        <span class="step-sep" aria-hidden="true" x-show="i < {{ labels }}.length - 1">›</span>
+      </li>
+    </template>
+  </ol>
+  <div class="step-hint" :class="({{ active }}) >= {{ labels }}.length && 'is-done'" x-show="{{ hint }}"><span x-text="(({{ active }}) >= {{ labels }}.length ? '✅ ' : '👉 ') + ({{ hint }})"></span></div>
+</div>
+{%- endmacro %}

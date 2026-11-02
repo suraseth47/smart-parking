@@ -1,8 +1,9 @@
 {% extends "admin/base.html" %}
-{% from "admin/_export_buttons.html" import export_buttons %}
+{% from "admin/_page_tools.html" import page_tools %}
 {% block title %}การแจ้งเตือน{% endblock %}
 {% block content %}
 <div x-data="alertsPage()" x-init="init()">
+  {{ page_tools("30 วินาที", id="tools", excel=True, show="ready && !forbidden") }}
   <div class="card" x-show="forbidden" style="margin-bottom:1rem;">
     <p style="margin:0;">บัญชีนี้ไม่มีสิทธิ์ดูการแจ้งเตือน ติดต่อผู้ดูแลระบบ</p>
   </div>
@@ -23,7 +24,6 @@
         </button>
         <button type="button" role="tab" :class="tab === 'history' && 'active'" @click="go('history')">ประวัติ 30 วัน</button>
       </div>
-      <div style="flex-basis:100%;">{{ export_buttons() }}</div>
     </div>
 
     <p class="notice warn" x-show="pageError" x-text="pageError" style="margin:0 0 1rem;"></p>
@@ -56,10 +56,12 @@
               <div x-text="a.message" style="overflow-wrap:anywhere;"></div>
               <div class="sub-text" x-text="'เริ่ม ' + fmt(a.created_at) + ' · ' + ago(a.created_at)"></div>
               <div class="sub-text" x-show="a.kind === 'connection'">ตรวจไฟเลี้ยงกล้อง สาย LAN/PoE และ IP กล้อง — ช่องจอดของกล้องนี้แสดงเป็น "ไม่ทราบสถานะ" จนกว่าจะเชื่อมต่อได้</div>
+              <div class="sub-text" x-show="a.kind === 'no_parking'">รถจอดซ้อนคัน / ขวางทางวิ่ง — ให้เจ้าหน้าที่ไปตรวจหน้างาน ข้อความนี้ปิดเองเมื่อรถออกจากเขตแล้ว</div>
               <div class="sub-text" x-show="a.kind === 'moved'">ช่องจอดของกล้องนี้แสดงเป็น "ไม่ทราบสถานะ" จนกว่าจะ Re-align หรือยืนยันว่ากล้องกลับมาตำแหน่งเดิม</div>
             </div>
             <div class="cell-actions" style="align-self:center;">
-              <a class="btn btn-secondary" x-show="isAdmin && a.camera_id" :href="'/admin#camera-' + a.camera_id"
+              <a class="btn btn-secondary" x-show="a.kind === 'no_parking' && a.camera_id" :href="'/admin/live?camera_id=' + a.camera_id">ดูภาพสด</a>
+              <a class="btn btn-secondary" x-show="isAdmin && a.camera_id && a.kind !== 'no_parking'" :href="'/admin#camera-' + a.camera_id"
                  x-text="a.kind === 'moved' ? 'ไป Re-align' : 'ดูกล้อง'"></a>
               <button class="btn-secondary" x-show="canResolve" @click="resolve(a)" :disabled="busy">รับทราบ</button>
             </div>
@@ -115,6 +117,14 @@
         if (location.hash === "#history") this.tab = "history";
         this.ready = true;
         if (this.forbidden) return;
+        ExportKit.bindTools(document.getElementById("tools"), {
+          refresh: () => this.load(), lineText: () => this.lineText(), spec: () => this.exportSpec(),
+          card: () => this.statusCard(),
+          imageSpec: async () => {
+            const spec = await this.exportSpec();
+            return { ...spec, columns: ["ระดับ", "เรื่อง", "รายละเอียด", "เริ่ม"], rows: spec.rows.map((r) => r.slice(0, 4)) };
+          },
+        });
         await this.load();
         setInterval(() => this.load(), 30000);
       },
@@ -126,6 +136,7 @@
           if (this.tab === "history") this.history = await apiJson("/api/admin/alerts?include_resolved=true");
           this.checkedAt = new Date().toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" }) + " น.";
           this.pageError = "";
+          ExportKit.markUpdated(document.getElementById("tools"));
           document.dispatchEvent(new CustomEvent("alerts-changed"));
         } catch (e) {
           this.pageError = "โหลดการแจ้งเตือนไม่สำเร็จ: " + e.message;
@@ -140,7 +151,36 @@
           this.pageError = "รับทราบไม่สำเร็จ: " + e.message;
         } finally { this.busy = false; }
       },
-      async doExport(kind) {
+      // ข้อความสรุปวางใน LINE: แจ้งเตือนที่ยังไม่แก้ไข
+      lineText() {
+        const items = [...this.system.map((w) => `ระบบ: ${w.message}`), ...this.openAlerts.map((a) => `${this.kindLabel(a)} — ${a.message} (เริ่ม ${this.fmt(a.created_at)})`)];
+        if (!items.length) return `✅ Smart Parking: ทุกกล้องและระบบทำงานปกติ — ${ExportKit.thaiNow()}`;
+        return [`⚠️ Smart Parking: แจ้งเตือนที่ยังไม่แก้ไข ${items.length} รายการ — ${ExportKit.thaiNow()}`, ...items.map((t, i) => `${i + 1}. ${t}`)].join("\n");
+      },
+      // ภาพสรุปแจ้งเตือนที่ยังไม่แก้ไข (ปุ่ม คัดลอก (วางใน LINE) / บันทึกรูป)
+      statusCard() {
+        const n = this.openAlerts.length + this.system.length;
+        const cam = this.openAlerts.filter((a) => a.kind === "connection" || a.kind === "moved").length;
+        const np = this.openAlerts.filter((a) => a.kind === "no_parking").length;
+        const items = [
+          ...this.system.map((w) => ({ title: "ระบบทำงานผิดปกติ", text: w.message, sub: "ตอนนี้", tone: "red" })),
+          ...this.openAlerts.map((a) => ({ title: this.kindLabel(a), text: a.message, sub: "เริ่ม " + this.fmt(a.created_at) + " · " + this.ago(a.created_at),
+                                          tone: a.level === "error" ? "red" : "amber" })),
+        ];
+        return {
+          filename: "alerts",
+          subtitle: "การแจ้งเตือนที่ยังไม่แก้ไข",
+          hero: { label: "แจ้งเตือนที่ยังไม่แก้ไข", value: n, unit: "เรื่อง", ratio: null,
+                  ratioText: n ? "ต้องตรวจสอบ" : "ทุกกล้องและระบบทำงานปกติ", tone: n ? "red" : "green", barColor: n ? "#dc2626" : "#15803d" },
+          pair: [{ label: "กล้องมีปัญหา", value: cam, unit: "ตัว", tone: cam ? "red" : "gray" },
+                 { label: "รถในเขตห้ามจอด", value: np, unit: "จุด", tone: np ? "amber" : "gray" }],
+          info: "ตรวจล่าสุด " + this.checkedAt,
+          itemsTitle: "รายการแจ้งเตือน",
+          itemsEmpty: "✅ ทุกกล้องและระบบทำงานปกติ",
+          items: items.slice(0, 8),
+        };
+      },
+      async exportSpec() {
         const isHistory = this.tab === "history";
         if (isHistory && !this.history.length) this.history = await apiJson("/api/admin/alerts?include_resolved=true").catch(() => []);
         const columns = ["ระดับ", "เรื่อง", "รายละเอียด", "เริ่ม", "ปิดเมื่อ", "ใช้เวลา"];
@@ -150,15 +190,16 @@
           ...list.map((a) => [this.levelLabel(a), this.kindLabel(a), a.message, this.fmt(a.created_at),
                               a.resolved_at ? this.fmt(a.resolved_at) : "ยังไม่แก้ไข", a.resolved_at ? this.duration(a.created_at, a.resolved_at) : ""]),
         ];
-        try {
-          this.pageError = "";
-          await ExportKit.run(kind, { title: isHistory ? "ประวัติการแจ้งเตือน 30 วัน" : "การแจ้งเตือนที่ยังไม่แก้ไข", filename: isHistory ? "alerts-history" : "alerts-open", columns, rows });
-        } catch (e) { this.pageError = e.message; }
+        return { title: isHistory ? "ประวัติการแจ้งเตือน 30 วัน" : "การแจ้งเตือนที่ยังไม่แก้ไข", filename: isHistory ? "alerts-history" : "alerts-open", columns, rows };
+      },
+      async doExport(kind) {
+        try { this.pageError = ""; await ExportKit.run(kind, await this.exportSpec()); }
+        catch (e) { this.pageError = e.message; }
       },
       kindLabel(a) {
-        return { connection: "กล้องขาดการเชื่อมต่อ", moved: "กล้องอาจถูกขยับ / เปลี่ยนมุม" }[a.kind] || "ระบบแจ้งเตือน";
+        return { connection: "กล้องขาดการเชื่อมต่อ", moved: "กล้องอาจถูกขยับ / เปลี่ยนมุม", no_parking: "รถจอดในเขตห้ามจอด / จอดซ้อนคัน" }[a.kind] || "ระบบแจ้งเตือน";
       },
-      icon(a) { return a.kind === "connection" ? "📵" : a.kind === "moved" ? "↔" : (a.level === "error" ? "⛔" : "⚠"); },
+      icon(a) { return a.kind === "connection" ? "📵" : a.kind === "moved" ? "↔" : a.kind === "no_parking" ? "⛔" : (a.level === "error" ? "⛔" : "⚠"); },
       levelLabel(a) { return { error: "ร้ายแรง", warning: "เตือน", info: "แจ้งให้ทราบ" }[a.level] || a.level; },
       levelClass(a) { return a.resolved_at ? "inactive" : (a.level === "error" ? "locked" : "pending"); },
       fmt(iso) {

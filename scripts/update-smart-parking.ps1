@@ -68,6 +68,14 @@ Write-Host "ไฟล์       : $($files.Count) ไฟล์ · $((Get-Item $pk
 Write-Host "Server     : $t"
 if (-not $Yes) { $go = Read-Host 'เริ่มอัปเดต? (y = ใช่)'; if ($go -ne 'y') { Write-Host 'ยกเลิก'; exit 0 } }
 
+# ดาวน์โหลดโมเดล YOLOX-m ลง Server ครั้งแรกครั้งเดียว (ระบบใช้ YOLOX-m เป็นค่าเริ่มตั้งแต่ 3 พ.ย. 2569)
+# ทำก่อนอัปเดต เพื่อให้ worker ที่เริ่มใหม่ใช้ YOLOX-m ทันที · ดาวน์โหลดไม่ได้ = ระบบใช้ YOLOX-s ต่อ ไม่หยุดทำงาน
+# ข้อความฝั่ง Server เป็นภาษาอังกฤษล้วน (ส่งผ่าน ssh ของ Windows แล้วภาษาไทยเพี้ยน)
+$modelCmd = @'
+cd ~/smart-parking 2>/dev/null || exit 0; mkdir -p models; if [ -s models/yolox_m.onnx ]; then echo '  [OK] YOLOX-m model already on server'; else echo '  Downloading YOLOX-m model (~97 MB, first time only)...'; U=https://github.com/Megvii-BaseDetection/YOLOX/releases/download/0.1.1rc0/yolox_m.onnx; if (curl -fL --retry 2 -o models/.yolox_m.part $U || wget -q -O models/.yolox_m.part $U) && [ $(stat -c %s models/.yolox_m.part) -gt 50000000 ]; then mv models/.yolox_m.part models/yolox_m.onnx && echo '  [OK] YOLOX-m downloaded'; else rm -f models/.yolox_m.part; echo '  [!!] YOLOX-m download failed - system keeps using YOLOX-s'; fi; fi; grep -q '^DETECTOR_MODEL=yolox_s' .env 2>/dev/null && echo '  [!!] .env has DETECTOR_MODEL=yolox_s.onnx - remove that line to use YOLOX-m'; exit 0
+'@
+$modelCmd = $modelCmd.Trim()
+
 try {
   # โหมดอัตโนมัติ: กุญแจ ssh + (อยู่ในกลุ่ม docker หรือ sudo เฉพาะคำสั่งอัปเดต)
   $probe = (Quiet { ssh -o BatchMode=yes -o ConnectTimeout=8 $t "docker info >/dev/null 2>&1 && echo DOCKER; sudo -n -l /usr/local/sbin/sp-upgrade >/dev/null 2>&1 && echo SUDO" }) -join ' '
@@ -76,6 +84,8 @@ try {
     Write-Host '[1/2] ส่งไฟล์'
     & scp -o BatchMode=yes $pkg $remoteSh "${t}:~/"
     if ($LASTEXITCODE -ne 0) { throw 'scp ไม่สำเร็จ' }
+    Write-Host '[1.5] ตรวจ/ดาวน์โหลดโมเดล YOLOX-m'
+    & ssh -o BatchMode=yes $t $modelCmd
     Write-Host '[2/2] อัปเดตบน Server'
     $cmd = if ($probe -match 'DOCKER') { "sed -i 's/\r$//' ~/sp-upgrade.sh; bash ~/sp-upgrade.sh $sha '$label'" } else { "sudo -n /usr/local/sbin/sp-upgrade $sha '$label'" }
     & ssh -o BatchMode=yes $t $cmd
@@ -84,6 +94,8 @@ try {
     Write-Host "[1/2] ส่งไฟล์ (ใส่รหัสผ่าน SSH ของ $User)"
     & scp $pkg $remoteSh "${t}:~/"
     if ($LASTEXITCODE -ne 0) { throw 'scp ไม่สำเร็จ (ตรวจ IP / ชื่อผู้ใช้ / รหัสผ่าน / VPN)' }
+    Write-Host '[1.5] ตรวจ/ดาวน์โหลดโมเดล YOLOX-m (ใส่รหัสผ่าน SSH ถ้าถาม)'
+    & ssh $t $modelCmd
     Write-Host '[2/2] อัปเดตบน Server (ใส่รหัสผ่าน SSH แล้วรหัส sudo ถ้าถาม)'
     & ssh -t $t "sed -i 's/\r$//' ~/sp-upgrade.sh; bash ~/sp-upgrade.sh $sha '$label'"
   }

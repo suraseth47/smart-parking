@@ -10,6 +10,7 @@ from core.db import get_db
 from core.models import Camera, LayoutStatus, Slot, SlotState
 from web.deps import CurrentUser, require_permission
 from web.site_access import ensure_camera, restrict
+from worker.no_parking import DEFAULT_DWELL_MIN, summarize
 
 router = APIRouter(prefix="/api/admin/live", tags=["live"])
 
@@ -38,10 +39,25 @@ class LiveCameraOut(BaseModel):
     last_frame_at: str | None
 
 
+class LiveNoParkingZoneOut(BaseModel):
+    id: str
+    name: str
+    polygon: list[list[float]]
+    count: int = 0  # รถที่จอดนิ่งในเขตนานถึงเกณฑ์
+    longest_min: int = 0
+
+
+class LiveNoParkingOut(BaseModel):
+    dwell_min: int
+    total: int
+    zones: list[LiveNoParkingZoneOut]
+
+
 class LiveOut(BaseModel):
     camera: LiveCameraOut
     snapshot_url: str
     slots: list[LiveSlotOut]
+    no_parking: LiveNoParkingOut | None = None
 
 
 @router.get("/cameras", response_model=list[LiveCameraPickerOut])
@@ -83,7 +99,26 @@ def get_live(
         for slot, state in rows
     ]
 
+    no_parking = None
+    zones = [z for z in (camera.no_parking_zones or []) if isinstance(z, dict)]
+    if zones:
+        dwell = camera.no_parking_dwell_min or DEFAULT_DWELL_MIN
+        found = {item["id"]: item for item in summarize(zones, (camera.no_parking_state or {}).get("tracks") or [], dwell)}
+        no_parking = {
+            "dwell_min": dwell,
+            "total": sum(item["count"] for item in found.values()),
+            "zones": [
+                {
+                    "id": z["id"], "name": z.get("name") or "เขตห้ามจอด", "polygon": z.get("polygon") or [],
+                    "count": found.get(z["id"], {}).get("count", 0),
+                    "longest_min": found.get(z["id"], {}).get("longest_min", 0),
+                }
+                for z in zones
+            ],
+        }
+
     return {
+        "no_parking": no_parking,
         "camera": {
             "id": camera.id,
             "name": camera.name,

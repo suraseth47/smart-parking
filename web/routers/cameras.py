@@ -75,6 +75,9 @@ class CameraOut(BaseModel):
     roi_auto_margin: float | None = None
     nms_threshold: float | None = None
     slot_memory_enabled: bool = True
+    no_parking_zones: list | None = None
+    no_parking_dwell_min: int = 5
+    counted: bool = True
     roi_polygon: list | None
     status: str
     reference_image_path: str | None
@@ -231,8 +234,9 @@ def _apply_enabled(db: Session, camera: Camera, was_enabled: bool) -> None:
         # worker จะข้ามกล้องนี้ -> ช่องต้องเป็น "ไม่ทราบ" ไม่ใช่ค้างค่าเดิม และปิด alert ค้างของกล้อง
         camera.status = CameraStatus.DISABLED
         mark_camera_slots_unknown(db, camera)
-        for source in (f"camera:{camera.id}:connection", f"camera:{camera.id}:moved"):
+        for source in (f"camera:{camera.id}:connection", f"camera:{camera.id}:moved", f"camera:{camera.id}:no_parking"):
             resolve_alerts(db, source)
+        camera.no_parking_state = None
     elif camera.enabled and not was_enabled:
         camera.status = CameraStatus.OFFLINE  # รอ worker ดึงภาพรอบแรก แล้วจะเปลี่ยนเป็น online เอง
         camera.last_frame_at = None  # ให้ worker ประมวลผลกล้องนี้ทันทีในรอบถัดไป
@@ -411,6 +415,13 @@ def confirm_realign(
     ).all()
     for slot in slots:
         slot.polygon = apply_transform_to_polygon(slot.polygon, transform, frame_w, frame_h)
+    if camera.no_parking_zones:
+        # เขตห้ามจอดขยับตามกล้องด้วย (สร้าง list ใหม่ ให้ SQLAlchemy รู้ว่า JSON เปลี่ยน)
+        camera.no_parking_zones = [
+            {**zone, "polygon": apply_transform_to_polygon(zone["polygon"], transform, frame_w, frame_h)}
+            for zone in camera.no_parking_zones
+        ]
+        camera.no_parking_state = None
 
     reference_path = get_snapshot_path(camera_id).parent / f"camera_{camera_id}_reference.jpg"
     reference_path.parent.mkdir(parents=True, exist_ok=True)

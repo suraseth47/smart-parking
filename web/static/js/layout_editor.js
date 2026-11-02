@@ -13,6 +13,7 @@ const SELECTED_STROKE = "#f97316";
 // กรอบที่ AI เห็นใน Preview: เขียว = AI ทายว่าเป็นรถ, เหลืองอำพัน = วัตถุใหญ่ที่นับเป็นรถ
 const DETECTION_COLORS = { vehicle: "#22c55e", large: "#f59e0b" };
 const ROI_COLOR = "#0ea5e9";
+const NPZ_COLOR = "#dc2626";  // เขตห้ามจอด
 
 class LayoutEditor {
   constructor(cameraId) {
@@ -30,11 +31,26 @@ class LayoutEditor {
     this.showDetections = true;
     this.imgWidth = 0;
     this.imgHeight = 0;
+    // เขตห้ามจอด (ทางวิ่ง หน้าทางออก ฯลฯ) — บันทึกพร้อม Draft มีผลทันที ไม่ต้อง Publish
+    this.npz = [];
+    this.npzDwell = 5;
+    this.selectedZone = null;
+    this.npzDrawMode = false;
+    this.npzPoints = [];
+    this.npzLayer = null;
+    this.npzDraftLine = null;
+    // สถานะสำหรับแถบขั้นตอน
+    this.hasSnapshot = false;
+    this.dirty = false;
+    this.previewed = false;
   }
 
   async init() {
     const camera = await apiJson(`/api/admin/cameras/${this.cameraId}`);
     document.getElementById("camera-name").textContent = `กล้อง: ${camera.name}`;
+    this.npz = (camera.no_parking_zones || []).map((z) => ({ id: z.id, name: z.name, polygon: z.polygon.map((p) => [...p]), previewCount: null }));
+    this.npzDwell = camera.no_parking_dwell_min || 5;
+    document.getElementById("npz-dwell").value = this.npzDwell;
 
     // เฉพาะโซนของสถานที่เดียวกับกล้อง (TOR 4.6: ช่องจอดผูกข้ามสถานที่ไม่ได้)
     this.zones = await apiJson(camera.site_id ? `/api/admin/zones?site_id=${camera.site_id}` : "/api/admin/zones");
@@ -44,6 +60,7 @@ class LayoutEditor {
     await this._loadSnapshotAndSetupStage();
     await this._loadSlots();
     this._wireButtons();
+    this._renderSteps();
   }
 
   _fillZoneSelect(selectEl) {
@@ -70,6 +87,7 @@ class LayoutEditor {
       img.src = snapshotUrl;
     });
 
+    this.hasSnapshot = loaded;
     if (loaded) {
       document.getElementById("no-snapshot-msg").style.display = "none";
       const scale = Math.min(1, maxWidth / img.naturalWidth);
@@ -94,6 +112,10 @@ class LayoutEditor {
     }
     this.stage.add(bgLayer);
 
+    // ชั้นเขตห้ามจอด (อยู่ใต้ช่องจอด — คลิกที่ช่องยังเลือกช่องได้ตามเดิม)
+    this.npzLayer = new Konva.Layer();
+    this.stage.add(this.npzLayer);
+
     // ชั้นกรอบที่ AI เห็น (อยู่ใต้ช่องจอด และไม่รับคลิก จะได้ไม่บังการวาด/เลือกช่อง)
     this.detLayer = new Konva.Layer({ listening: false });
     this.stage.add(this.detLayer);
@@ -108,6 +130,9 @@ class LayoutEditor {
     const data = await apiJson(`/api/admin/cameras/${this.cameraId}/slots`);
     this.slots = data.map((s) => this._toSlotState(s));
     this.selected = null;
+    // มีช่องที่ยังเป็น draft = ยังไม่ได้ Publish
+    this.dirty = this.slots.some((s) => s.layout_status === "draft");
+    if (this.dirty) this._markUnpublished();
     this._renderAll();
   }
 
@@ -120,6 +145,7 @@ class LayoutEditor {
       polygon: apiSlot.polygon.map((p) => [...p]),
       threshold: apiSlot.threshold,
       is_active: apiSlot.is_active,
+      layout_status: apiSlot.layout_status,
       group: null,
       previewState: null,
     };
@@ -128,6 +154,13 @@ class LayoutEditor {
   // ---------- วาดช่องใหม่ ----------
 
   _onStageClick(e) {
+    if (this.npzDrawMode) {
+      const pos = this.stage.getPointerPosition();
+      this.npzPoints.push([pos.x / this.imgWidth, pos.y / this.imgHeight]);
+      this._renderNpzDraft();
+      this._updateNpzButton();
+      return;
+    }
     if (!this.drawMode) return;
     const pos = this.stage.getPointerPosition();
     this.drawPoints.push([pos.x / this.imgWidth, pos.y / this.imgHeight]);
@@ -138,12 +171,233 @@ class LayoutEditor {
   }
 
   toggleDrawMode() {
+    if (this.npzDrawMode) this.toggleNpzDrawMode(true);
     this.drawMode = !this.drawMode;
     this.drawPoints = [];
     document.getElementById("btn-draw").textContent = this.drawMode
       ? "กำลังวาด... (คลิก 4 จุด, กดอีกทีเพื่อหยุด)"
       : "+ วาดช่องใหม่";
     this.stage.container().style.cursor = this.drawMode ? "crosshair" : "default";
+    this._renderSteps();
+  }
+
+  // ---------- เขตห้ามจอด ----------
+
+  // กดครั้งแรก = เริ่มวาด (คลิกรอบพื้นที่กี่จุดก็ได้) · กดอีกครั้ง = จบ (ต้อง 3 จุดขึ้นไป) · cancel = ทิ้งที่วาดค้าง
+  toggleNpzDrawMode(cancel = false) {
+    if (this.drawMode) this.toggleDrawMode();
+    if (this.npzDrawMode && !cancel && this.npzPoints.length >= 3) {
+      const zone = { id: this._nextZoneId(), name: `เขตห้ามจอด ${this.npz.length + 1}`, polygon: this.npzPoints, previewCount: null };
+      this.npz.push(zone);
+      this.npzDrawMode = false;
+      this.npzPoints = [];
+      this._markZonesDirty();
+      this.selectZone(zone);
+      document.getElementById("npz-name").focus();
+      document.getElementById("npz-name").select();
+    } else {
+      this.npzDrawMode = !this.npzDrawMode && !cancel;
+      this.npzPoints = [];
+    }
+    this._renderNpzDraft();
+    this._updateNpzButton();
+    this.stage.container().style.cursor = this.npzDrawMode ? "crosshair" : "default";
+    this._renderSteps();
+  }
+
+  _updateNpzButton() {
+    const btn = document.getElementById("btn-draw-npz");
+    btn.classList.toggle("is-drawing", this.npzDrawMode);
+    if (!this.npzDrawMode) { btn.textContent = "⛔ วาดเขตห้ามจอด"; return; }
+    const n = this.npzPoints.length;
+    btn.textContent = n >= 3 ? `✔ จบการวาดเขต (${n} จุด)` : `คลิกรอบพื้นที่… (${n} จุด · อย่างน้อย 3)`;
+  }
+
+  _nextZoneId() {
+    let i = 1;
+    while (this.npz.some((z) => z.id === `npz-${i}`)) i++;
+    return `npz-${i}`;
+  }
+
+  _renderNpzDraft() {
+    if (this.npzDraftLine) { this.npzDraftLine.destroy(); this.npzDraftLine = null; }
+    if (this.npzDrawMode && this.npzPoints.length) {
+      const group = new Konva.Group({ listening: false });
+      group.add(new Konva.Line({
+        points: this.npzPoints.flatMap(([x, y]) => [x * this.imgWidth, y * this.imgHeight]),
+        closed: this.npzPoints.length >= 3, stroke: NPZ_COLOR, strokeWidth: 2, dash: [8, 5], fill: NPZ_COLOR, opacity: 0.6,
+      }));
+      for (const [x, y] of this.npzPoints) {
+        group.add(new Konva.Circle({ x: x * this.imgWidth, y: y * this.imgHeight, radius: 4, fill: NPZ_COLOR }));
+      }
+      this.npzDraftLine = group;
+      this.npzLayer.add(group);
+    }
+    this.npzLayer.batchDraw();
+  }
+
+  selectZone(zone) {
+    this.selectedZone = zone;
+    if (zone) {
+      this.selected = null;
+      document.getElementById("selected-slot-card").style.display = "none";
+    }
+    const box = document.getElementById("npz-selected");
+    box.style.display = zone ? "block" : "none";
+    const del = document.getElementById("btn-npz-delete");
+    del.dataset.confirm = "";
+    del.textContent = "ลบเขตนี้";
+    if (zone) document.getElementById("npz-name").value = zone.name;
+    this._renderAll();
+  }
+
+  deleteSelectedZone() {
+    const btn = document.getElementById("btn-npz-delete");
+    if (!this.selectedZone) return;
+    if (btn.dataset.confirm !== "1") {  // กดครั้งที่ 2 จึงลบจริง
+      btn.dataset.confirm = "1";
+      btn.textContent = `กดอีกครั้งเพื่อยืนยันลบ "${this.selectedZone.name}"`;
+      return;
+    }
+    this.npz = this.npz.filter((z) => z !== this.selectedZone);
+    this._markZonesDirty();
+    this.selectZone(null);
+  }
+
+  _renderZones() {
+    this.npzLayer.destroyChildren();
+    this.npzDraftLine = null;
+    for (const zone of this.npz) {
+      const isSelected = this.selectedZone === zone;
+      const group = new Konva.Group();
+      const line = new Konva.Line({
+        points: zone.polygon.flatMap(([x, y]) => [x * this.imgWidth, y * this.imgHeight]),
+        closed: true, stroke: isSelected ? SELECTED_STROKE : NPZ_COLOR, strokeWidth: isSelected ? 3 : 2,
+        dash: [10, 6], fill: NPZ_COLOR, opacity: 0.85,
+        fillEnabled: true,
+      });
+      line.fill("rgba(220,38,38,0.14)");
+      group.add(line);
+      const c = this._centroid(zone.polygon);
+      const text = zone.previewCount != null ? `⛔ ${zone.name} · รถ ${zone.previewCount}` : `⛔ ${zone.name}`;
+      const tag = new Konva.Label({ x: c[0] * this.imgWidth, y: c[1] * this.imgHeight, listening: false });
+      tag.add(new Konva.Tag({ fill: NPZ_COLOR, opacity: 0.85, pointerDirection: "none", cornerRadius: 3 }));
+      tag.add(new Konva.Text({ text, fontSize: 12, padding: 3, fill: "#fff", fontStyle: "bold" }));
+      tag.offsetX(tag.width() / 2);
+      group.add(tag);
+      line.on("click tap", (evt) => {
+        if (this.drawMode || this.npzDrawMode) return;
+        evt.cancelBubble = true;
+        this.selectZone(zone);
+      });
+      if (isSelected && !this.npzDrawMode) {
+        zone.polygon.forEach((pt, idx) => {
+          const handle = new Konva.Circle({
+            x: pt[0] * this.imgWidth, y: pt[1] * this.imgHeight, radius: 6,
+            fill: "#fff", stroke: SELECTED_STROKE, strokeWidth: 2, draggable: true,
+          });
+          handle.on("dragmove", () => {
+            zone.polygon[idx] = [handle.x() / this.imgWidth, handle.y() / this.imgHeight];
+            line.points(zone.polygon.flatMap(([x, y]) => [x * this.imgWidth, y * this.imgHeight]));
+            const cc = this._centroid(zone.polygon);
+            tag.x(cc[0] * this.imgWidth);
+            tag.y(cc[1] * this.imgHeight);
+            this.npzLayer.batchDraw();
+          });
+          handle.on("dragend", () => this._markZonesDirty());
+          group.add(handle);
+        });
+      }
+      this.npzLayer.add(group);
+    }
+    this._renderNpzDraft();
+    this._renderZoneList();
+  }
+
+  _renderZoneList() {
+    const ul = document.getElementById("npz-list");
+    ul.innerHTML = "";
+    for (const zone of this.npz) {
+      const li = document.createElement("li");
+      if (zone === this.selectedZone) li.classList.add("selected");
+      const name = document.createElement("span");
+      name.textContent = zone.name;
+      li.appendChild(name);
+      if (zone.previewCount != null) {
+        const b = document.createElement("span");
+        b.className = "npz-badge" + (zone.previewCount ? "" : " ok");
+        b.textContent = zone.previewCount ? `รถ ${zone.previewCount} คัน` : "ว่าง";
+        b.title = "ผล Preview ภาพเดียว — ระบบจริงแจ้งเตือนเมื่อรถจอดนิ่งนานถึงเวลาที่ตั้ง";
+        li.appendChild(b);
+      }
+      li.style.cursor = "pointer";
+      li.addEventListener("click", () => this.selectZone(zone));
+      ul.appendChild(li);
+    }
+    document.getElementById("npz-count").textContent = this.npz.length;
+    document.getElementById("npz-empty").style.display = this.npz.length ? "none" : "";
+  }
+
+  // บันทึกเฉพาะเขตห้ามจอด — ไม่เรียกบันทึก Draft ของช่องจอด (ซึ่งจะทำให้ช่องหยุดใช้งานจนกว่าจะ Publish)
+  async saveZonesOnly() {
+    if (this.npzDrawMode) this.toggleNpzDrawMode();
+    this._setStatus("กำลังบันทึกเขตห้ามจอด...");
+    try {
+      await this._saveZones();
+      this.npzDirty = false;
+      this._renderAll();
+      this._setStatus(`บันทึกเขตห้ามจอดแล้ว (${this.npz.length} เขต) มีผลทันที`);
+    } catch (e) {
+      this._setStatus("บันทึกเขตห้ามจอดไม่สำเร็จ: " + e.message, true);
+    }
+  }
+
+  async _saveZones() {
+    const dwell = Number(document.getElementById("npz-dwell").value);
+    if (!Number.isInteger(dwell) || dwell < 1 || dwell > 120) throw new Error("เวลาจอดก่อนแจ้งเตือนต้องเป็น 1-120 นาที");
+    const result = await apiJson(`/api/admin/cameras/${this.cameraId}/no-parking-zones`, {
+      method: "PUT",
+      body: JSON.stringify({ dwell_min: dwell, zones: this.npz.map((z) => ({ id: z.id, name: z.name, polygon: z.polygon })) }),
+    });
+    this.npzDwell = result.dwell_min;
+    this.npzDirty = false;
+    const counts = Object.fromEntries(this.npz.map((z) => [z.id, z.previewCount]));
+    this.npz = result.zones.map((z) => ({ ...z, previewCount: counts[z.id] ?? null }));
+    this.selectZone(null);
+  }
+
+  // ---------- แถบขั้นตอน: บอกว่าตอนนี้ต้องกดปุ่มไหนต่อ ----------
+
+  _renderSteps() {
+    const steps = ["ดึงภาพล่าสุด", "วาดช่องจอด / เขตห้ามจอด", "ตรวจด้วย Preview", "Publish ใช้งานจริง"];
+    let active;
+    let hint;
+    let nextBtn = null;
+    if (this.drawMode) {
+      active = 1; hint = "คลิกมุมของช่องจอดให้ครบ 4 จุดบนภาพ (ตามเข็มหรือทวนเข็มนาฬิกา) — ระบบสร้างช่องให้เองเมื่อครบ 4 จุด";
+    } else if (this.npzDrawMode) {
+      active = 1; hint = "คลิกรอบพื้นที่ห้ามจอดกี่จุดก็ได้ แล้วกดปุ่ม \"✔ จบการวาดเขต\" · ตั้งชื่อเขตในกล่องด้านขวา";
+      nextBtn = "btn-draw-npz";
+    } else if (!this.hasSnapshot) {
+      active = 0; hint = "กดปุ่ม \"ดึงภาพล่าสุด\" เพื่อดึงภาพจากกล้องมาเป็นพื้นหลังสำหรับวาด"; nextBtn = "btn-fetch-snapshot";
+    } else if (!this.slots.length) {
+      active = 1; hint = "กดปุ่ม \"+ วาดช่องใหม่\" แล้วคลิก 4 มุมของช่องจอดบนภาพ · ช่องต่อไปใช้ \"คัดลอก\" หรือ \"ทำซ้ำ\" ได้"; nextBtn = "btn-draw";
+    } else if (this.dirty && !this.previewed) {
+      active = 2; hint = "กดปุ่ม \"Preview\" — ช่องที่มีรถต้องเป็นสีแดง ช่องว่างเป็นสีเขียว ถ้าผิดให้ขยับมุมช่องหรือปรับ Threshold"; nextBtn = "btn-preview";
+    } else if (this.dirty) {
+      active = 3; hint = "ผล Preview ถูกต้องแล้ว กดปุ่ม \"Publish\" เพื่อเริ่มใช้งานจริง (worker ใช้ผังใหม่ภายในรอบถัดไป)"; nextBtn = "btn-publish";
+    } else {
+      active = 4; hint = `ผังนี้ใช้งานจริงอยู่ (${this.slots.length} ช่อง${this.npz.length ? ` · เขตห้ามจอด ${this.npz.length} เขต` : ""}) · แก้ไขเพิ่มได้ แล้ว Preview → Publish อีกครั้ง`;
+    }
+    if (this.npzDirty && !this.npzDrawMode && !this.drawMode) {
+      hint = "แก้เขตห้ามจอดแล้ว — กดปุ่ม \"บันทึกเขตห้ามจอด\" ในกล่องด้านขวา (มีผลทันที ไม่ต้อง Publish)";
+      nextBtn = "btn-npz-save";
+      if (active >= steps.length) active = 1;
+    }
+    StepBar.render(document.getElementById("editor-steps"), steps, active, hint);
+    for (const id of ["btn-fetch-snapshot", "btn-draw", "btn-draw-npz", "btn-preview", "btn-publish", "btn-npz-save"]) {
+      document.getElementById(id).classList.toggle("btn-next", id === nextBtn);
+    }
   }
 
   _finishDrawing(points) {
@@ -181,11 +435,13 @@ class LayoutEditor {
   // ---------- render ----------
 
   _renderAll() {
+    this._renderZones();
     this.layer.destroyChildren();
     for (const slot of this.slots) this._renderSlot(slot);
     this.layer.draw();
     this._renderSlotList();
     document.getElementById("slot-count").textContent = this.slots.length;
+    this._renderSteps();
   }
 
   _renderSlot(slot) {
@@ -223,7 +479,7 @@ class LayoutEditor {
     group.add(label);
 
     line.on("click tap", (evt) => {
-      if (this.drawMode) return;
+      if (this.drawMode || this.npzDrawMode) return;
       evt.cancelBubble = true;
       this.select(slot);
     });
@@ -287,6 +543,10 @@ class LayoutEditor {
 
   select(slot) {
     this.selected = slot;
+    if (slot && this.selectedZone) {
+      this.selectedZone = null;
+      document.getElementById("npz-selected").style.display = "none";
+    }
     this._renderAll();
     document.getElementById("delete-confirm").style.display = "none";
     const card = document.getElementById("selected-slot-card");
@@ -435,8 +695,9 @@ class LayoutEditor {
       this.slots = saved.map((s) => this._toSlotState(s));
       this.selected = null;
       document.getElementById("selected-slot-card").style.display = "none";
+      await this._saveZones();
       this._renderAll();
-      this._setStatus(`บันทึก draft สำเร็จ (${saved.length} ช่อง)`);
+      this._setStatus(`บันทึก draft สำเร็จ (${saved.length} ช่อง · เขตห้ามจอด ${this.npz.length} เขต มีผลทันที)`);
       this._markUnpublished();
       return true;
     } catch (e) {
@@ -447,7 +708,10 @@ class LayoutEditor {
 
   async preview() {
     this._setStatus("กำลังตรวจจับ...");
-    const payload = { slots: this.slots.map((s) => ({ code: s.code, polygon: s.polygon, threshold: s.threshold })) };
+    const payload = {
+      slots: this.slots.map((s) => ({ code: s.code, polygon: s.polygon, threshold: s.threshold })),
+      no_parking_zones: this.npz.map((z) => ({ id: z.id, name: z.name, polygon: z.polygon })),
+    };
     try {
       const result = await apiJson(`/api/admin/cameras/${this.cameraId}/slots/preview`, {
         method: "POST",
@@ -462,6 +726,9 @@ class LayoutEditor {
       }
       this.previewDetections = result.detections || [];
       this.previewRoi = result.roi || null;
+      const zoneCounts = Object.fromEntries((result.no_parking || []).map((z) => [z.id, z.vehicles]));
+      for (const zone of this.npz) zone.previewCount = zoneCounts[zone.id] ?? null;
+      this.previewed = true;
 
       await this._refreshBackgroundImage();
       this._renderAll();
@@ -483,6 +750,8 @@ class LayoutEditor {
       text += ")";
     }
     if (this.previewRoi) text += " · ตรวจเฉพาะในกรอบ ROI";
+    const inZones = this.npz.reduce((n, z) => n + (z.previewCount || 0), 0);
+    if (this.npz.length) text += ` · ในเขตห้ามจอดตอนนี้ ${inZones} คัน`;
     document.getElementById("preview-summary").textContent = text;
     document.getElementById("preview-legend").style.display =
       this.previewDetections.length || this.previewRoi ? "" : "none";
@@ -491,6 +760,8 @@ class LayoutEditor {
   _clearPreview() {
     this.previewDetections = [];
     this.previewRoi = null;
+    this.previewed = false;
+    for (const zone of this.npz) zone.previewCount = null;
     for (const slot of this.slots) {
       slot.previewState = null;
       slot.previewScore = null;
@@ -568,12 +839,23 @@ class LayoutEditor {
     }
   }
 
+  // เขตห้ามจอดแก้แล้วยังไม่บันทึก (ไม่เกี่ยวกับ Publish ของช่องจอด)
+  _markZonesDirty() {
+    this.npzDirty = true;
+    if (this.layer) this._renderSteps();
+  }
+
   _markUnpublished() {
     document.getElementById("unpublished-banner").style.display = "block";
+    if (!this.dirty) this.previewed = false;  // เริ่มแก้รอบใหม่ → ต้อง Preview ใหม่
+    this.dirty = true;
+    if (this.layer) this._renderSteps();
   }
 
   _clearUnpublished() {
     document.getElementById("unpublished-banner").style.display = "none";
+    this.dirty = false;
+    this.previewed = false;
   }
 
   async fetchFreshSnapshot() {
@@ -597,6 +879,20 @@ class LayoutEditor {
 
   _wireButtons() {
     document.getElementById("btn-draw").addEventListener("click", () => this.toggleDrawMode());
+    document.getElementById("btn-draw-npz").addEventListener("click", () => this.toggleNpzDrawMode());
+    document.getElementById("btn-npz-delete").addEventListener("click", () => this.deleteSelectedZone());
+    document.getElementById("btn-npz-save").addEventListener("click", () => this.saveZonesOnly());
+    document.getElementById("npz-name").addEventListener("input", (e) => {
+      if (!this.selectedZone) return;
+      this.selectedZone.name = e.target.value.slice(0, 50);
+      this._markZonesDirty();
+      this._renderZones();
+      this.npzLayer.draw();
+    });
+    document.getElementById("npz-dwell").addEventListener("change", () => this._markZonesDirty());
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && this.npzDrawMode) this.toggleNpzDrawMode(true);
+    });
     document.getElementById("btn-save").addEventListener("click", () => this.saveDraft());
     document.getElementById("btn-preview").addEventListener("click", () => this.preview());
     document.getElementById("btn-publish").addEventListener("click", () => this.publish());

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from core.app_settings import LOGO_TYPES, cached_display, logo_dir
 from core.config import local_utc_offset_hours
+from core.count_scope import counted_slots
 from core.counting import SlotInfo, ZoneInfo, build_public_summary, build_slot_maps
 from core.db import get_db
 from core.models import Camera, Site, Slot, SlotState, Zone, ZoneStatHour
@@ -179,7 +180,8 @@ def get_public_summary(request: Request, site: str | None = None, db: Session = 
 
 
 def _public_sites(db: Session) -> list[Site]:
-    return list(db.scalars(select(Site).where(Site.is_public.is_(True)).order_by(Site.sort_order, Site.id)).all())
+    # สถานที่ "ไม่นับรวม" (ทดสอบ) ไม่แสดงในหน้าสาธารณะ
+    return list(db.scalars(select(Site).where(Site.is_public.is_(True), Site.counted.is_not(False)).order_by(Site.sort_order, Site.id)).all())
 
 
 def _build_summary(db: Session, site: Site, site_count: int) -> dict:
@@ -202,7 +204,7 @@ def _build_summary(db: Session, site: Site, site_count: int) -> dict:
     rows = db.execute(
         select(Slot.zone_id, Slot.code, Slot.type, Slot.is_active, Slot.layout_status, SlotState.state)
         .outerjoin(SlotState, SlotState.slot_id == Slot.id)
-        .where(Slot.zone_id.in_([z.id for z in zones] or [-1]))
+        .where(Slot.zone_id.in_([z.id for z in zones] or [-1]), counted_slots(db))
     ).all()
     slot_infos = [
         SlotInfo(

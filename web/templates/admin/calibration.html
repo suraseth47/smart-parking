@@ -4,6 +4,7 @@
 <script src="/static/js/vendor/konva.min.js"></script>
 {% endblock %}
 {% block content %}
+<div id="calib-steps"></div>
 <div class="card" style="margin-bottom:0.75rem;">
   <div class="toolbar" style="margin-bottom:0.5rem;">
     <label><input type="radio" name="method" value="observation" id="method-observation" checked> โหมด A: สังเกตรถจอดจริง</label>
@@ -16,13 +17,13 @@
       <label class="muted" style="margin:0;">กล้อง</label>
       <select id="camera-select"></select>
       <label class="muted" style="margin:0;">ระยะเวลา (ชม. 24-72)</label>
-      <input type="number" id="duration-hours" value="48" min="24" max="72" style="width:70px;">
+      <input type="number" id="duration-hours" value="48" min="24" max="72" style="width:76px;">
       <label class="muted" style="margin:0;">ความถี่ (นาที)</label>
-      <input type="number" id="interval-minutes" value="5" min="1" style="width:60px;">
+      <input type="number" id="interval-minutes" value="5" min="1" style="width:68px;">
       <label class="muted" style="margin:0;">ช่วงเวลาที่สนใจ</label>
-      <input type="number" id="hour-start" value="0" min="0" max="23" style="width:50px;" title="ชั่วโมงเริ่ม">
+      <input type="number" id="hour-start" value="0" min="0" max="23" style="width:68px;" title="ชั่วโมงเริ่ม">
       <span class="muted">-</span>
-      <input type="number" id="hour-end" value="24" min="1" max="24" style="width:50px;" title="ชั่วโมงจบ">
+      <input type="number" id="hour-end" value="24" min="1" max="24" style="width:68px;" title="ชั่วโมงจบ">
       <button id="btn-start-job">เริ่ม job</button>
     </div>
     <p class="muted" id="start-status"></p>
@@ -110,5 +111,5 @@
   </div>
 </div>
 
-<script src="/static/js/calibration.js"></script>
+<script src="/static/js/calibration.js?v=20261103"></script>
 {% endblock %}

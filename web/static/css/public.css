@@ -420,3 +420,19 @@ h1, h2 { margin: 0; }
   border: 1px solid rgba(96, 150, 255, 0.35);
 }
 .admin-back:active { background: rgba(96, 150, 255, 0.26); }
+
+/* ลานเต็ม → ลานอื่นที่ยังว่าง (ระยะทางจากลานนี้ + ปุ่มแผนที่นำทาง) */
+.alt-list { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 440px; margin-top: 4px; }
+.alt-site { display: flex; align-items: stretch; gap: 8px; width: 100%; padding: 8px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); }
+.alt-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; padding: 6px 8px; border: 0; border-radius: 10px; background: none;
+  color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.alt-main:hover, .alt-main:focus-visible { background: var(--surface-2); }
+.alt-top { display: flex; align-items: baseline; gap: 10px; }
+.alt-name { flex: 1; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.alt-free { color: var(--free); font-weight: 700; white-space: nowrap; }
+.alt-dist { color: var(--text-2); font-size: 0.85rem; }
+.alt-nav { flex: 0 0 auto; display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 78px;
+  padding: 6px 10px; border-radius: 10px; background: rgba(96, 165, 250, 0.14); color: var(--acc); font-size: 0.78rem; font-weight: 700; text-decoration: none; text-align: center; }
+.alt-nav .icon { width: 20px; height: 20px; }
+.alt-nav:hover, .alt-nav:focus-visible { background: rgba(96, 165, 250, 0.25); }
+.alt-note { font-size: 0.75rem; color: var(--muted); }

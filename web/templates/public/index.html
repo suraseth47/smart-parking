@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0b1120">
   <title>ที่จอดรถว่าง - Smart Parking</title>
-  <link rel="stylesheet" href="/static/css/public.css?v=20261030a">
+  <link rel="stylesheet" href="/static/css/public.css?v=20261103b">
   <script defer src="/static/js/vendor/alpine.min.js"></script>
 </head>
 <body>
@@ -112,7 +112,27 @@
         </div>
         <div class="full-title" x-text="t('fullTitle')"></div>
         <div class="full-sub" x-text="t('free') + ' 0 ' + t('of') + ' ' + total.capacity + ' ' + t('slots')"></div>
-        <div class="full-text" x-text="t('fullText')"></div>
+        <div class="full-text" x-text="alternatives.length ? t('fullTryOther') : t('fullText')"></div>
+        <!-- ลานอื่นที่ยังว่าง (เรียงตามระยะทางถ้าผู้ใช้กด "ใกล้ฉัน" ไว้ ไม่งั้นเรียงตามจำนวนช่องว่าง) -->
+        <div class="alt-list" x-show="alternatives.length">
+          <template x-for="a in alternatives" :key="a.code">
+            <div class="alt-site">
+              <button type="button" class="alt-main" @click="openSite(a.code)" :aria-label="siteName(a) + ' ' + t('stFree') + ' ' + a.free + ' ' + t('slots')">
+                <span class="alt-top">
+                  <span class="alt-name" x-text="siteName(a)"></span>
+                  <span class="alt-free" x-text="t('stFree') + ' ' + a.free + ' ' + t('slots')"></span>
+                </span>
+                <!-- ระยะทางจากลานที่เต็ม (ลานนี้) ไปลานที่แนะนำ — เส้นตรงโดยประมาณ -->
+                <span class="alt-dist" x-show="altKm(a) !== null" x-text="altDistText(a)"></span>
+              </button>
+              <a class="alt-nav" x-show="show.directions && altMapUrl(a)" :href="altMapUrl(a)" target="_blank" rel="noopener noreferrer">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l18-8-8 18-2-8z"/></svg>
+                <span x-text="t('altNav')"></span>
+              </a>
+            </div>
+          </template>
+          <div class="alt-note" x-show="alternatives.some((a) => altKm(a) !== null)" x-text="t('altNote')"></div>
+        </div>
       </section>
 
       <!-- วงแหวนสรุปยอด -->
@@ -331,6 +351,10 @@
         staleText: "ระบบไม่ได้รับภาพจากกล้องชั่วคราว ข้อมูลล่าสุดเมื่อ",
         fullTitle: "ที่จอดเต็มแล้ว",
         fullText: "กรุณารอสักครู่ แล้วลองตรวจสอบอีกครั้ง",
+        fullTryOther: "แนะนำลานจอดที่ยังว่าง",
+        altFrom: "ห่างจากลานนี้ประมาณ",
+        altNav: "แผนที่นำทาง",
+        altNote: "ระยะทางเป็นเส้นตรงโดยประมาณ ระยะขับรถจริงดูได้ในแผนที่นำทาง",
         availableSlots: "มีช่องจอดรถว่างตำแหน่ง",
         noAvailableSlots: "ไม่มีช่องว่าง",
         viewMap: "ดูผังช่องจอด",
@@ -392,6 +416,10 @@
         staleText: "Camera feed temporarily unavailable. Last update at",
         fullTitle: "Parking is full",
         fullText: "Please wait a moment and check again",
+        fullTryOther: "Try these parking sites instead",
+        altFrom: "About",
+        altNav: "Directions",
+        altNote: "Straight-line distance from this site. Open Directions for the driving route.",
         availableSlots: "Available slots:",
         noAvailableSlots: "No available slots",
         viewMap: "View parking map",
@@ -470,7 +498,11 @@
           await this.fetchSites();
           this.route();
           window.addEventListener("popstate", () => this.route());
-          setInterval(() => (this.view === "sites" ? this.fetchSites() : this.fetchSummary()), 30000);
+          setInterval(() => {
+            if (this.view === "sites") return this.fetchSites();
+            this.fetchSummary();
+            if (this.isFull && this.multiSite) this.fetchSites();  // ลานนี้เต็ม → อัปเดตลานอื่นที่แนะนำ
+          }, 30000);
           setInterval(() => this.fetchPeak(), 600000);
         },
 
@@ -658,6 +690,44 @@
             }
           }
           return { occupied, locked, unknown };
+        },
+
+        // ลานจอดเต็ม → แนะนำลานอื่นที่ยังว่าง สูงสุด 3 แห่ง (ไม่แสดงภาพกล้อง — PDPA)
+        // เรียงตามระยะทางจากลานที่เต็ม (ใกล้สุดก่อน) · ลานที่ไม่มีพิกัดไว้ท้าย เรียงตามช่องว่างมากสุด
+        get alternatives() {
+          if (!this.multiSite) return [];
+          const list = this.sites.filter((s) => s.code !== this.siteCode && s.status === "ok" && s.free > 0);
+          const d = (s) => this.altKm(s) ?? Infinity;
+          return list.sort((a, b) => d(a) - d(b) || b.free - a.free).slice(0, 3);
+        },
+
+        get currentSiteInfo() { return this.sites.find((s) => s.code === this.siteCode) || null; },
+
+        // ระยะทางเส้นตรง (กม.) จากลานที่เต็มไปลานที่แนะนำ — คำนวณในเครื่อง ไม่ส่งตำแหน่งไปไหน
+        altKm(a) {
+          const here = this.currentSiteInfo;
+          if (!here || here.latitude === null || here.longitude === null || a.latitude === null || a.longitude === null) return null;
+          const rad = (x) => (x * Math.PI) / 180;
+          const dLat = rad(a.latitude - here.latitude);
+          const dLon = rad(a.longitude - here.longitude);
+          const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(here.latitude)) * Math.cos(rad(a.latitude)) * Math.sin(dLon / 2) ** 2;
+          return 6371 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+        },
+
+        altDistText(a) {
+          const km = this.altKm(a);
+          if (km === null) return "";
+          const text = km < 1 ? (Math.round(km * 1000 / 10) * 10) + (this.lang === "th" ? " เมตร" : " m") : km.toFixed(1) + (this.lang === "th" ? " กม." : " km");
+          return this.t("altFrom") + " " + text;
+        },
+
+        // แผนที่นำทางจากลานที่เต็มไปลานที่แนะนำ (Google Maps เปิดได้ทั้งแอปมือถือและเว็บ ไม่ต้องใช้ API key)
+        altMapUrl(a) {
+          if (a.latitude === null || a.longitude === null) return null;
+          const dest = `${a.latitude.toFixed(6)},${a.longitude.toFixed(6)}`;
+          const here = this.currentSiteInfo;
+          const origin = here && here.latitude !== null && here.longitude !== null ? `&origin=${here.latitude.toFixed(6)},${here.longitude.toFixed(6)}` : "";
+          return `https://www.google.com/maps/dir/?api=1${origin}&destination=${dest}&travelmode=driving`;
         },
 
         get isFull() {

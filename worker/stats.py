@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from core.count_scope import counted_slots
 from core.models import (
     LayoutStatus,
     OccupancyState,
@@ -48,6 +49,7 @@ def maybe_prune_old_stats(db: Session, now: datetime) -> None:
 def record_minute_stats(db: Session, minute_ts: datetime) -> None:
     """บันทึกสรุปต่อโซน ณ นาทีนี้ (FR-36) แล้วอัปเดตยอดรวมรายชั่วโมงของชั่วโมงนั้น (FR-37)"""
     zones = db.scalars(select(Zone)).all()
+    scope = counted_slots(db)  # ไม่นับกล้อง/สถานที่ทดสอบ (ตั้งค่าระบบ → การนับช่องจอด)
 
     for zone in zones:
         states = db.scalars(
@@ -57,6 +59,7 @@ def record_minute_stats(db: Session, minute_ts: datetime) -> None:
                 Slot.zone_id == zone.id,
                 Slot.layout_status == LayoutStatus.PUBLISHED,
                 Slot.is_active.is_(True),
+                scope,
             )
         ).all()
 

@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from core import server_stats
-from core.config import get_settings
+from core.config import get_detector_model_path, get_settings
 from core.db import get_db
 from core.models import Alert, AuditLog, Camera
 from web.deps import CurrentUser, get_current_user, require_permission, verify_csrf
@@ -89,7 +89,7 @@ def _visible_alerts(db: Session, user: CurrentUser, alerts: list[Alert]) -> list
 def _alert_out(alert: Alert) -> dict:
     parts = alert.source.split(":")
     camera_id = int(parts[1]) if len(parts) == 3 and parts[0] == "camera" and parts[1].isdigit() else None
-    kind = parts[2] if camera_id is not None and parts[2] in ("connection", "moved") else "other"
+    kind = parts[2] if camera_id is not None and parts[2] in ("connection", "moved", "no_parking") else "other"
     data = AlertOut.model_validate(alert).model_dump()
     data.update(level=getattr(alert.level, "value", alert.level), kind=kind, camera_id=camera_id)
     return data
@@ -137,7 +137,7 @@ def get_server_stats(db: Session = Depends(get_db), _user: CurrentUser = Depends
             "ai": server_stats.ai_level(ai_load),
         },
         "ai": {
-            "model": get_settings().detector_model,
+            "model": get_detector_model_path().name,  # โมเดลที่ใช้จริง (กรณีไม่มีไฟล์ จะเป็นตัวสำรอง)
             "cameras": len(cameras),
             "infer_ms_avg": round(sum(infer) / len(infer)) if infer else None,
             "infer_ms_max": round(max(infer)) if infer else None,

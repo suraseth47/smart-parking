@@ -39,6 +39,10 @@ from worker.detector import OnnxYoloxDetector
 from worker.vehicle_boxes import camera_roi, detect_vehicle_footprints
 from core.app_settings import load_health
 from worker.health import detect_camera_moved, is_health_check_due, raise_alert, resolve_alerts
+from worker.no_parking import clear_no_parking, process_no_parking
+from core.alert_mail import process_alert_mail
+from core.mailer import send_email
+from web.mail_config import get_invite_base_url, get_smtp
 from worker.stats import maybe_prune_old_stats, maybe_record_minute_stats
 from worker.slot_memory import (
     FREE_CONFIRM_ROUNDS,
@@ -85,6 +89,8 @@ def run_cycle(detector: OnnxYoloxDetector) -> None:
         maybe_prune_old_stats(db, now)  # FR-39, FR-10
         _process_calib_jobs(db, detector, now)  # FR-28
         _maybe_backup(now)  # NFR-7: สำรองฐานข้อมูลทุกวัน (ไม่ต้องตั้ง cron บนเครื่อง host)
+        db.commit()  # แจ้งเตือนของรอบนี้ต้องอยู่ใน DB ก่อนส่งอีเมล
+        _maybe_send_alert_mail(db, now)  # อีเมลแจ้งเตือนผู้ดูแล (ตั้งค่าระบบ → อีเมลและลิงก์คำเชิญ)
         maybe_prune_old_calib_jobs(db, now)  # FR-29f
         db.commit()
     finally:
@@ -92,6 +98,24 @@ def run_cycle(detector: OnnxYoloxDetector) -> None:
 
 
 _last_backup_check: datetime | None = None
+_last_alert_mail_check: datetime | None = None
+
+
+def _maybe_send_alert_mail(db: Session, now: datetime) -> None:
+    """ตรวจทุก 1 นาทีว่ามีแจ้งเตือนที่ต้องส่งอีเมลไหม (ส่งไม่ได้ก็ไม่ทำให้ worker หยุด)"""
+    global _last_alert_mail_check
+    if _last_alert_mail_check is not None and (now - _last_alert_mail_check).total_seconds() < 60:
+        return
+    _last_alert_mail_check = now
+    try:
+        smtp = get_smtp(db)
+        base = get_invite_base_url(db)
+        link = f"{base.rstrip('/')}/admin/alerts" if base else None
+        result = process_alert_mail(db, now, lambda to, content: send_email(smtp, to, content), link)
+        if result.get("sent") or result.get("reason") == "error":
+            print(f"[alert-mail] {result}", flush=True)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[alert-mail] ผิดพลาด: {exc}", flush=True)
 
 
 def _maybe_backup(now: datetime) -> None:
@@ -129,6 +153,7 @@ def process_camera(db: Session, camera: Camera, detector: OnnxYoloxDetector) -> 
         camera.last_error = str(exc)
         raise_alert(db, AlertLevel.ERROR, connection_alert_source, f"กล้อง {camera.name} ขาดการเชื่อมต่อ: {exc}")
         _mark_camera_slots_unknown(db, camera)
+        clear_no_parking(db, camera)
         db.commit()
         return
 
@@ -165,6 +190,7 @@ def process_camera(db: Session, camera: Camera, detector: OnnxYoloxDetector) -> 
     if camera.status == CameraStatus.MOVED:
         # ช่องของกล้องที่ถูกขยับเชื่อถือไม่ได้จนกว่าจะเช็คยืนยันว่ากลับมาปกติ (FR-9)
         _mark_camera_slots_unknown(db, camera)
+        clear_no_parking(db, camera)
         db.commit()
         return
 
@@ -176,7 +202,9 @@ def process_camera(db: Session, camera: Camera, detector: OnnxYoloxDetector) -> 
         )
     ).all()
 
-    roi = camera_roi([slot.polygon for slot in slots], camera.roi_auto_margin)
+    # ROI ต้องครอบเขตห้ามจอดด้วย ไม่งั้น AI ไม่เห็นรถที่จอดขวางทางวิ่งนอกแถวช่องจอด
+    zone_polygons = [z.get("polygon") or [] for z in (camera.no_parking_zones or []) if isinstance(z, dict)]
+    roi = camera_roi([slot.polygon for slot in slots] + zone_polygons, camera.roi_auto_margin)
     infer_start = time.perf_counter()
     footprints = detect_vehicle_footprints(detector, frame, camera.large_object_min_area, roi, camera.nms_threshold)
     camera.last_infer_ms = (time.perf_counter() - infer_start) * 1000
@@ -185,6 +213,7 @@ def process_camera(db: Session, camera: Camera, detector: OnnxYoloxDetector) -> 
     for slot in slots:
         _update_slot_state(db, slot, footprints, now, memory_frame)
 
+    process_no_parking(db, camera, footprints, now)  # รถจอดซ้อนคัน / ขวางทางวิ่ง
     db.commit()
 
 

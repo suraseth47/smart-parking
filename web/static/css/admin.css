@@ -795,10 +795,102 @@ button .btn-icon { margin-right: 0.35rem; vertical-align: -3px; }
 .srv-track { height: 8px; border-radius: 999px; background: #e4e8f0; overflow: hidden; margin: 0.25rem 0; }
 .srv-row-detail { font-size: 0.76rem; color: var(--color-muted); }
 .srv-note { font-size: 0.74rem; color: var(--color-muted); margin: 0.3rem 0 0; line-height: 1.5; }
-@media (max-width: 1280px) { .srv-m[data-k="temp"] .srv-bar, .srv-m[data-k="disk"] .srv-bar { display: none; } }
+@media (max-width: 1280px) { .srv-m[data-k="temp"] .srv-bar, .srv-m[data-k="disk"] .srv-bar, .srv-m[data-k="ai"] .srv-bar { display: none; } }
 @media (max-width: 960px) { .srv-m[data-k="disk"], .srv-m[data-k="temp"] { display: none; } }
 @media (max-width: 640px) { .srv-m { display: none !important; } .srv-dot { display: inline-block; } .srv-btn { padding: 0.55rem; } }
 /* หัวเว็บ: เมื่อมีแถบสถานะ Server ให้ชื่อหน้าแสดงเต็มเสมอ และซ่อนชื่อระบบเมื่อจอไม่กว้างพอ */
 .main-header .main-title { flex-shrink: 0; }
 @media (max-width: 1700px) { body.has-srv .system-title { display: none; } }
 @media (max-width: 640px) { .srv-panel { position: fixed; left: 8px; right: 8px; top: 60px; width: auto; } }
+
+/* ช่องวันที่ วว/ดด/ปปปป (static/js/datefield.js) — ซ่อนช่องวันที่ของเบราว์เซอร์ไว้ใต้ปุ่มปฏิทิน */
+.ddmm-field { position: relative; display: block; }
+.ddmm-field .ddmm-text { padding-right: 2.6rem; font-variant-numeric: tabular-nums; }
+.ddmm-field .ddmm-text.invalid { border-color: var(--color-danger); box-shadow: 0 0 0 3px var(--color-danger-soft); }
+.ddmm-field .ddmm-btn {
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  width: 34px; height: 32px; min-height: 0; padding: 0; display: grid; place-items: center;
+  border: 0; border-radius: 6px; background: transparent; color: var(--color-muted); cursor: pointer;
+}
+.ddmm-field .ddmm-btn:hover { background: var(--color-primary-soft); color: var(--color-primary); border: 0; }
+.ddmm-field .ddmm-btn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.ddmm-field .ddmm-native {
+  position: absolute; right: 0; bottom: 0; width: 1px !important; height: 1px; padding: 0; border: 0;
+  opacity: 0; pointer-events: none;
+}
+
+/* ---------- แถบขั้นตอน ① ② ③ (StepBar — web/static/js/steps.js) ---------- */
+.stepbar { margin: 0 0 1rem; }
+.steps { list-style: none; margin: 0; padding: 0; display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap; }
+.step { display: inline-flex; align-items: center; gap: 0.5rem; color: var(--color-muted); font-size: 0.92rem; }
+.step-num {
+  flex: 0 0 auto; width: 28px; height: 28px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  background: #eef1f6; color: var(--color-muted); font-weight: 700; font-size: 0.85rem;
+}
+.step.active { color: var(--color-text); font-weight: 700; }
+.step.active .step-num { background: var(--color-primary); color: #fff; box-shadow: 0 0 0 4px var(--color-primary-soft); }
+.step.done { color: var(--color-text); }
+.step.done .step-num { background: var(--color-success-soft); color: var(--color-success); }
+.step-sep { color: #b8c0cf; padding: 0 0.35rem; font-size: 1.1rem; }
+.step-hint {
+  margin-top: 0.6rem; padding: 0.5rem 0.75rem; border-radius: 8px; font-size: 0.9rem;
+  background: var(--color-primary-soft); color: var(--color-primary-dark);
+}
+.step-hint.is-done { background: var(--color-success-soft); color: var(--color-success); }
+/* ปุ่มที่ต้องกดต่อ (ขั้นปัจจุบัน) */
+.btn-next { box-shadow: 0 0 0 3px rgba(47, 107, 236, 0.35); animation: btn-next-pulse 1.6s ease-in-out infinite; }
+@keyframes btn-next-pulse { 50% { box-shadow: 0 0 0 6px rgba(47, 107, 236, 0.12); } }
+@media (prefers-reduced-motion: reduce) { .btn-next { animation: none; } }
+@media (max-width: 640px) {
+  .steps { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; }
+  .step:not(.active) .step-label { display: none; }  /* จอเล็ก: แสดงชื่อเฉพาะขั้นปัจจุบัน */
+  .step-sep { padding: 0 0.15rem; }
+}
+
+/* เขตห้ามจอด (หน้ากำหนดช่องจอด / สถานะสด) */
+.npz-btn { color: #b91c1c; border-color: #fca5a5; }
+.npz-btn.is-drawing { background: #fef2f2; }
+.npz-card { border-color: #fecaca; }
+.npz-badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 0.8rem; font-weight: 700; background: #fee2e2; color: #b91c1c; }
+.npz-badge.ok { background: var(--color-success-soft); color: var(--color-success); }
+.step-hint { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.75rem; }
+.step-action { font-weight: 700; white-space: nowrap; }
+.setup-guide { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 12px; padding: 0.75rem 1rem; }
+.setup-guide-title { font-size: 0.78rem; font-weight: 700; color: var(--color-muted); letter-spacing: 0.02em; margin-bottom: 0.5rem; }
+
+/* หัวเว็บแคบ (โน้ตบุ๊ก/แท็บเล็ต): ปุ่มหัวเว็บเหลือแต่ไอคอน + แถบสถานะ Server เหลือแต่ตัวเลข กันหัวเว็บล้นจอ */
+@media (max-width: 1500px) {
+  .main-header .link-btn > span:not(.bell-count) { display: none; }
+  .main-header .link-btn { padding-left: 0.55rem; padding-right: 0.55rem; }
+}
+@media (max-width: 1180px) { .srv-m[data-k="disk"], .srv-m[data-k="temp"] { display: none; } }
+
+/* แถบเครื่องมือหน้าเฝ้าดู (admin/_page_tools.html) */
+.page-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; margin-bottom: 1rem; }
+.page-tools svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.page-tools button { display: inline-flex; align-items: center; gap: 0.4rem; }
+.pt-auto { color: var(--color-danger); font-weight: 700; }
+.pt-updated { color: var(--color-muted); font-size: 0.9rem; }
+.pt-link { background: none; border: 0; color: var(--color-text); padding: 0.25rem 0.35rem; min-height: 0; }
+.pt-link:hover { color: var(--color-primary); background: none; }
+.pt-msg { font-size: 0.85rem; color: var(--color-success); }
+.pt-msg.bad { color: var(--color-danger); }
+.pt-gap { flex: 1 1 auto; }
+@media (max-width: 640px) {
+  .page-tools button.btn-secondary, .page-tools .pt-primary { flex: 1 1 auto; justify-content: center; }
+  .pt-gap { display: none; }
+}
+
+/* ตั้งค่าระบบ → การนับช่องจอด */
+.count-scope { display: flex; flex-direction: column; gap: 0.75rem; }
+.count-site { border: 1px solid var(--color-border); border-radius: 10px; padding: 0.5rem 0.75rem; }
+.count-row { display: flex; align-items: center; gap: 0.6rem; margin: 0; padding: 0.35rem 0; cursor: pointer; font-weight: 400; }
+.count-row input { width: auto; margin: 0; flex: 0 0 auto; }
+.count-site-row { font-weight: 700; }
+.count-cam-row { padding-left: 1.9rem; border-top: 1px dashed var(--color-border); }
+.count-name { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.count-row.off .count-name, .count-site.off .count-cam-row .count-name { color: var(--color-muted); text-decoration: line-through; }
+.x-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }  /* ตารางกว้างบนแท็บเล็ต: เลื่อนในกรอบ ไม่ล้นจอ */
+.check-line { display: flex; align-items: center; gap: 0.5rem; margin: 0.35rem 0; font-weight: 400; cursor: pointer; } .check-line input { width: auto; margin: 0; }
+/* แถบตัวกรองที่สูง (เช่น ประวัติการใช้งาน) ติดด้านบนเฉพาะจอกว้าง — มือถือไม่ติด จะได้ไม่บังรายการ */
+@media (max-width: 720px) { .sticky-desktop { position: static; margin: 0 0 1rem; padding: 0; } }

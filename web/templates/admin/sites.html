@@ -1,8 +1,9 @@
 {% extends "admin/base.html" %}
-{% from "admin/_export_buttons.html" import export_buttons %}
+{% from "admin/_page_tools.html" import page_tools %}
 {% block title %}ภาพรวมทุกสถานที่{% endblock %}
 {% block content %}
 <div x-data="sitesPage()" x-init="init()">
+  {{ page_tools("30 วินาที", id="tools", excel=True) }}
   <template x-if="ready">
   <div>
     <div class="card" style="margin-bottom:1rem; display:flex; flex-wrap:wrap; gap:0.75rem; align-items:center; justify-content:space-between;">
@@ -36,7 +37,6 @@
 
     <div class="card-head" x-show="sites.length" style="margin-bottom:0.75rem;">
       <span class="muted" x-text="'สถานที่ ' + sites.length + ' แห่ง'"></span>
-      {{ export_buttons() }}
     </div>
 
     <div class="card" x-show="!sites.length">
@@ -53,6 +53,7 @@
               <div class="sub-text" x-show="s.address" x-text="s.address"></div>
             </div>
             <span class="state-tag" :class="s.is_public ? 'active' : 'inactive'" x-text="s.is_public ? 'แสดงหน้าสาธารณะ' : 'ซ่อน'"></span>
+            <a class="state-tag inactive" x-show="s.counted === false" href="/admin/settings#counting" title="ตั้งค่าระบบ → การนับช่องจอด">ไม่นับรวม (ทดสอบ)</a>
           </div>
 
           <div class="site-numbers">
@@ -157,6 +158,17 @@
         if (!user) return;
         this.isAdmin = user.role === "admin";
         this.perms = user.permissions || [];
+        ExportKit.bindTools(document.getElementById("tools"), {
+          refresh: () => this.load(), lineText: () => this.lineText(), spec: () => this.exportSpec(),
+          card: () => this.statusCard(),
+          imageSpec: () => ({
+            title: "สถานะทุกสถานที่จอดรถ", filename: "sites-status",
+            columns: ["สถานที่", "ว่าง", "มีรถจอด", "ไม่ทราบ", "ทั้งหมด", "ใช้งาน", "กล้องมีปัญหา", "แจ้งเตือน"],
+            rows: this.sites.map((s) => [s.name_th, s.free, s.occupied, s.unknown, s.capacity, s.occupancy_pct != null ? s.occupancy_pct + "%" : "-",
+                                         (s.cameras.offline || 0) + (s.cameras.moved || 0), s.open_alerts]),
+            meta: this.sites.length > 1 ? [`รวมว่าง ${this.sum("free")} จาก ${this.sum("capacity")} ช่อง`] : [],
+          }),
+        });
         await this.load();
         this.ready = true;
         setInterval(() => this.load(), 30000);
@@ -165,11 +177,59 @@
         try {
           this.sites = await apiJson("/api/admin/sites");
           this.pageError = "";
+          ExportKit.markUpdated(document.getElementById("tools"));
         } catch (e) {
           this.pageError = "โหลดข้อมูลสถานที่ไม่สำเร็จ: " + e.message;
         }
       },
-      async doExport(kind) {
+      // ข้อความสรุปวางใน LINE: ยอดว่างของทุกสถานที่
+      lineText() {
+        const lines = [`🅿️ สถานะลานจอดรถ — ${ExportKit.thaiNow()}`];
+        for (const s of this.sites.filter((x) => x.counted !== false)) {
+          const notes = [];
+          if (s.unknown) notes.push(`ไม่ทราบ ${s.unknown}`);
+          const bad = (s.cameras.offline || 0) + (s.cameras.moved || 0);
+          if (bad) notes.push(`กล้องมีปัญหา ${bad}`);
+          if (s.open_alerts) notes.push(`แจ้งเตือน ${s.open_alerts}`);
+          const status = !s.capacity ? "⚪ ยังไม่มีช่องจอด" : s.free === 0 ? `🔴 เต็ม (${s.capacity} ช่อง)` : `🟢 ว่าง ${s.free}/${s.capacity} ช่อง`;
+          lines.push(`• ${s.name_th}: ${status}${notes.length ? " (" + notes.join(", ") + ")" : ""}`);
+        }
+        if (this.sites.length > 1) lines.push(`รวมว่าง ${this.sum("free")} จาก ${this.sum("capacity")} ช่อง`);
+        return lines.join("\n");
+      },
+      // ภาพสรุปสถานะทุกสถานที่ (ปุ่ม คัดลอก (วางใน LINE) / บันทึกรูป)
+      statusCard() {
+        const list = this.sites.filter((s) => s.counted !== false);
+        const cap = this.sum("capacity"), free = this.sum("free");
+        const cams = list.reduce((n, s) => n + s.camera_count, 0);
+        const badCams = list.reduce((n, s) => n + (s.cameras.offline || 0) + (s.cameras.moved || 0), 0);
+        const watch = [];
+        for (const s of list) {
+          const parts = [];
+          if (s.capacity && s.free === 0) parts.push("เต็ม");
+          const bad = (s.cameras.offline || 0) + (s.cameras.moved || 0);
+          if (bad) parts.push(`กล้องมีปัญหา ${bad}`);
+          else if (s.open_alerts) parts.push(`แจ้งเตือน ${s.open_alerts}`);
+          if (parts.length) watch.push({ left: s.name_th, right: parts.join(" · "), tone: bad || (s.capacity && s.free === 0) ? "red" : "amber" });
+        }
+        return {
+          filename: "sites-status",
+          subtitle: "ภาพรวมสถานะลานจอดรถทุกสถานที่",
+          hero: { label: "ช่องจอดทั้งหมด", value: cap, unit: "ช่อง", ratio: cap ? free / cap : 0,
+                  ratioText: cap ? (free ? `ว่าง ${Math.round((free * 100) / cap)}%` : "เต็มทุกสถานที่") : "ยังไม่มีช่องจอด", tone: "blue",
+                  barColor: free ? "#16a34a" : "#dc2626" },
+          pair: [{ label: "ว่าง", value: free, unit: "ช่อง", tone: "green" }, { label: "มีรถจอด", value: this.sum("occupied"), unit: "ช่อง", tone: "red" }],
+          info: `สถานที่ ${list.length} แห่ง · กล้อง ${cams} ตัว` + (badCams ? ` (มีปัญหา ${badCams})` : "") + (this.sum("unknown") ? ` · ไม่ทราบ ${this.sum("unknown")} ช่อง` : ""),
+          panel: { title: "สถานที่ที่ต้องดูแล", rows: watch.slice(0, 8), empty: "ทุกสถานที่ปกติ" },
+          barsTitle: "ช่องว่างแต่ละสถานที่",
+          bars: list.map((s) => ({
+            name: s.name_th, free: s.free, capacity: s.capacity,
+            tag: !s.capacity ? "ยังไม่มีช่องจอด" : s.free === 0 ? `เต็ม (${s.capacity} ช่อง)` : `ว่าง ${s.free} / ${s.capacity}`,
+            tone: !s.capacity ? "gray" : s.free === 0 ? "red" : "green",
+          })),
+        };
+      },
+      exportSpec() {
         const columns = ["รหัส", "ชื่อสถานที่", "ที่อยู่", "เวลาให้บริการ", "พิกัด", "ช่องทั้งหมด", "ว่าง", "มีรถจอด", "ไม่ทราบ",
                          "อัตราใช้งาน (%)", "โซน", "โซนที่ปิด", "กล้อง online", "กล้องมีปัญหา", "กล้องปิดใช้งาน", "แจ้งเตือนค้าง", "หน้าสาธารณะ"];
         const rows = this.sites.map((s) => [
@@ -178,10 +238,14 @@
           s.cameras.online || 0, (s.cameras.offline || 0) + (s.cameras.moved || 0), s.cameras.disabled || 0, s.open_alerts,
           s.is_public ? "แสดง" : "ซ่อน",
         ]);
-        try { this.pageError = ""; await ExportKit.run(kind, { title: "สถานะทุกสถานที่จอดรถ", filename: "sites-status", columns, rows }); }
+        return { title: "สถานะทุกสถานที่จอดรถ", filename: "sites-status", columns, rows };
+      },
+      async doExport(kind) {
+        try { this.pageError = ""; await ExportKit.run(kind, this.exportSpec()); }
         catch (e) { this.pageError = e.message; }
       },
-      sum(key) { return this.sites.reduce((n, s) => n + (s[key] || 0), 0); },
+      // ยอดรวมทุกสถานที่ ไม่รวมสถานที่ที่ตั้ง "ไม่นับ" (ตั้งค่าระบบ → การนับช่องจอด)
+      sum(key) { return this.sites.filter((s) => s.counted !== false).reduce((n, s) => n + (s[key] || 0), 0); },
       ago(iso) {
         const mins = Math.round((Date.now() - new Date(iso.endsWith("Z") ? iso : iso + "Z")) / 60000);
         if (mins < 1) return "เมื่อสักครู่";
