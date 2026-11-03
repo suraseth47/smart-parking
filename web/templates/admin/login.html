@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>เข้าสู่ระบบ - Smart Parking</title>
-  <link rel="stylesheet" href="/static/css/admin.css?v=20261103b">
+  <link rel="stylesheet" href="/static/css/admin.css?v=20261103c">
   <script defer src="/static/js/vendor/alpine.min.js"></script>
 </head>
 <body>
@@ -22,12 +22,24 @@
         <span class="brand-text">{{ brand.org_name or "NASLINK" }}<small>Smart Parking</small></span>
       </div>
       <h1>เข้าสู่ระบบหลังบ้าน</h1>
-      <form @submit.prevent="submit">
+      <form x-ref="form" method="post" action="/admin/login" @submit.prevent="submit">
         <label for="username">ชื่อผู้ใช้ หรืออีเมล</label>
-        <input id="username" type="text" x-model="username" autocomplete="username" required>
+        <input id="username" name="username" type="text" x-model="username" autocomplete="username" autocapitalize="off" spellcheck="false" required>
 
         <label for="password">รหัสผ่าน</label>
-        <input id="password" type="password" x-model="password" autocomplete="current-password" required>
+        <div class="pw-wrap">
+          <input id="password" name="password" :type="showPw ? 'text' : 'password'" x-model="password" autocomplete="current-password" required>
+          <button type="button" class="pw-toggle" @click="showPw = !showPw" :aria-label="showPw ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'" :title="showPw ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน'">
+            <svg x-show="!showPw" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+            <svg x-show="showPw" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.1M6.6 6.6C3.8 8.4 2 12 2 12s3.5 7 10 7a9.6 9.6 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>
+          </button>
+        </div>
+
+        <label class="remember-row">
+          <input type="checkbox" x-model="remember">
+          <span>จำรหัสผ่าน <small>(อยู่ในระบบ 30 วัน · จำชื่อผู้ใช้ · ให้เบราว์เซอร์บันทึกรหัส)</small></span>
+        </label>
+        <p class="remember-hint" x-show="remember">ไม่ควรติ๊กบนเครื่องที่ใช้ร่วมกันหลายคน</p>
 
         <button type="submit" :disabled="loading" style="margin-top:1rem; width:100%">
           <span x-show="!loading">เข้าสู่ระบบ</span>
@@ -43,8 +55,26 @@
       return {
         username: "",
         password: "",
+        remember: false,
+        showPw: false,
         error: "",
         loading: false,
+        init() {
+          // จำเฉพาะชื่อผู้ใช้ไว้ในเครื่อง — รหัสผ่านให้ตัวจัดการรหัสผ่านของเบราว์เซอร์เป็นคนจำ (ปลอดภัยกว่า)
+          try {
+            const saved = localStorage.getItem("sp_login_user");
+            if (saved) { this.username = saved; this.remember = true; }
+          } catch (e) { /* ไม่มี localStorage ก็ใช้งานได้ปกติ */ }
+          this.$nextTick(() => document.getElementById(this.username ? "password" : "username").focus());
+        },
+        async saveCredential() {
+          // Chrome/Edge/Android: เด้งถาม "บันทึกรหัสผ่าน?" ของเบราว์เซอร์ (Safari/Firefox ถามเองจากฟอร์มนี้)
+          try {
+            if (window.PasswordCredential && navigator.credentials) {
+              await navigator.credentials.store(new PasswordCredential({ id: this.username.trim(), password: this.password }));
+            }
+          } catch (e) { /* ผู้ใช้ปฏิเสธ / เบราว์เซอร์ไม่รองรับ */ }
+        },
         async submit() {
           this.loading = true;
           this.error = "";
@@ -52,13 +82,18 @@
             const resp = await fetch("/api/admin/login", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ username: this.username, password: this.password }),
+              body: JSON.stringify({ username: this.username, password: this.password, remember: this.remember }),
             });
             const data = await resp.json().catch(() => ({}));
             if (!resp.ok) {
               this.error = data.detail || "เข้าสู่ระบบไม่สำเร็จ";
               return;
             }
+            try {
+              if (this.remember) localStorage.setItem("sp_login_user", this.username.trim());
+              else localStorage.removeItem("sp_login_user");
+            } catch (e) { /* ignore */ }
+            if (this.remember) await this.saveCredential();
             // ไปหน้าแรกที่บัญชีนี้มีสิทธิ์
             const perms = data.permissions || [];
             const firstPage = { cameras: "/admin", live: "/admin/live", cctv: "/admin/cctv", override: "/admin/override", reports: "/admin/reports", zones: "/admin/zones" };

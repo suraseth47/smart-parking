@@ -17,14 +17,15 @@ from core.config import get_settings
 SESSION_COOKIE_NAME = "session"
 CSRF_COOKIE_NAME = "csrf_token"
 SESSION_MAX_AGE_SECONDS = 12 * 60 * 60  # 12 ชั่วโมง
+REMEMBER_MAX_AGE_SECONDS = 30 * 24 * 60 * 60  # ติ๊ก "จดจำการเข้าสู่ระบบ" = 30 วัน
 
 
-def create_session_cookie(user_id: int, role: str) -> str:
+def create_session_cookie(user_id: int, role: str, max_age: int = SESSION_MAX_AGE_SECONDS) -> str:
     """สร้างค่าคุกกี้ session ที่เซ็นด้วย SECRET_KEY ป้องกันการปลอมแปลง"""
     payload = {
         "user_id": user_id,
         "role": role,
-        "exp": int(time.time()) + SESSION_MAX_AGE_SECONDS,
+        "exp": int(time.time()) + max_age,
     }
     return _sign(payload)
 

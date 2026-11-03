@@ -17,6 +17,7 @@ from web.deps import CurrentUser, get_current_user
 from web.session import (
     CSRF_COOKIE_NAME,
     SESSION_COOKIE_NAME,
+    REMEMBER_MAX_AGE_SECONDS,
     SESSION_MAX_AGE_SECONDS,
     create_session_cookie,
     generate_csrf_token,
@@ -31,6 +32,7 @@ LOCKOUT_MINUTES = 15
 class LoginRequest(BaseModel):
     username: str
     password: str
+    remember: bool = False  # จดจำการเข้าสู่ระบบ 30 วัน (ไม่ติ๊ก = 12 ชั่วโมง)
 
 
 @router.post("/login")
@@ -65,7 +67,7 @@ def login(data: LoginRequest, request: Request, response: Response, db: Session 
         raise invalid_credentials
 
     register_successful_login(db, user)
-    set_auth_cookies(response, user_id=user.id, role=user.role.value)
+    set_auth_cookies(response, user_id=user.id, role=user.role.value, remember=data.remember)
     role = user.role.value
     return {"username": user.username, "role": role, "permissions": effective_permissions(role, user.permissions)}
 
@@ -105,11 +107,13 @@ def register_successful_login(db: Session, user: User) -> None:
     db.commit()
 
 
-def set_auth_cookies(response: Response, user_id: int, role: str) -> None:
+def set_auth_cookies(response: Response, user_id: int, role: str, remember: bool = False) -> None:
+    """remember=True → อยู่ในระบบ 30 วันแม้ปิดเบราว์เซอร์ (บัญชีที่ถูกปิดใช้งานยังเข้าไม่ได้ทันที เพราะตรวจ is_active ทุกครั้ง)"""
+    max_age = REMEMBER_MAX_AGE_SECONDS if remember else SESSION_MAX_AGE_SECONDS
     response.set_cookie(
         SESSION_COOKIE_NAME,
-        create_session_cookie(user_id, role),
-        max_age=SESSION_MAX_AGE_SECONDS,
+        create_session_cookie(user_id, role, max_age),
+        max_age=max_age,
         httponly=True,
         secure=True,
         samesite="lax",
@@ -117,7 +121,7 @@ def set_auth_cookies(response: Response, user_id: int, role: str) -> None:
     response.set_cookie(
         CSRF_COOKIE_NAME,
         generate_csrf_token(),
-        max_age=SESSION_MAX_AGE_SECONDS,
+        max_age=max_age,
         httponly=False,  # ฝั่ง Alpine.js ต้องอ่านค่านี้ไปแนบเป็น header ตอนส่งฟอร์ม
         secure=True,
         samesite="lax",
