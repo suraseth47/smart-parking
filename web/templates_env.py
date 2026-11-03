@@ -4,6 +4,7 @@ from pathlib import Path
 from fastapi.templating import Jinja2Templates
 
 from core.app_settings import cached_display
+from core.version import APP_VERSION_SHORT
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
@@ -14,3 +15,4 @@ def branding() -> dict:
 
 
 templates.env.globals["branding"] = branding
+templates.env.globals["app_version"] = APP_VERSION_SHORT

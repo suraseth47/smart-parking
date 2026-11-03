@@ -12,6 +12,7 @@ from web.routers import (
     calibration,
     cameras,
     cctv,
+    showcase,
     export,
     health,
     sites,
@@ -36,6 +37,7 @@ app.include_router(slots.router)
 app.include_router(health.router)
 app.include_router(live.router)
 app.include_router(cctv.router)
+app.include_router(showcase.router)
 app.include_router(override.router)
 app.include_router(reports.router)
 app.include_router(audit.router)

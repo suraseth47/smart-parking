@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}หลังบ้าน{% endblock %} - Smart Parking · NASLINK</title>
-  <link rel="stylesheet" href="/static/css/admin.css?v=20261103c">
+  <link rel="stylesheet" href="/static/css/admin.css?v=20261103d">
   <script defer src="/static/js/vendor/alpine.min.js"></script>
   <script src="/static/js/api.js"></script>
   <script src="/static/js/datefield.js?v=20261102b"></script>
@@ -22,6 +22,7 @@
       ("/admin/sites", "ภาพรวมทุกสถานที่", "All Sites", ["/admin/sites"], "sites", "live"),
       ("/admin/live", "สถานะช่องจอดสด", "Live Status", ["/admin/live"], "live", "live"),
       ("/admin/cctv", "กล้องวงจรปิด", "CCTV Monitor", ["/admin/cctv"], "cctv", "cctv"),
+      ("/admin/showcase", "แสดงกล้องและช่องจอดจริง", "Camera vs Public", ["/admin/showcase"], "split", "cctv"),
       ("/admin/alerts", "การแจ้งเตือน", "Alerts", ["/admin/alerts"], "bell", "alerts"),
     ]),
     ("งานประจำวัน", [
@@ -42,6 +43,7 @@
   ] %}
   {% set icons = {
     "live": '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+    "split": '<rect x="2" y="4" width="20" height="14" rx="2"/><path d="M12 4v14M8 21h8"/><circle cx="7" cy="11" r="2"/><path d="M15 9h4M15 12h4M15 15h2"/>',
     "cctv": '<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/>',
     "override": '<path d="M12 3v4M12 17v4M3 12h4M17 12h4"/><circle cx="12" cy="12" r="4"/>',
     "reports": '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
@@ -114,7 +116,7 @@
       {% if brand.show_sidebar_footer %}
       <div class="sidebar-footer">
         <div>NASLINK Solutions</div>
-        <div>Smart Parking · v1.0</div>
+        <div>Smart Parking · {{ app_version }}</div>
       </div>
       {% endif %}
     </aside>

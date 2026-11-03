@@ -64,7 +64,7 @@
             <span class="switch"><input type="checkbox" x-model="sys.display.show_server_address"><span class="switch-track"></span></span>
           </label>
           <label class="toggle-row">
-            <span><b>แสดงชื่อผู้พัฒนาและเวอร์ชันท้ายแถบเมนู</b><span class="sub-text">NASLINK Solutions · Smart Parking v1.0</span></span>
+            <span><b>แสดงชื่อผู้พัฒนาและเวอร์ชันท้ายแถบเมนู</b><span class="sub-text">NASLINK Solutions · Smart Parking {{ app_version }}</span></span>
             <span class="switch"><input type="checkbox" x-model="sys.display.show_sidebar_footer"><span class="switch-track"></span></span>
           </label>
         </div>
@@ -124,6 +124,31 @@
         <button type="button" @click="saveSystem()" :disabled="sysSaving" x-text="sysSaving ? 'กำลังบันทึก...' : 'บันทึกการตั้งค่า'"></button>
         <span class="notice ok" x-show="sysSaved" x-text="sysSaved" style="margin:0;"></span>
         <span class="error-text" x-show="sysError" x-text="sysError" style="margin:0;"></span>
+      </div>
+    </div>
+    </template>
+
+    <!-- รูปแบบจอฝั่งประชาชน ในเมนู "แสดงกล้องและช่องจอดจริง" -->
+    <template x-if="tab === 'system' && showcase">
+    <div class="card" style="margin-top:1rem;">
+      <h3 style="margin-top:0;">หน้าแสดงกล้องและช่องจอดจริง</h3>
+      <p class="hint" style="margin-top:0;">เลือกรูปแบบจอฝั่ง "หน้าจอประชาชน" ที่แสดงคู่กับภาพกล้องสด (ใช้ตอนนำเสนองาน)</p>
+      <div class="sc-style-pick" role="radiogroup" aria-label="รูปแบบหน้าจอประชาชน">
+        <label class="sc-style-opt" :class="showcase && showcase.style === 'grid' && 'on'">
+          <input type="radio" name="sc-style" value="grid" x-model="showcase.style">
+          <span class="sc-prev sc-prev-grid" aria-hidden="true"><i class="g"></i><i class="r"></i><i class="r"></i><i class="g"></i><i class="r"></i><i class="g"></i><i class="r"></i><i class="r"></i></span>
+          <b>ผังช่องจอด</b><small>ช่องสี่เหลี่ยมพร้อมรหัส แตะช่องเพื่อชี้บนภาพกล้อง</small>
+        </label>
+        <label class="sc-style-opt" :class="showcase && showcase.style === 'ring' && 'on'">
+          <input type="radio" name="sc-style" value="ring" x-model="showcase.style">
+          <span class="sc-prev sc-prev-ring" aria-hidden="true"><span class="ring"></span><span class="bars"><i></i><i></i><i></i><i></i></span></span>
+          <b>แบบหน้าประชาชน</b><small>วงแหวนช่องว่าง ตัวเลขแยกสถานะ และการ์ดโซน (ธีมเข้ม)</small>
+        </label>
+      </div>
+      <div style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap; margin-top:0.75rem;">
+        <button type="button" @click="saveShowcase()" :disabled="showcaseBusy" x-text="showcaseBusy ? 'กำลังบันทึก...' : 'บันทึกรูปแบบ'"></button>
+        <a href="/admin/showcase" class="btn btn-secondary">เปิดหน้าแสดงกล้องและช่องจอดจริง</a>
+        <span class="muted" x-show="showcaseMsg" x-text="showcaseMsg"></span>
       </div>
     </div>
     </template>
@@ -408,6 +433,17 @@
         } catch (e) { this.amError = e.message; } finally { this.amBusy = false; }
       },
 
+      // รูปแบบหน้าแสดงกล้องและช่องจอดจริง
+      showcase: null, showcaseBusy: false, showcaseMsg: "",
+      async loadShowcase() { this.showcase = await apiJson("/api/admin/settings/showcase"); },
+      async saveShowcase() {
+        this.showcaseBusy = true; this.showcaseMsg = "";
+        try {
+          this.showcase = await apiJson("/api/admin/settings/showcase", { method: "PUT", body: JSON.stringify(this.showcase) });
+          this.showcaseMsg = "บันทึกแล้ว — หน้าที่เปิดอยู่จะเปลี่ยนรูปแบบภายใน 10 วินาที";
+        } catch (e) { this.showcaseMsg = "บันทึกไม่สำเร็จ: " + e.message; } finally { this.showcaseBusy = false; }
+      },
+
       // การนับช่องจอด
       counting: null, countingDirty: false, countingSaving: false, countingSaved: "", countingError: "",
       async loadCounting() { this.counting = await apiJson("/api/admin/settings/counting"); this.countingDirty = false; },
@@ -448,7 +484,7 @@
         if (location.hash === "#security") this.tab = "security";
         if (location.hash === "#backup") this.tab = "backup";
         if (location.hash === "#counting") this.tab = "counting";
-        await Promise.all([this.loadSystem(), this.load(), this.loadMail(), this.loadChecks(), this.loadBackup(), this.loadCounting(), this.loadAlertMail()]);
+        await Promise.all([this.loadSystem(), this.load(), this.loadMail(), this.loadChecks(), this.loadBackup(), this.loadCounting(), this.loadAlertMail(), this.loadShowcase()]);
       },
 
       // ---------- ระบบและการแสดงผล ----------

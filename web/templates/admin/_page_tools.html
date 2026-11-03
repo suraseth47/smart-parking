@@ -21,3 +21,19 @@
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 9V3h10v6M7 17H5a1 1 0 0 1-1-1v-5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v5a1 1 0 0 1-1 1h-2"/><path d="M7 14h10v7H7z"/></svg>พิมพ์</button>
 </div>
 {%- endmacro %}
+
+{# แถบเครื่องมือย่อสำหรับการ์ดย่อยในหน้า (เช่น การ์ดเขตห้ามจอด): คัดลอก (วางใน LINE) · บันทึกรูป · PDF · พิมพ์
+   ใช้ data-act ชุดเดียวกับ page_tools จึงผูกด้วย ExportKit.bindTools(el, {...}) ได้เหมือนกัน #}
+{% macro mini_tools(id) -%}
+<div class="page-tools mini-tools no-print" id="{{ id }}">
+  <button type="button" class="pt-primary" data-act="line" title="คัดลอกเป็นรูป ไปวางในแชต LINE">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg>คัดลอก (LINE)</button>
+  <button type="button" class="btn-secondary" data-act="image" title="บันทึกเป็นไฟล์รูป PNG">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></svg>รูป</button>
+  <button type="button" class="btn-secondary" data-act="pdf" title="บันทึกเป็นไฟล์ PDF">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M9 15h6M9 18h4"/></svg>PDF</button>
+  <button type="button" class="btn-secondary" data-act="print" title="พิมพ์ออกเครื่องพิมพ์">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 9V3h10v6M7 17H5a1 1 0 0 1-1-1v-5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v5a1 1 0 0 1-1 1h-2"/><path d="M7 14h10v7H7z"/></svg>พิมพ์</button>
+  <span class="pt-msg" role="status"></span>
+</div>
+{%- endmacro %}

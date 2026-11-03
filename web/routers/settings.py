@@ -581,3 +581,31 @@ def test_alert_mail(
     if failed and not sent:
         raise HTTPException(502, "ส่งไม่สำเร็จ: " + failed[0])
     return {"sent": sent, "failed": failed}
+
+
+# ---------- เมนู "แสดงกล้องและช่องจอดจริง": รูปแบบจอฝั่งประชาชน ----------
+
+class ShowcaseIn(BaseModel):
+    style: Literal["grid", "ring"] = "grid"
+
+
+@router.get("/showcase")
+def get_showcase_settings(db: Session = Depends(get_db), _admin: CurrentUser = Depends(require_admin)):
+    from web.routers.showcase import load_showcase
+
+    return load_showcase(db)
+
+
+@router.put("/showcase")
+def put_showcase_settings(
+    data: ShowcaseIn,
+    db: Session = Depends(get_db),
+    admin: CurrentUser = Depends(require_admin),
+    _csrf: None = Depends(verify_csrf),
+):
+    from web.routers.showcase import SHOWCASE_KEY, load_showcase
+
+    _save_setting(db, SHOWCASE_KEY, {"style": data.style})
+    db.add(AuditLog(user_id=admin.id, action="update_showcase", target="settings:showcase", detail={"style": data.style}))
+    db.commit()
+    return load_showcase(db)

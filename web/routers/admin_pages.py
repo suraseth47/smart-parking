@@ -37,6 +37,11 @@ def cctv_page(request: Request):
     return templates.TemplateResponse(request, "admin/cctv.html")
 
 
+@router.get("/showcase")
+def showcase_page(request: Request):
+    return templates.TemplateResponse(request, "admin/showcase.html")
+
+
 @router.get("/override")
 def override_page(request: Request):
     return templates.TemplateResponse(request, "admin/override.html")

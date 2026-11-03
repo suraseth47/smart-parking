@@ -1,5 +1,5 @@
 {% extends "admin/base.html" %}
-{% from "admin/_page_tools.html" import page_tools %}
+{% from "admin/_page_tools.html" import page_tools, mini_tools %}
 {% block title %}สถานะช่องจอดสด{% endblock %}
 {% block head %}
 <script src="/static/js/vendor/konva.min.js"></script>
@@ -21,6 +21,24 @@
   </div>
 
   <div class="editor-side">
+    <div class="card pub-card" id="pub-card" style="display:none; margin-bottom:0.75rem;">
+      <div class="pub-head">
+        <h3 style="margin:0;">👥 หน้าสาธารณะ <small class="muted">(ประชาชนเห็น)</small></h3>
+        <a id="pub-open" href="/" target="_blank" rel="noopener" class="pub-open" title="เปิดหน้าสาธารณะเต็มในแท็บใหม่">เปิดหน้าจริง ↗</a>
+      </div>
+      <div id="pub-body">
+        <div class="pub-site" id="pub-site"></div>
+        <div class="pub-main">
+          <div class="pub-num"><b id="pub-free">–</b><span>/ <span id="pub-cap">–</span> ช่อง</span></div>
+          <span class="pub-pill" id="pub-pill"></span>
+        </div>
+        <div class="pub-extra" id="pub-extra"></div>
+        <ul class="pub-zones" id="pub-zones"></ul>
+      </div>
+      <p class="pub-note" id="pub-note" style="display:none;"></p>
+      <p class="muted pub-foot">แบบย่อ: ตัวเลขชุดเดียวกับหน้าสาธารณะ ไม่โหลดภาพ ประหยัดเน็ต — ยอดรวมทุกกล้องของสถานที่</p>
+    </div>
+
     <div class="card" style="margin-bottom:0.75rem;">
       <h3 style="margin-top:0;">คำอธิบายสี</h3>
       <p><span class="badge badge-free">free</span> ว่าง</p>
@@ -32,6 +50,7 @@
 
     <div class="card npz-card" id="npz-card" style="display:none; margin-bottom:0.75rem;">
       <h3 style="margin-top:0;">⛔ เขตห้ามจอด</h3>
+      {{ mini_tools("npz-tools") }}
       <p style="margin:0 0 0.5rem;"><span id="npz-summary" class="npz-badge ok"></span></p>
       <ul class="slot-list" id="npz-list"></ul>
       <p class="muted" style="font-size:0.82rem; margin-bottom:0;">นับเฉพาะรถที่จอดนิ่งในเขตนานเกิน <span id="npz-dwell-text">5</span> นาที (รถขับผ่านไม่นับ) — แจ้งเตือนที่หน้า <a href="/admin/alerts">แจ้งเตือน</a></p>
@@ -44,5 +63,5 @@
   </div>
 </div>
 
-<script src="/static/js/live.js?v=20261103b"></script>
+<script src="/static/js/live.js?v=20261103c"></script>
 {% endblock %}

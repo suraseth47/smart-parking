@@ -130,21 +130,9 @@ def get_public_sites(request: Request, db: Session = Depends(get_db)):
         return cached
     result = []
     for site in _public_sites(db):
-        summary = _build_summary(db, site, site_count=0)
+        summary = build_summary(db, site, site_count=0)
         total = summary["total"]
-        statuses = [z["status"] for z in summary["zones"]]
-        if statuses and all(s == "closed" for s in statuses):
-            status_text = "closed"
-        elif total["capacity"] == 0 and not summary["updated_at"]:
-            status_text = "no_data"  # ยังไม่ติดตั้งกล้อง/ยังไม่มีช่องจอด
-        elif summary["stale"]:
-            status_text = "stale"
-        elif total["capacity"] == 0:
-            status_text = "no_data"
-        elif total["free"] == 0:
-            status_text = "full"
-        else:
-            status_text = "ok"
+        status_text = site_status(summary)
         result.append({
             "code": site.code, "name_th": site.name_th, "name_en": site.name_en,
             "address": site.address, "opening_hours": site.opening_hours,
@@ -174,9 +162,26 @@ def get_public_summary(request: Request, site: str | None = None, db: Session = 
     cached = _get_cached(chosen.code)
     if cached is not None:
         return cached
-    result = _build_summary(db, chosen, site_count=len(sites))
+    result = build_summary(db, chosen, site_count=len(sites))
     _set_cached(chosen.code, result)
     return result
+
+
+def site_status(summary: dict) -> str:
+    """สถานะรวมของสถานที่ที่ประชาชนเห็น: ok | full | closed | stale | no_data (ใช้ร่วมกับหน้าสถานะช่องจอดสดของหลังบ้าน)"""
+    total = summary["total"]
+    statuses = [z["status"] for z in summary["zones"]]
+    if statuses and all(s == "closed" for s in statuses):
+        return "closed"
+    if total["capacity"] == 0 and not summary["updated_at"]:
+        return "no_data"  # ยังไม่ติดตั้งกล้อง/ยังไม่มีช่องจอด
+    if summary["stale"]:
+        return "stale"
+    if total["capacity"] == 0:
+        return "no_data"
+    if total["free"] == 0:
+        return "full"
+    return "ok"
 
 
 def _public_sites(db: Session) -> list[Site]:
@@ -184,7 +189,7 @@ def _public_sites(db: Session) -> list[Site]:
     return list(db.scalars(select(Site).where(Site.is_public.is_(True), Site.counted.is_not(False)).order_by(Site.sort_order, Site.id)).all())
 
 
-def _build_summary(db: Session, site: Site, site_count: int) -> dict:
+def build_summary(db: Session, site: Site, site_count: int) -> dict:
     """ยอดสาธารณะของ 1 สถานที่ — รวมทุกกล้องของสถานที่เป็นยอดเดียว
 
     ช่องจอดแต่ละช่องผูกกับกล้องตัวเดียว (ระบบห้ามวาดรหัสช่องซ้ำในสถานที่เดียวกัน)

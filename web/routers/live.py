@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from core.db import get_db
-from core.models import Camera, LayoutStatus, Slot, SlotState
+from core.models import Camera, LayoutStatus, Site, Slot, SlotState
 from web.deps import CurrentUser, require_permission
 from web.site_access import ensure_camera, restrict
 from worker.no_parking import DEFAULT_DWELL_MIN, summarize
@@ -53,11 +53,34 @@ class LiveNoParkingOut(BaseModel):
     zones: list[LiveNoParkingZoneOut]
 
 
+class LivePublicZoneOut(BaseModel):
+    name: str
+    status: str
+    free: int
+    capacity: int
+
+
+class LivePublicOut(BaseModel):
+    """ตัวอย่างหน้าสาธารณะแบบย่อ (ตัวเลขอย่างเดียว ไม่มีภาพ) — ให้ Admin เทียบว่าประชาชนเห็นถูกต้องไหม"""
+    shown: bool  # สถานที่นี้แสดงบนหน้าสาธารณะหรือไม่
+    note: str | None = None  # เหตุผลที่ไม่แสดง / ข้อสังเกต (ภาษาไทย)
+    site_code: str | None = None
+    site_name: str | None = None
+    status: str | None = None  # ok | full | closed | stale | no_data
+    free: int = 0
+    capacity: int = 0
+    free_disabled: int = 0
+    free_ev: int = 0
+    camera_counted: bool = True
+    zones: list[LivePublicZoneOut] = []
+
+
 class LiveOut(BaseModel):
     camera: LiveCameraOut
     snapshot_url: str
     slots: list[LiveSlotOut]
     no_parking: LiveNoParkingOut | None = None
+    public: LivePublicOut | None = None
 
 
 @router.get("/cameras", response_model=list[LiveCameraPickerOut])
@@ -118,6 +141,7 @@ def get_live(
         }
 
     return {
+        "public": public_preview(db, camera),
         "no_parking": no_parking,
         "camera": {
             "id": camera.id,
@@ -127,4 +151,29 @@ def get_live(
         },
         "snapshot_url": f"/api/admin/cameras/{camera.id}/snapshot",
         "slots": slots,
+    }
+
+
+def public_preview(db: Session, camera: Camera) -> dict:
+    """ยอดที่ประชาชนเห็นบนหน้าสาธารณะของสถานที่ที่กล้องนี้อยู่ (ข้อมูลชุดเดียวกับ /api/public/summary แต่ย่อ)"""
+    from web.routers.public import build_summary, site_status  # import ภายใน กัน import วนกัน
+
+    camera_counted = camera.counted is not False
+    site = db.get(Site, camera.site_id) if camera.site_id else None
+    if site is None:
+        return {"shown": False, "camera_counted": camera_counted,
+                "note": "กล้องนี้ยังไม่ได้ผูกกับสถานที่ — ช่องจอดของกล้องนี้ไม่แสดงบนหน้าสาธารณะ"}
+    base = {"site_code": site.code, "site_name": site.name_th, "camera_counted": camera_counted}
+    if not site.is_public:
+        return {**base, "shown": False, "note": "สถานที่นี้ปิดการแสดงบนหน้าสาธารณะ (ตั้งค่าที่ ภาพรวมทุกสถานที่)"}
+    if site.counted is False:
+        return {**base, "shown": False, "note": "สถานที่นี้ตั้งเป็น \"ไม่นับรวม\" (ทดสอบ) จึงไม่แสดงบนหน้าสาธารณะ"}
+    summary = build_summary(db, site, site_count=0)
+    total = summary["total"]
+    note = None if camera_counted else "กล้องนี้ตั้งเป็น \"ไม่นับรวม\" — ช่องของกล้องนี้ไม่รวมในยอดด้านบน"
+    return {
+        **base, "shown": True, "note": note, "status": site_status(summary),
+        "free": total["free"], "capacity": total["capacity"],
+        "free_disabled": total["free_disabled"], "free_ev": total["free_ev"],
+        "zones": [{"name": z["name_th"], "status": z["status"], "free": z["free"], "capacity": z["capacity"]} for z in summary["zones"]],
     }

@@ -906,3 +906,46 @@ button .btn-icon { margin-right: 0.35rem; vertical-align: -3px; }
 .remember-row input { width: 18px; height: 18px; margin: .1rem 0 0; flex: 0 0 auto; accent-color: var(--color-primary); }
 .remember-row small { color: var(--color-muted); }
 .remember-hint { margin: .35rem 0 0 1.6rem; font-size: .8rem; color: #b45309; }
+
+/* หน้าสถานะช่องจอดสด: ตัวอย่างหน้าสาธารณะแบบย่อ + แถบเครื่องมือย่อของการ์ดเขตห้ามจอด */
+.pub-card { border-top: 4px solid var(--color-primary); }
+.pub-head { display: flex; align-items: baseline; justify-content: space-between; gap: .5rem; flex-wrap: wrap; margin-bottom: .5rem; }
+.pub-head small { font-weight: 400; font-size: .8rem; }
+.pub-open { font-size: .85rem; white-space: nowrap; }
+.pub-site { font-weight: 700; margin-bottom: .25rem; }
+.pub-main { display: flex; align-items: center; justify-content: space-between; gap: .5rem; flex-wrap: wrap; }
+.pub-num b { font-size: 2.2rem; line-height: 1.1; color: #15803d; }
+.pub-num span { color: var(--color-muted); margin-left: .25rem; }
+.pub-card.st-full .pub-num b { color: var(--color-danger); }
+.pub-card.st-stale .pub-num b, .pub-card.st-no_data .pub-num b, .pub-card.st-closed .pub-num b { color: var(--color-muted); }
+.pub-pill { display: inline-block; padding: .2rem .65rem; border-radius: 999px; font-size: .82rem; font-weight: 700; background: #dcfce7; color: #15803d; }
+.pub-pill.full { background: #fee2e2; color: #b91c1c; }
+.pub-pill.warn { background: #fef3c7; color: #b45309; }
+.pub-pill.off { background: #e2e8f0; color: #475569; }
+.pub-extra { font-size: .85rem; color: var(--color-muted); margin-top: .25rem; }
+.pub-zones { list-style: none; margin: .5rem 0 0; padding: 0; }
+.pub-zones li { display: flex; justify-content: space-between; gap: .5rem; padding: .3rem 0; border-top: 1px solid var(--color-border, #e2e8f0); font-size: .9rem; }
+.pub-zones li b { color: #15803d; }
+.pub-zones li.full b { color: var(--color-danger); }
+.pub-zones li.off b { color: var(--color-muted); font-weight: 400; }
+.pub-note { margin: .5rem 0 0; padding: .45rem .6rem; border-radius: 8px; background: #fef3c7; color: #92400e; font-size: .85rem; }
+.pub-foot { font-size: .78rem; margin: .5rem 0 0; }
+.mini-tools { gap: .35rem; margin: 0 0 .6rem; }
+.mini-tools button { padding: .3rem .55rem; font-size: .82rem; min-height: 0; flex: 1 1 auto; justify-content: center; }
+.mini-tools svg { width: 14px; height: 14px; }
+.mini-tools .pt-msg { flex-basis: 100%; }
+
+/* ตั้งค่า → รูปแบบหน้าแสดงกล้องและช่องจอดจริง */
+.sc-style-pick { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: .75rem; }
+.sc-style-opt { position: relative; display: flex; flex-direction: column; gap: .2rem; margin: 0; padding: .75rem; border: 2px solid var(--color-border); border-radius: 12px; cursor: pointer; color: var(--color-text); font-size: .9rem; }
+.sc-style-opt.on { border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(47,107,236,.15); }
+.sc-style-opt input { position: absolute; opacity: 0; pointer-events: none; }
+.sc-style-opt small { color: var(--color-muted); }
+.sc-prev { display: block; height: 70px; border-radius: 8px; margin-bottom: .4rem; }
+.sc-prev-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 6px; background: #f1f5f9; }
+.sc-prev-grid i { border-radius: 3px; background: #dc2626; }
+.sc-prev-grid i.g { background: #16a34a; }
+.sc-prev-ring { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: #111827; }
+.sc-prev-ring .ring { width: 50px; height: 50px; border-radius: 50%; border: 6px solid #34d399; flex: none; }
+.sc-prev-ring .bars { flex: 1; display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.sc-prev-ring .bars i { height: 22px; border-radius: 4px; background: #1f2937; }

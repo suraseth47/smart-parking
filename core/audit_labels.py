@@ -29,6 +29,7 @@ ACTION_LABELS: dict[str, str] = {
     "publish_layout": "Publish ผังช่องจอด",
     "save_no_parking_zones": "บันทึกเขตห้ามจอด",
     "update_counting_scope": "ตั้งค่าการนับช่องจอด",
+    "update_showcase": "ตั้งค่ารูปแบบหน้าแสดงกล้องและช่องจอดจริง",
     "update_alert_mail": "ตั้งค่าอีเมลแจ้งเตือน",
     "test_alert_mail": "ทดสอบอีเมลแจ้งเตือน",
     "create_site": "เพิ่มสถานที่",

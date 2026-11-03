@@ -1,0 +1,68 @@
+{% extends "admin/base.html" %}
+{% block title %}แสดงกล้องและช่องจอดจริง{% endblock %}
+{% block head %}
+<link rel="stylesheet" href="/static/css/showcase.css?v=20261103b">
+{% endblock %}
+{% block content %}
+{# 2 จอในหน้าเดียว: ซ้าย = ภาพกล้องสด (หลังบ้านเท่านั้น), ขวา = หน้าจอที่ประชาชนเห็น
+   ปุ่มเต็มจอ / มือถือ-แท็บเล็ตตะแคงจอ = เต็มจออัตโนมัติ #}
+<section class="sc-stage" id="sc-stage" aria-label="แสดงกล้องและช่องจอดจริง">
+  <header class="sc-bar">
+    <div class="sc-title">
+      <span class="sc-org">{{ branding().system_title }}</span>
+      <span class="sc-site" id="sc-site">–</span>
+    </div>
+    <div class="sc-controls">
+      <select id="sc-camera" aria-label="เลือกกล้อง"></select>
+      <label class="sc-switch" title="แสดงกรอบและรหัสช่องบนภาพกล้อง">
+        <input type="checkbox" id="sc-overlay" checked><span>กรอบช่อง</span>
+      </label>
+      <span class="sc-clock" id="sc-clock">--:--:--</span>
+      <button type="button" class="sc-fs" id="sc-fs" title="แสดงเต็มจอ" aria-label="แสดงเต็มจอ">
+        <svg class="i-open" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+        <svg class="i-close" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>
+        <span class="sc-fs-text">เต็มจอ</span>
+      </button>
+    </div>
+  </header>
+
+  <div class="sc-panes">
+    <div class="sc-pane sc-cam">
+      <div class="sc-pane-head">
+        <span><i class="sc-dot" id="sc-dot"></i>กล้องสด <b id="sc-cam-name"></b></span>
+        <span class="sc-cam-time" id="sc-cam-time"></span>
+      </div>
+      <div class="sc-cam-body" id="sc-cam-body">
+        <div class="sc-cam-box" id="sc-cam-box">
+          <img id="sc-img" alt="ภาพจากกล้อง">
+          <svg class="sc-overlay" id="sc-svg" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true"></svg>
+        </div>
+        <div class="sc-cam-msg" id="sc-cam-msg">กำลังเชื่อมต่อกล้อง...</div>
+      </div>
+    </div>
+
+    <div class="sc-pane sc-pub">
+      <div class="sc-pane-head">
+        <span>👥 หน้าจอประชาชน</span>
+        <span class="sc-pub-upd" id="sc-pub-upd"></span>
+      </div>
+      <div class="sc-pub-body sc-ring-body" id="sc-ring" hidden></div>
+      <div class="sc-pub-body sc-grid-body" id="sc-gridview">
+        <div class="sc-total" id="sc-total">
+          <div class="sc-total-num"><b id="sc-free">–</b><span>ว่าง จาก <span id="sc-cap">–</span> ช่อง</span></div>
+          <span class="sc-pill" id="sc-pill"></span>
+        </div>
+        <p class="sc-note" id="sc-note" hidden></p>
+        <div id="sc-zones"></div>
+        <div class="sc-legend">
+          <span><i class="lg free"></i>ว่าง</span><span><i class="lg taken"></i>มีรถ</span>
+          <span><i class="lg unknown"></i>ไม่ทราบ</span><span><i class="lg locked"></i>สงวน</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="sc-hint">แตะช่องในหน้าจอประชาชน เพื่อชี้ตำแหน่งบนภาพกล้อง · ภาพกล้องสดดูได้เฉพาะหลังบ้าน (PDPA)</p>
+</section>
+
+<script src="/static/js/showcase.js?v=20261103b"></script>
+{% endblock %}

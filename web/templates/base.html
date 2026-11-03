@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}หลังบ้าน{% endblock %} - Smart Parking · NASLINK</title>
+  <link rel="stylesheet" href="/static/css/admin.css?v=20261028a">
+  <script defer src="/static/js/vendor/alpine.min.js"></script>
+  <script src="/static/js/api.js"></script>
+  {% block head %}{% endblock %}
+</head>
+<body>
+  {% set path = request.url.path.rstrip('/') %}
+  {# เมนู: (ลิงก์, ชื่อไทย, ชื่ออังกฤษตัวเล็ก, path ที่ให้ไฮไลต์, ไอคอน, คีย์สิทธิ์ใน core/permissions.py)
+     การซ่อนเมนูเป็นแค่ความสะดวก — สิทธิ์จริงตรวจที่ API ทุกครั้ง #}
+  {% set nav_groups = [
+    ("การใช้งาน · Operations", [
+      ("/admin/live", "สถานะช่องจอดสด", "Live Status", ["/admin/live"], "live", "live"),
+      ("/admin/cctv", "กล้องวงจรปิด", "CCTV Monitor", ["/admin/cctv"], "cctv", "cctv"),
+      ("/admin/override", "แก้สถานะช่องด้วยมือ", "Manual Override", ["/admin/override"], "override", "override"),
+      ("/admin/reports", "รายงานและสถิติ", "Reports", ["/admin/reports"], "reports", "reports"),
+    ]),
+    ("ตั้งค่าระบบ · Settings", [
+      ("/admin", "กล้องและช่องจอด", "Cameras & Slots", ["/admin", "/admin/layout"], "camera", "cameras"),
+      ("/admin/zones", "โซนและการปิดโซน", "Zones", ["/admin/zones"], "zones", "zones"),
+      ("/admin/calibration", "ช่วยวาดช่องอัตโนมัติ", "Auto Slot Setup", ["/admin/calibration"], "auto", "calibration"),
+      ("/admin/validation", "ทดสอบความแม่นยำ", "Accuracy Test", ["/admin/validation"], "check", "validation"),
+      ("/admin/users", "ผู้ใช้และสิทธิ์", "Users & Access", ["/admin/users"], "users", "users"),
+      ("/admin/audit", "ประวัติการใช้งาน", "Audit Log", ["/admin/audit"], "audit", "audit"),
+      ("/admin/settings", "ตั้งค่าระบบ", "System Settings", ["/admin/settings"], "settings", "settings"),
+    ]),
+  ] %}
+  {% set icons = {
+    "live": '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+    "cctv": '<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/>',
+    "override": '<path d="M12 3v4M12 17v4M3 12h4M17 12h4"/><circle cx="12" cy="12" r="4"/>',
+    "reports": '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+    "zones": '<path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/>',
+    "camera": '<path d="M3 7h3l2-3h8l2 3h3v12H3z"/><circle cx="12" cy="13" r="3.5"/>',
+    "auto": '<path d="M12 3l2.5 5 5.5.8-4 3.9.9 5.5L12 15.6 7.1 18.2l.9-5.5-4-3.9 5.5-.8z"/>',
+    "check": '<path d="M9 12l2 2 4-4"/><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/>',
+    "audit": '<path d="M8 4h11v16H8zM5 7v13h11"/><path d="M11 9h5M11 13h5"/>',
+    "users": '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.3-5.5 6.5-5.5s5.9 1.9 6.5 5.5"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18.5 14.8c1.7.8 2.7 2.6 3 5.2"/>',
+    "settings": '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
+  } %}
+
+  <div class="app">
+    <aside class="sidebar" id="sidebar">
+      <a class="brand" href="/admin">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="8" rx="4"/><circle cx="8" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="16" cy="12" r="1.3" fill="currentColor" stroke="none"/></svg>
+        </span>
+        <span class="brand-text">NASLINK<small>Smart Parking</small></span>
+      </a>
+
+      <div class="user-card">
+        <span class="avatar" id="user-avatar" aria-hidden="true">?</span>
+        <div class="user-meta">
+          <div class="user-name" id="user-name">กำลังโหลด...</div>
+          <span class="role-pill" id="user-role"></span>
+        </div>
+      </div>
+
+      <nav class="side-nav" aria-label="เมนูหลัก">
+        {% for group_label, items in nav_groups %}
+          <div class="nav-group" data-nav-group>
+          <div class="nav-group-label">{{ group_label }}</div>
+          {% for href, label, label_en, matches, icon, perm in items %}
+            <a href="{{ href }}" data-perm="{{ perm }}"{% if path in matches %} class="active" aria-current="page"{% endif %}>
+              <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">{{ icons[icon] | safe }}</svg>
+              <span class="nav-text"><span>{{ label }}</span><span class="nav-en" lang="en">{{ label_en }}</span></span>
+            </a>
+          {% endfor %}
+          </div>
+        {% endfor %}
+        <div class="nav-divider"></div>
+        <a href="/" target="_blank" rel="noopener" class="nav-link-accent">
+          <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>
+          <span class="nav-text"><span>เปิดหน้าสาธารณะ</span><span class="nav-en" lang="en">Public Page</span></span>
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div>NASLINK Solutions</div>
+        <div>Smart Parking · {{ app_version }}</div>
+      </div>
+    </aside>
+    <div class="sidebar-backdrop" id="sidebar-backdrop" onclick="toggleSidebar(false)"></div>
+
+    <div class="main">
+      <header class="main-header">
+        <button type="button" class="icon-btn menu-btn" onclick="toggleSidebar(true)" aria-label="เปิดเมนู">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+        <h1 class="main-title">{% block page_title %}{{ self.title() }}{% endblock %}</h1>
+        <div class="header-actions">
+          <button type="button" class="link-btn" onclick="location.reload()">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg>
+            <span>Refresh</span>
+          </button>
+          <button type="button" class="link-btn" onclick="logout()">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4M10 17l5-5-5-5M15 12H3"/></svg>
+            <span>ออกจากระบบ</span>
+          </button>
+        </div>
+      </header>
+      <div class="page">
+        {% block content %}{% endblock %}
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function toggleSidebar(open) {
+      document.body.classList.toggle("sidebar-open", open);
+    }
+    // แสดงชื่อผู้ใช้ในแถบด้านข้าง (หน้าแต่ละหน้ายังเรียก requireAuth() เองตามเดิม)
+    (async function fillUserCard() {
+      try {
+        const resp = await fetch("/api/admin/whoami", { credentials: "same-origin" });
+        if (!resp.ok) return;
+        const user = await resp.json();
+        document.getElementById("user-name").textContent = user.username;
+        document.getElementById("user-avatar").textContent = (user.username || "?").charAt(0).toUpperCase();
+        const role = document.getElementById("user-role");
+        role.textContent = { admin: "ผู้ดูแลระบบ", operator: "เจ้าหน้าที่", viewer: "ผู้ชม" }[user.role] || user.role;
+        // ซ่อนเมนูที่บัญชีนี้ไม่มีสิทธิ์ (สิทธิ์จริงตรวจที่ API อยู่แล้ว ส่วนนี้แค่ไม่ให้กดแล้วเจอหน้าว่าง)
+        const perms = user.permissions || [];
+        document.querySelectorAll("[data-perm]").forEach((link) => {
+          link.hidden = !perms.includes(link.dataset.perm);
+        });
+        document.querySelectorAll("[data-nav-group]").forEach((group) => {
+          group.hidden = !group.querySelector("[data-perm]:not([hidden])");
+        });
+        window.currentUser = user;
+        document.dispatchEvent(new CustomEvent("user-loaded", { detail: user }));
+      } catch (e) {
+        // ไม่เป็นไร หน้ายังใช้งานได้
+      }
+    })();
+  </script>
+</body>
+</html>

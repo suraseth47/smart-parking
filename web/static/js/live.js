@@ -40,6 +40,13 @@ class LiveView {
       image: () => (this.stage ? this.stage.toDataURL({ pixelRatio: 2 }) : null),  // ภาพกล้องพร้อมกรอบช่อง
       card: () => this._card(),  // ภาพสรุปสำหรับส่ง LINE / บันทึกรูป
     });
+    // การ์ดเขตห้ามจอด: คัดลอก (LINE) · รูป · PDF · พิมพ์ เฉพาะเรื่องเขตห้ามจอด
+    ExportKit.bindTools(document.getElementById("npz-tools"), {
+      refresh: () => this.loadAndRender(),
+      lineText: () => this._npzLineText(),
+      spec: () => this._npzSpec(),
+      card: () => this._npzCard(),
+    });
     select.value = this.cameraId;
     await this.loadAndRender();
     this.refreshTimer = setInterval(() => this.loadAndRender(), LIVE_REFRESH_MS);
@@ -52,6 +59,7 @@ class LiveView {
       this.data = data;
       document.getElementById("camera-status").textContent = `สถานะกล้อง: ${data.camera.status}`;
       await this._setupStage();
+      this._renderPublic(data.public);
       this._renderNoParking(data.no_parking);
       this._renderSlots(data.slots);
       const now = new Date().toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -138,6 +146,98 @@ class LiveView {
       li.append(name, badge);
       ul.appendChild(li);
     }
+  }
+
+  // ตัวอย่างหน้าสาธารณะแบบย่อ: ตัวเลขชุดเดียวกับที่ประชาชนเห็น (ไม่โหลดภาพ)
+  _renderPublic(pub) {
+    const card = document.getElementById("pub-card");
+    if (!pub) { card.style.display = "none"; return; }
+    card.style.display = "";
+    const $ = (id) => document.getElementById(id);
+    $("pub-open").href = "/?from=admin" + (pub.site_code ? "#site-" + encodeURIComponent(pub.site_code) : "");
+    $("pub-site").textContent = pub.site_name ? "📍 " + pub.site_name : "";
+    $("pub-body").style.display = pub.shown ? "" : "none";
+    const note = $("pub-note");
+    note.textContent = pub.note || "";
+    note.style.display = pub.note ? "" : "none";
+    card.className = "card pub-card st-" + (pub.status || "off");
+    if (!pub.shown) return;
+    $("pub-free").textContent = pub.status === "stale" || pub.status === "no_data" ? "–" : pub.free;
+    $("pub-cap").textContent = pub.capacity;
+    const pill = { ok: ["มีที่ว่าง", ""], full: ["เต็ม", "full"], stale: ["ข้อมูลไม่เป็นปัจจุบัน", "warn"],
+                   closed: ["ปิดให้บริการ", "off"], no_data: ["ยังไม่มีข้อมูล", "off"] }[pub.status] || [pub.status, "off"];
+    $("pub-pill").textContent = pill[0];
+    $("pub-pill").className = "pub-pill " + pill[1];
+    const extra = [];
+    if (pub.free_disabled) extra.push(`♿ ผู้พิการว่าง ${pub.free_disabled}`);
+    if (pub.free_ev) extra.push(`⚡ EV ว่าง ${pub.free_ev}`);
+    if (pub.status === "full") extra.push("หน้าสาธารณะจะแนะนำลานอื่นที่ยังว่างให้");
+    $("pub-extra").textContent = extra.join(" · ");
+    const ul = $("pub-zones");
+    ul.innerHTML = "";
+    if (pub.zones.length > 1) {
+      for (const z of pub.zones) {
+        const li = document.createElement("li");
+        const off = z.status === "closed" || z.status === "no_data";
+        li.className = off ? "off" : z.free === 0 ? "full" : "";
+        const name = document.createElement("span");
+        name.textContent = z.name;
+        const val = document.createElement("b");
+        val.textContent = z.status === "closed" ? "ปิด" : z.status === "no_data" ? "ไม่มีข้อมูล" : `${z.free}/${z.capacity}`;
+        li.append(name, val);
+        ul.appendChild(li);
+      }
+    }
+  }
+
+  _npzLineText() {
+    const d = this.data;
+    if (!d || !d.no_parking) return "";
+    const np = d.no_parking;
+    const lines = [`⛔ เขตห้ามจอด · ${d.camera.name} — ${ExportKit.thaiNow()}`,
+      np.total ? `พบรถจอดในเขตห้ามจอด ${np.total} คัน` : "ไม่มีรถจอดในเขตห้ามจอด"];
+    for (const z of np.zones) lines.push(`• ${z.name}: ${z.count ? `${z.count} คัน (จอดนานสุด ${z.longest_min} นาที)` : "ว่าง"}`);
+    lines.push(`(นับเฉพาะรถจอดนิ่งเกิน ${np.dwell_min} นาที)`);
+    return lines.join("\n");
+  }
+
+  _npzSpec() {
+    const d = this.data;
+    const np = (d && d.no_parking) || { zones: [], total: 0, dwell_min: 5 };
+    return {
+      title: `เขตห้ามจอด — ${d ? d.camera.name : ""}`,
+      filename: `no-parking-camera-${this.cameraId}`,
+      columns: ["เขตห้ามจอด", "รถที่จอด (คัน)", "จอดนานสุด (นาที)", "สถานะ"],
+      rows: np.zones.map((z) => [z.name, z.count, z.count ? z.longest_min : "-", z.count ? "มีรถจอด" : "ว่าง"]),
+      meta: [np.total ? `พบรถจอดในเขตห้ามจอดรวม ${np.total} คัน` : "ไม่มีรถจอดในเขตห้ามจอด",
+             `นับเฉพาะรถที่จอดนิ่งในเขตนานเกิน ${np.dwell_min} นาที (รถขับผ่านไม่นับ)`],
+    };
+  }
+
+  _npzCard() {
+    const d = this.data;
+    if (!d || !d.no_parking) throw new Error("กล้องนี้ยังไม่มีเขตห้ามจอด");
+    const np = d.no_parking;
+    const hitZones = np.zones.filter((z) => z.count).length;
+    const longest = Math.max(0, ...np.zones.map((z) => z.longest_min || 0));
+    return {
+      filename: `no-parking-camera-${d.camera.id}`,
+      subtitle: `เขตห้ามจอด · ${d.camera.name}`,
+      picture: this.stage ? this.stage.toDataURL({ pixelRatio: 2 }) : null,
+      hero: { label: "รถจอดในเขตห้ามจอด", value: np.total, unit: "คัน",
+              ratio: np.zones.length ? hitZones / np.zones.length : 0,
+              ratioText: np.total ? `มีรถ ${hitZones} จาก ${np.zones.length} เขต` : "ทุกเขตว่าง",
+              tone: np.total ? "red" : "green", barColor: np.total ? "#dc2626" : "#16a34a" },
+      pair: [{ label: "จำนวนเขต", value: np.zones.length, unit: "เขต", tone: "blue" },
+             { label: "จอดนานสุด", value: longest, unit: "นาที", tone: np.total ? "red" : "green" }],
+      legend: [{ color: "#dc2626", text: "เขตห้ามจอด", dash: true }, { color: "#16a34a", text: "ช่องว่าง" }, { color: "#dc2626", text: "ช่องมีรถ" }],
+      info: `นับเฉพาะรถจอดนิ่งเกิน ${np.dwell_min} นาที (รถขับผ่านไม่นับ)`,
+      panel: {
+        title: "⛔ รายเขตห้ามจอด",
+        rows: np.zones.map((z) => ({ left: z.name, right: z.count ? `${z.count} คัน · ${z.longest_min} นาที` : "ว่าง", tone: z.count ? "red" : "green" })),
+        empty: "ไม่มีเขตห้ามจอด",
+      },
+    };
   }
 
   _renderSlots(slots) {
