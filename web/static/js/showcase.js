@@ -58,6 +58,9 @@ class Showcase {
     this._applyAuto();
 
     new ResizeObserver(() => this._fitBox()).observe(this.body);
+    // ความสูงแถบบน → ภาพกล้องติดต่อจากแถบบนพอดีตอนเลื่อนดู (มือถือแนวตั้ง)
+    const bar = this.stage.querySelector(".sc-bar");
+    new ResizeObserver(() => this.stage.style.setProperty("--sc-bar-h", bar.offsetHeight + "px")).observe(bar);
     this.img.addEventListener("load", () => this._fitBox());
     this._tickClock();
     setInterval(() => this._tickClock(), 1000);

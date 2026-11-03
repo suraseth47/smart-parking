@@ -104,17 +104,25 @@ html.sc-lock, html.sc-lock body { overflow: hidden; }
 
 /* แท็บเล็ตแนวตั้ง / มือถือ: เรียงบน-ล่าง */
 @media (max-width: 900px) and (orientation: portrait) {
-  .sc-stage { height: auto; min-height: 0; }
+  .sc-stage { height: auto; min-height: 0; --sc-top: var(--header-h, 56px); }
+  .sc-stage.pseudo-fs { overflow: auto; --sc-top: 0px; }
   .sc-panes { grid-template-columns: minmax(0, 1fr); }
   .sc-cam-body { aspect-ratio: 16 / 9; flex: none; }
   .sc-pub-body { overflow: visible; }
-  .sc-stage.pseudo-fs { overflow: auto; }
+  /* เลื่อนดูข้อมูลด้านล่าง: แถบชื่อลาน/ตัวเลือกกล้อง และภาพกล้องสด ติดอยู่ด้านบนเสมอ (เทียบกับตัวเลขได้ตลอด) */
+  .sc-bar { position: sticky; top: var(--sc-top); z-index: 6; box-shadow: 0 0 0 .4rem var(--sc-bg), 0 1px 2px rgba(15,23,42,.06); }
+  .sc-cam { position: sticky; top: calc(var(--sc-top) + var(--sc-bar-h, 0px) + .4rem); z-index: 5; box-shadow: 0 .4rem 0 0 var(--sc-bg); }
+  .sc-cam .sc-pane-head { padding: .25rem .6rem; font-size: .78rem; }
 }
 @media (max-width: 560px) {
   .sc-stage { padding: .4rem; border-radius: 10px; }
   .sc-org, .sc-clock { display: none; }
-  .sc-controls { width: 100%; }
-  .sc-controls select { flex: 1 1 auto; max-width: none; }
+  .sc-bar { padding: .35rem .5rem; gap: .3rem; }
+  .sc-site { font-size: .95rem; }
+  .sc-controls { width: 100%; flex-wrap: nowrap; gap: .4rem; }
+  .sc-controls select { flex: 1 1 0; min-width: 0; max-width: none; min-height: 34px; font-size: .85rem; }
+  .sc-switch { font-size: .8rem; }
+  .sc-fs { min-height: 34px; padding: .25rem .6rem; }
   .sc-fs-text { display: none; }
 }
 /* ตะแคงจอบนจอเตี้ย (มือถือแนวนอน): แถบบนบางลง ให้ภาพใหญ่ที่สุด */
@@ -192,4 +200,35 @@ html.sc-lock, html.sc-lock body { overflow: hidden; }
   .rg-stats b { font-size: 1.05rem; }
   .rg-extra { margin-top: 0; gap: .6rem; font-size: .72rem; }
   .rg-card, .rg-zone { padding: .6rem; border-radius: 12px; }
+}
+
+/* มือถือ/แท็บเล็ตแนวตั้ง: ตัวเลขด้านล่างภาพกล้อง ย่อให้กระชับ (วางท้ายไฟล์ให้ทับค่าปกติ) */
+@media (max-width: 900px) and (orientation: portrait) {
+  .sc-ring-body { gap: .5rem; padding: .6rem; }
+  .rg-head small { display: none; }
+  .rg-head b { font-size: 1.02rem; }
+  .rg-live { font-size: .74rem; }
+  .rg-card { display: grid; grid-template-columns: 104px minmax(0, 1fr); align-items: center; gap: .35rem .6rem; padding: .6rem; border-radius: 12px; }
+  .rg-ring { width: 104px; margin: 0; grid-row: span 2; }
+  .rg-ring circle { stroke-width: 9; }
+  .rg-center b { font-size: 1.9rem; }
+  .rg-center span { font-size: .58rem; margin-top: .1rem; white-space: nowrap; }
+  .rg-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .3rem; }
+  .rg-stats div { display: flex; align-items: baseline; justify-content: center; gap: .3rem; padding: .25rem .3rem; border-radius: 8px; }
+  .rg-stats b { display: inline; font-size: 1.05rem; }
+  .rg-stats span { font-size: .68rem; white-space: nowrap; }
+  .rg-extra { margin-top: 0; justify-content: flex-start; gap: .75rem; font-size: .7rem; }
+  .rg-zone { padding: .6rem; border-radius: 12px; }
+  .rg-zone-head > b { font-size: .88rem; }
+  .rg-zone-head span b { font-size: 1.15rem; }
+  .rg-strip { margin-bottom: .5rem; }
+  .rg-bar { height: 11px; }
+  .rg-free-title { font-size: .72rem; }
+  .rg-free { font-size: .85rem; line-height: 1.5; }
+  .sc-pub .sc-pane-head { padding: .25rem .6rem; font-size: .78rem; }
+  .sc-grid-body { padding: .6rem; }
+  .sc-total { padding: .35rem .6rem; }
+  .sc-total-num b { font-size: 1.7rem; }
+  .sc-grid { grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)); gap: .3rem; }
+  .sc-slot { font-size: .72rem; }
 }
