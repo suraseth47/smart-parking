@@ -386,18 +386,19 @@ h1, h2 { margin: 0; }
 .lot-entrance { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0 0 14px; font-size: 0.78rem; color: var(--muted); }
 .lot-entrance .icon { width: 14px; height: 14px; }
 /* ป้ายรอบลาน: บน / ล่าง / ซ้าย / ขวา (เช่น ฝั่งอาคารสำนักงาน, รั้ว · ถนน) */
-.side-top { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0 0 6px; font-size: 0.78rem; color: var(--text-2); }
-.side-top .icon { width: 14px; height: 14px; }
+.side-top { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0 0 8px; font-size: 1rem; font-weight: 600; color: var(--text-2); }
+.side-top .icon { width: 18px; height: 18px; }
 .lot-frame { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 6px; }
-.lot-frame.has-left { grid-template-columns: 22px minmax(0, 1fr); }
-.lot-frame.has-right { grid-template-columns: minmax(0, 1fr) 22px; }
-.lot-frame.has-left.has-right { grid-template-columns: 22px minmax(0, 1fr) 22px; }
+.lot-frame.has-left { grid-template-columns: 30px minmax(0, 1fr); }
+.lot-frame.has-right { grid-template-columns: minmax(0, 1fr) 30px; }
+.lot-frame.has-left.has-right { grid-template-columns: 30px minmax(0, 1fr) 30px; }
 .lot-main { min-width: 0; }
 .side-v { display: flex; align-items: center; justify-content: center; margin: 22px 0 6px; border-radius: 10px;
-  background: var(--surface-2); border: 1px solid var(--border); color: var(--text-2); font-size: 0.74rem; overflow: hidden; }
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--text-2); font-size: 0.95rem; font-weight: 600; overflow: hidden; }
 .side-v span { writing-mode: vertical-rl; white-space: nowrap; letter-spacing: 1px; }
 .side-left span { transform: rotate(180deg); }
-.lot-entrance { color: var(--text-2); }
+.lot-entrance { color: var(--text-2); font-size: 1rem; font-weight: 600; }
+.lot-entrance .icon { width: 18px; height: 18px; }
 
 /* 3 คอลัมน์ขึ้นไป (มือถือจอแคบ): ช่องเรียงรหัสบน-ไอคอนล่าง ให้พอดีความกว้าง */
 .lot-dense { gap: 0 4px; }
@@ -410,7 +411,7 @@ h1, h2 { margin: 0; }
 .lot-dense .slot-tag { font-size: 0.66rem; }
 .lot-dense .slot .car { width: 34px; height: 16px; flex: none; }
 .lot-dense .slot svg:not(.car) { width: 16px; height: 16px; }
-.lot-dense .aisle-label { font-size: 0.66rem; letter-spacing: 1px; }
+.lot-dense .aisle-label { font-size: 0.82rem; letter-spacing: 1px; font-weight: 600; color: #8a9bba; }
 
 /* ---------- รายการสถานที่ (TOR 4.6) ---------- */
 [x-cloak] { display: none !important; }

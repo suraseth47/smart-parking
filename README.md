@@ -379,7 +379,7 @@ docker compose exec web python scripts/benchmark.py   # วัดเวลาป
    - รุ่นที่ติดตั้งอยู่ดูได้ที่ `~/smart-parking/.deploy-version`
    - ยกเลิกโหมดอัตโนมัติ: `scripts\setup-auto-update-smart-parking.bat -Remove`
 3. **ได้ไฟล์อัปเดตเป็น .zip (เช่นจาก Claude):** ดับเบิลคลิก `scripts\apply-update-smart-parking.bat` ทำครบในคลิกเดียว
-   - หา zip ล่าสุด (14 วัน) ในโฟลเดอร์ Downloads / Desktop / `D:\Naslink` / `D:\Naslink\Script` ให้เอง หรือ**ลากไฟล์ zip มาวางบน .bat**
+   - หา zip ล่าสุด (14 วัน) ในโฟลเดอร์ Downloads / `OneDrive\...\Downloads` / Desktop / `D:\Naslink` / `D:\Naslink\Script` / `D:\Naslink_Customer\Smart Parking` ให้เอง หรือ**ลากไฟล์ zip มาวางบน .bat**
    - ตรวจว่า zip มีแต่ไฟล์ของโปรเจกต์ (ไม่มี `.env` `data/` `.git/` `*.onnx`) → แสดงรายชื่อไฟล์ → กด `y` ยืนยัน
    - แตกไฟล์ลงโปรเจกต์ → อัปเดต Server (ใช้ `update-smart-parking.ps1 -Yes`) → `git commit` (ข้อความจาก `.update-message.txt` ใน zip หรือพิมพ์เอง) → `git push`
    - อัปเดต Server ไม่สำเร็จ = หยุด ไม่ commit และไม่ย้าย zip (แก้ปัญหาแล้วดับเบิลคลิก `apply-update-smart-parking.bat` ใหม่ได้เลย)

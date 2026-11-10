@@ -1,6 +1,6 @@
 ﻿# ลงไฟล์อัปเดต (.zip ที่ได้จาก Claude) ครบในคลิกเดียว: แตกไฟล์ลงโปรเจกต์ → อัปเดต Server → git commit → git push
 # วิธีใช้:
-#   ดับเบิลคลิก apply-update-smart-parking.bat         = หา zip ล่าสุดในโฟลเดอร์ Downloads / D:\Naslink ให้เอง แล้วถามยืนยัน
+#   ดับเบิลคลิก apply-update-smart-parking.bat         = หา zip ล่าสุดใน Downloads / OneDrive\...\Downloads / Desktop / D:\Naslink / D:\Naslink_Customer\Smart Parking ให้เอง แล้วถามยืนยัน
 #   ลากไฟล์ .zip มาวางบน apply-update-smart-parking.bat = ใช้ไฟล์นั้น
 # ข้อความ commit: อ่านจากไฟล์ .update-message.txt ใน zip (ถ้ามี) ไม่มีก็ถามให้พิมพ์
 # zip ที่ลงสำเร็จแล้ว ถูกย้ายไปเก็บที่ D:\Naslink\Script\applied เพื่อไม่ให้ลงซ้ำ
@@ -54,7 +54,12 @@ function Test-UpdateZip([string]$path) {
 if (-not $Zip) {
   $dirs = @()
   try { $dirs += (New-Object -ComObject Shell.Application).Namespace('shell:Downloads').Self.Path } catch { }
-  $dirs += @((Join-Path $env:USERPROFILE 'Downloads'), (Join-Path $env:USERPROFILE 'Desktop'), $naslink, (Join-Path $naslink 'Script'))
+  $dirs += @((Join-Path $env:USERPROFILE 'Downloads'), (Join-Path $env:USERPROFILE 'Desktop'), $naslink, (Join-Path $naslink 'Script'),
+    'D:\Naslink_Customer\Smart Parking')
+  # Downloads ที่อยู่ใน OneDrive (เช่น OneDrive\เอกสาร\Downloads)
+  if ($env:OneDrive -and (Test-Path $env:OneDrive)) {
+    $dirs += @(Get-ChildItem -LiteralPath $env:OneDrive -Directory -Depth 1 -Filter 'Downloads' -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
+  }
   $since = (Get-Date).AddDays(-14)
   $cand = $dirs | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique |
     ForEach-Object { Get-ChildItem -LiteralPath $_ -Filter '*.zip' -File -ErrorAction SilentlyContinue } |
