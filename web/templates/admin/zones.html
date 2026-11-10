@@ -76,7 +76,8 @@
                     <button x-show="!z.is_closed" class="btn-secondary" style="color:var(--color-danger);" @click="openClose(z)">ปิดโซนชั่วคราว</button>
                     <button x-show="z.is_closed" class="btn-secondary" @click="openClose(z)">แก้ข้อความ</button>
                     <button x-show="z.is_closed" @click="reopen(z)" :disabled="busy">เปิดโซนคืน</button>
-                    <button x-show="isAdmin" class="btn-secondary" @click="openEdit(z)">แก้ไข</button>
+                    <button x-show="isAdmin" class="btn-secondary" @click="openLayout(z)" title="จัดผังช่องจอดบนหน้าสาธารณะให้ตรงกับลานจริง">ผังหน้าบ้าน</button>
+                  <button x-show="isAdmin" class="btn-secondary" @click="openEdit(z)">แก้ไข</button>
                     <template x-if="isAdmin && confirmDelete !== z.id">
                       <button class="btn-secondary" @click="askDelete(z)">ลบ</button>
                     </template>
@@ -200,6 +201,68 @@
       </aside>
     </div>
   </template>
+
+  <!-- ================= แผง: ผังช่องจอดหน้าสาธารณะ ================= -->
+  <template x-if="panel === 'layout'">
+    <div>
+      <div class="drawer-backdrop" @click="closePanel()"></div>
+      <aside class="drawer drawer-wide" role="dialog" aria-modal="true" aria-label="ผังหน้าบ้าน" @keydown.escape.window="closePanel()">
+        <div class="drawer-head">
+          <h2 x-text="'ผังหน้าบ้าน · ' + target.code + ' ' + target.name_th"></h2>
+          <p>จัดตำแหน่งช่องบน "ผังช่องจอด" ของหน้าสาธารณะให้ตรงกับลานจริง มองจากฝั่งทางเข้า/กล้อง (ล่างจอ) เข้าไปด้านใน (บนจอ)</p>
+        </div>
+        <div class="drawer-body">
+          <div class="section-title">วิธีเขียน (1 บรรทัด = 1 คอลัมน์ เรียงซ้าย → ขวา)</div>
+          <ul class="hint layout-help">
+            <li><code>A-07..A-01</code> ช่วงรหัส เรียงจากด้านในสุด (บน) ลงมาฝั่งทางเข้า (ล่าง)</li>
+            <li><code>เริ่ม 3</code> ท้ายบรรทัด = เริ่มที่แถว 3 (เว้นด้านบน 2 แถว) หรือใช้ <code>.</code> แทนช่องว่างทีละช่อง</li>
+            <li><code>| ทางวิ่งรถ</code> = ทางวิ่ง ข้อความหลัง | เป็นป้าย (ไม่ใส่ก็ได้) · <code>#</code> = หมายเหตุ</li>
+            <li>ป้ายรอบลาน: <code>บน: ด้านในลาน</code> <code>ล่าง: ทางเข้า</code> <code>ซ้าย: รั้ว · ถนน</code> <code>ขวา: 🏢 อาคารสำนักงาน</code> (ใส่เฉพาะด้านที่ต้องการ)</li>
+            <li>ช่องที่ไม่ได้ใส่ในผัง จะต่อเป็นคอลัมน์ท้ายให้เอง · ว่างทั้งหมด = ใช้ผังอัตโนมัติ (แบ่ง 2 คอลัมน์)</li>
+          </ul>
+          <div style="display:flex; gap:0.4rem; flex-wrap:wrap; margin:0.5rem 0;">
+            <button type="button" class="chip" @click="layoutText = autoLayoutText()">ใส่ผัง 2 คอลัมน์ (ตั้งต้น)</button>
+            <button type="button" class="chip" @click="layoutText = ''">ล้าง (ใช้ผังอัตโนมัติ)</button>
+          </div>
+          <textarea x-model="layoutText" rows="10" spellcheck="false" class="layout-text" aria-label="ผังหน้าบ้าน"
+                    placeholder="A-07..A-01 เริ่ม 3&#10;| ทางวิ่งรถ&#10;A-16..A-08&#10;A-21..A-17 เริ่ม 3"></textarea>
+          <p class="hint">ช่องที่ Publish แล้วในโซนนี้: <span x-text="layoutCodes.length ? layoutCodes.join(', ') : 'ยังไม่มี'"></span></p>
+
+          <div class="section-title">ตัวอย่างที่ประชาชนเห็น</div>
+          <p class="error-text" x-show="layoutPreview.error" x-text="layoutPreview.error"></p>
+          <div class="lp-side lp-top" x-show="!layoutPreview.error && layoutPreview.sides.top" x-text="'↑ ' + layoutPreview.sides.top"></div>
+          <div class="lp-frame" x-show="!layoutPreview.error && layoutPreview.cols.length">
+          <div class="lp-side lp-v lp-left" x-show="layoutPreview.sides.left"><span x-text="layoutPreview.sides.left"></span></div>
+          <div class="layout-prev" x-show="!layoutPreview.error && layoutPreview.cols.length"
+               :style="'grid-template-columns:' + layoutPreview.cols.map((c) => c.type === 'aisle' ? '28px' : 'minmax(0,1fr)').join(' ')">
+            <template x-for="(col, ci) in layoutPreview.cols" :key="ci">
+              <div :class="col.type === 'aisle' ? 'lp-aisle' : 'lp-col'">
+                <template x-if="col.type === 'aisle'"><span x-text="col.label || 'ทางวิ่งรถ'"></span></template>
+                <template x-if="col.type === 'slots'">
+                  <div class="lp-cells">
+                    <template x-for="(code, ri) in col.cells" :key="ri">
+                      <div :class="code ? 'lp-slot' + (col.extra ? ' lp-extra' : '') : 'lp-gap'" x-text="code || ''"></div>
+                    </template>
+                  </div>
+                </template>
+              </div>
+            </template>
+          </div>
+          <div class="lp-side lp-v lp-right" x-show="layoutPreview.sides.right"><span x-text="layoutPreview.sides.right"></span></div>
+          </div>
+          <div class="lp-side lp-bottom" x-show="!layoutPreview.error && layoutPreview.cols.length" x-text="'↓ ' + (layoutPreview.sides.bottom || 'ฝั่งทางเข้า')"></div>
+          <p class="hint" x-show="layoutPreview.missing.length">ยังไม่ได้วางในผัง (ต่อเป็นคอลัมน์ท้ายสีจาง): <span x-text="layoutPreview.missing.join(', ')"></span></p>
+          <p class="hint" x-show="!layoutText.trim()">ยังไม่ได้ตั้งผัง — หน้าสาธารณะแบ่งช่องเป็น 2 คอลัมน์ให้อัตโนมัติ</p>
+          <p class="error-text" x-show="formError" x-text="formError"></p>
+        </div>
+        <div class="drawer-foot">
+          <a class="btn btn-secondary" :href="'/?from=admin'" target="_blank" rel="noopener">เปิดหน้าสาธารณะ ↗</a>
+          <button class="btn-secondary" @click="closePanel()" :disabled="busy">ยกเลิก</button>
+          <button @click="saveLayout()" :disabled="busy || !!layoutPreview.error" x-text="busy ? 'กำลังบันทึก...' : 'บันทึกผัง'"></button>
+        </div>
+      </aside>
+    </div>
+  </template>
 </div>
 
 <script>
@@ -217,7 +280,7 @@
       DEFAULT_NOTE, NOTE_PRESETS,
       ready: false, forbidden: false, isAdmin: false,
       zones: [], coverage: {}, sites: [], siteFilter: "",
-      panel: null, form: {}, target: {}, note: "",
+      panel: null, form: {}, target: {}, note: "", layoutText: "", layoutCodes: [],
       busy: false, formError: "", pageError: "", flash: "", confirmDelete: null,
 
       async init() {
@@ -279,6 +342,72 @@
       },
       say(msg) { this.flash = msg; clearTimeout(this._t); this._t = setTimeout(() => (this.flash = ""), 5000); },
       closePanel() { if (!this.busy) { this.panel = null; this.formError = ""; } },
+
+      // ---------- ผังหน้าบ้าน (ผังช่องจอดหน้าสาธารณะ) ----------
+      async openLayout(z) {
+        this.target = z; this.formError = "";
+        try {
+          const d = await apiJson(`/api/admin/zones/${z.id}/map-layout`);
+          this.layoutText = d.text || ""; this.layoutCodes = d.slot_codes || [];
+          this.panel = "layout";
+        } catch (e) { this.pageError = "โหลดผังไม่สำเร็จ: " + e.message; }
+      },
+      autoLayoutText() {
+        const c = this.layoutCodes, half = Math.ceil(c.length / 2);
+        if (!c.length) return "";
+        const line = (list) => list.length > 2 ? `${list[0]}..${list[list.length - 1]}` : list.join(" ");
+        return [line(c.slice(0, half)), "| ทางวิ่งรถ", line(c.slice(half))].join("\n");
+      },
+      // ตัวอย่าง (ตรรกะเดียวกับ core/map_layout.py — Server ตรวจซ้ำตอนบันทึก)
+      get layoutPreview() {
+        const out = { cols: [], missing: [], error: "", sides: {} };
+        const SIDE = { "บน": "top", "ล่าง": "bottom", "ซ้าย": "left", "ขวา": "right" };
+        const known = new Set(this.layoutCodes), seen = new Set();
+        const expand = (tok) => {
+          const m = tok.match(/^(.*?)(\d+)\.\.(.*?)(\d+)$/);
+          if (!m) return [tok];
+          if (m[3] && m[3] !== m[1]) throw new Error(`ช่วงรหัส ${tok} ต้องขึ้นต้นเหมือนกันทั้ง 2 ฝั่ง`);
+          const a = +m[2], b = +m[4], w = m[2].length, step = b >= a ? 1 : -1, list = [];
+          if (Math.abs(a - b) > 80) throw new Error(`ช่วงรหัส ${tok} ยาวเกินไป`);
+          for (let i = a; step > 0 ? i <= b : i >= b; i += step) list.push(m[1] + String(i).padStart(w, "0"));
+          return list;
+        };
+        try {
+          this.layoutText.split("\n").forEach((raw, idx) => {
+            let line = raw.trim();
+            if (!line || line.startsWith("#")) return;
+            const side = line.match(/^(บน|ล่าง|ซ้าย|ขวา|top|bottom|left|right)\s*[:：]\s*(.*)$/i);
+            if (side) { if (side[2].trim()) out.sides[SIDE[side[1]] || side[1].toLowerCase()] = side[2].trim().slice(0, 40); return; }
+            if (line.startsWith("|")) { out.cols.push({ type: "aisle", label: line.slice(1).trim() }); return; }
+            const cells = [];
+            const st = line.match(/\s+(?:เริ่ม|start)\s*(\d+)\s*$/i);
+            if (st) { for (let i = 1; i < +st[1]; i++) cells.push(null); line = line.slice(0, st.index); }
+            for (const tok of line.split(/[\s,]+/).filter(Boolean)) {
+              if (tok === ".") { cells.push(null); continue; }
+              for (const code of expand(tok)) {
+                if (!known.has(code)) throw new Error(`บรรทัด ${idx + 1}: ไม่มีช่องรหัส ${code} ในโซนนี้`);
+                if (seen.has(code)) throw new Error(`บรรทัด ${idx + 1}: ช่อง ${code} ใส่ซ้ำ`);
+                seen.add(code); cells.push(code);
+              }
+            }
+            if (!cells.some(Boolean)) throw new Error(`บรรทัด ${idx + 1}: ไม่มีรหัสช่องจอด`);
+            out.cols.push({ type: "slots", cells });
+          });
+        } catch (e) { return { cols: [], missing: [], error: e.message, sides: {} }; }
+        if (out.cols.length) {
+          out.missing = this.layoutCodes.filter((c) => !seen.has(c));
+          if (out.missing.length) out.cols.push({ type: "slots", cells: out.missing, extra: true });
+        }
+        return out;
+      },
+      async saveLayout() {
+        this.busy = true; this.formError = "";
+        try {
+          await apiJson(`/api/admin/zones/${this.target.id}/map-layout`, { method: "PUT", body: JSON.stringify({ text: this.layoutText }) });
+          this.busy = false; this.panel = null;
+          this.say(`บันทึกผังหน้าบ้านของโซน ${this.target.code} แล้ว — หน้าสาธารณะเปลี่ยนตามภายใน 10 วินาที`);
+        } catch (e) { this.formError = this.errText(e); this.busy = false; }
+      },
 
       // ---------- เพิ่ม/แก้ไข ----------
       openEdit(z) {

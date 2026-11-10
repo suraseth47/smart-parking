@@ -153,6 +153,8 @@ class Zone(Base):
     is_public: Mapped[bool] = mapped_column(Boolean, default=True)
     is_closed: Mapped[bool] = mapped_column(Boolean, default=False)
     closed_note: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # ผังช่องจอดหน้าสาธารณะแบบกำหนดเอง (ข้อความ ดู core/map_layout.py) — ว่าง = แบ่ง 2 คอลัมน์อัตโนมัติ
+    map_layout: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     slots: Mapped[list["Slot"]] = relationship(back_populates="zone")
     site: Mapped["Site | None"] = relationship(back_populates="zones")

@@ -38,6 +38,7 @@ ACTION_LABELS: dict[str, str] = {
     "create_password_reset": "ออกลิงก์ตั้งรหัสผ่านใหม่",
     "create_zone": "เพิ่มโซน",
     "update_zone": "แก้ไขโซน",
+    "update_zone_map_layout": "แก้ผังช่องจอดหน้าสาธารณะ",
     "delete_zone": "ลบโซน",
     "close_zone": "ปิดโซนชั่วคราว",
     "reopen_zone": "เปิดโซนคืน",

@@ -377,6 +377,41 @@ h1, h2 { margin: 0; }
   .lot-heads, .lot { grid-template-columns: minmax(0, 1fr) 36px minmax(0, 1fr); }
 }
 
+/* ---------- ผังกำหนดเองให้ตรงกับลานจริง (คอลัมน์ / ทางวิ่ง / ช่องเว้นว่าง) ---------- */
+.lot-custom { margin-bottom: 6px; }
+.lot-cells { display: flex; flex-direction: column; gap: 6px; }
+.slot-gap { height: 56px; }
+.lot-custom .aisle { display: block; padding: 0; }
+.aisle-inner { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: space-between; padding: 6px 0; }
+.lot-entrance { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0 0 14px; font-size: 0.78rem; color: var(--muted); }
+.lot-entrance .icon { width: 14px; height: 14px; }
+/* ป้ายรอบลาน: บน / ล่าง / ซ้าย / ขวา (เช่น ฝั่งอาคารสำนักงาน, รั้ว · ถนน) */
+.side-top { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0 0 6px; font-size: 0.78rem; color: var(--text-2); }
+.side-top .icon { width: 14px; height: 14px; }
+.lot-frame { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 6px; }
+.lot-frame.has-left { grid-template-columns: 22px minmax(0, 1fr); }
+.lot-frame.has-right { grid-template-columns: minmax(0, 1fr) 22px; }
+.lot-frame.has-left.has-right { grid-template-columns: 22px minmax(0, 1fr) 22px; }
+.lot-main { min-width: 0; }
+.side-v { display: flex; align-items: center; justify-content: center; margin: 22px 0 6px; border-radius: 10px;
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--text-2); font-size: 0.74rem; overflow: hidden; }
+.side-v span { writing-mode: vertical-rl; white-space: nowrap; letter-spacing: 1px; }
+.side-left span { transform: rotate(180deg); }
+.lot-entrance { color: var(--text-2); }
+
+/* 3 คอลัมน์ขึ้นไป (มือถือจอแคบ): ช่องเรียงรหัสบน-ไอคอนล่าง ให้พอดีความกว้าง */
+.lot-dense { gap: 0 4px; }
+.lot-dense { padding: 8px 6px; }
+.lot-dense .lot-cells { gap: 5px; }
+.lot-dense .slot { padding: 0 4px; border-radius: 10px; }
+.lot-dense .slot-inner { flex-direction: column; justify-content: center; gap: 2px; }
+.lot-dense .slot-code { order: -1; font-size: 0.8rem; }
+.lot-dense .slot.k-taken .slot-code { font-size: 0.74rem; }
+.lot-dense .slot-tag { font-size: 0.66rem; }
+.lot-dense .slot .car { width: 34px; height: 16px; flex: none; }
+.lot-dense .slot svg:not(.car) { width: 16px; height: 16px; }
+.lot-dense .aisle-label { font-size: 0.66rem; letter-spacing: 1px; }
+
 /* ---------- รายการสถานที่ (TOR 4.6) ---------- */
 [x-cloak] { display: none !important; }
 .sites-tools { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin: -4px 0 12px; }

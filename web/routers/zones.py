@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from core.db import get_db
+from core.map_layout import parse_layout
 from core.models import AuditLog, LayoutStatus, Site, Slot, Zone
 from web.deps import CurrentUser, get_current_user, require_admin, require_permission, verify_csrf
 from web.site_access import ensure_zone, restrict
@@ -40,6 +41,10 @@ class ZoneOut(BaseModel):
     closed_note: str | None
 
     model_config = {"from_attributes": True}
+
+
+class MapLayoutIn(BaseModel):
+    text: str = Field(default="", max_length=4000)  # ว่าง = กลับไปใช้ผังอัตโนมัติ (แบ่ง 2 คอลัมน์)
 
 
 class ZoneCloseIn(BaseModel):
@@ -162,6 +167,42 @@ def delete_zone(
     except IntegrityError:
         db.rollback()
         raise HTTPException(status.HTTP_409_CONFLICT, "ลบไม่ได้ เพราะมีช่องจอดผูกกับโซนนี้อยู่")
+
+
+@router.get("/{zone_id}/map-layout")
+def get_map_layout(zone_id: int, db: Session = Depends(get_db), user: CurrentUser = Depends(get_current_user)) -> dict:
+    """ผังหน้าบ้านของโซน + รหัสช่องที่ Publish แล้ว (ใช้ตัวช่วยเขียนผัง/ตัวอย่าง)"""
+    zone = ensure_zone(user, db.get(Zone, zone_id))
+    return {"text": zone.map_layout or "", "slot_codes": _published_codes(db, zone.id)}
+
+
+@router.put("/{zone_id}/map-layout")
+def put_map_layout(
+    zone_id: int,
+    data: MapLayoutIn,
+    db: Session = Depends(get_db),
+    admin: CurrentUser = Depends(require_admin),
+    _csrf: None = Depends(verify_csrf),
+) -> dict:
+    """บันทึกผังหน้าบ้าน — ตรวจรหัสช่องว่ามีจริงในโซนและไม่ซ้ำ"""
+    zone = _get_zone_or_404(db, zone_id)
+    codes = _published_codes(db, zone.id)
+    text = data.text.strip()
+    try:
+        columns = parse_layout(text, codes) if text else []
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    zone.map_layout = text or None
+    db.add(AuditLog(user_id=admin.id, action="update_zone_map_layout", target=zone.code))
+    db.commit()
+    placed = {c for col in columns if col["type"] == "slots" for c in col["cells"] if c}
+    return {"text": text, "slot_codes": codes, "missing": [c for c in codes if c not in placed] if text else []}
+
+
+def _published_codes(db: Session, zone_id: int) -> list[str]:
+    return sorted(db.scalars(
+        select(Slot.code).where(Slot.zone_id == zone_id, Slot.layout_status == LayoutStatus.PUBLISHED, Slot.is_active.is_(True))
+    ).all())
 
 
 @router.post("/{zone_id}/close", response_model=ZoneOut)

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0b1120">
   <title>ที่จอดรถว่าง - Smart Parking</title>
-  <link rel="stylesheet" href="/static/css/public.css?v=20261103b">
+  <link rel="stylesheet" href="/static/css/public.css?v=20261110b">
   <script defer src="/static/js/vendor/alpine.min.js"></script>
 </head>
 <body>
@@ -268,6 +268,58 @@
       </div>
       </div>
 
+      <!-- ผังกำหนดเอง (ตั้งที่หลังบ้าน โซนและการปิดโซน → ผังหน้าบ้าน) ให้ตรงกับการจัดวางจริงของลาน -->
+      <template x-if="mapLayout">
+        <div>
+          <div class="side-top" x-show="mapSides.top"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"/></svg><span x-text="mapSides.top"></span></div>
+          <div class="lot-frame" :class="{ 'has-left': mapSides.left, 'has-right': mapSides.right }">
+          <div class="side-v side-left" x-show="mapSides.left"><span x-text="mapSides.left"></span></div>
+          <div class="lot-main">
+          <div class="lot-heads" :style="'grid-template-columns:' + mapGridCols">
+            <template x-for="(col, ci) in mapLayout" :key="'h' + ci">
+              <div x-text="col.type === 'slots' ? colRange(col.cells.filter(Boolean).map((c) => ({ code: c }))) : ''"></div>
+            </template>
+          </div>
+          <div class="lot lot-custom" :class="mapDense && 'lot-dense'" :style="'grid-template-columns:' + mapGridCols">
+            <template x-for="(col, ci) in mapLayout" :key="'c' + ci">
+              <div :class="col.type === 'aisle' ? 'aisle' : 'lot-col'">
+                <template x-if="col.type === 'aisle'">
+                  <div class="aisle-inner" aria-hidden="true">
+                    <svg class="icon" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg>
+                    <span class="aisle-label" x-text="col.label || t('aisle')"></span>
+                    <svg class="icon" viewBox="0 0 24 24"><path d="M12 5v14M6 13l6 6 6-6"/></svg>
+                  </div>
+                </template>
+                <template x-if="col.type === 'slots'">
+                  <div class="lot-cells">
+                    <template x-for="(code, ri) in col.cells" :key="ci + '-' + ri">
+                      <div class="lot-cell">
+                        <template x-if="code && slotByCode(code)">
+                          <button type="button" class="slot" :class="slotClass(slotByCode(code)) + (isRightCol(ci) ? ' slot-right' : '')"
+                                  @click="selected = code" :aria-label="code + ' ' + slotLabel(slotByCode(code))">
+                            <span class="slot-inner" x-html="slotContent(slotByCode(code), isRightCol(ci))"></span>
+                          </button>
+                        </template>
+                        <template x-if="!code || !slotByCode(code)"><div class="slot-gap" aria-hidden="true"></div></template>
+                      </div>
+                    </template>
+                  </div>
+                </template>
+              </div>
+            </template>
+          </div>
+          </div>
+          <div class="side-v side-right" x-show="mapSides.right"><span x-text="mapSides.right"></span></div>
+          </div>
+          <div class="lot-entrance">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6"/></svg><span x-text="mapSides.bottom || t('entrance')"></span>
+          </div>
+        </div>
+      </template>
+
+      <!-- ผังอัตโนมัติ: แบ่งครึ่ง 2 คอลัมน์ (โซนที่ยังไม่ได้ตั้งผัง) -->
+      <template x-if="!mapLayout">
+        <div>
       <div class="lot-heads">
         <div x-text="colRange(mapLeft)"></div>
         <div></div>
@@ -295,6 +347,8 @@
           </template>
         </div>
       </div>
+        </div>
+      </template>
 
       <section class="card sel-card" x-show="selectedSlot">
         <div class="sel-badge" :class="selectedSlot ? 'b-' + slotKind(selectedSlot) : ''" x-text="selectedSlot ? selectedSlot.code : ''"></div>
@@ -365,6 +419,7 @@
         back: "กลับหน้าภาพรวม",
         mapOf: "ผังช่องจอด",
         aisle: "ทางวิ่งรถ",
+        entrance: "ฝั่งทางเข้า",
         tapHint: "แตะช่องเพื่อดูรายละเอียด",
         selHint: "สถานะจาก AI อาจคลาดเคลื่อนเล็กน้อย",
         selHintLocked: "ผู้ดูแลกำหนดให้เป็นช่องสงวน",
@@ -430,6 +485,7 @@
         back: "Back to overview",
         mapOf: "Map ·",
         aisle: "Driveway",
+        entrance: "Entrance side",
         tapHint: "Tap a slot for details",
         selHint: "AI status may be slightly inaccurate",
         selHintLocked: "Set aside by the site staff",
@@ -796,6 +852,35 @@
 
         get mapRight() {
           return this.mapSlots.slice(Math.ceil(this.mapSlots.length / 2));
+        },
+
+        // ผังกำหนดเอง: [{type:"slots", cells:[code|null]}, {type:"aisle", label}] จาก /api/public/summary
+        get mapLayout() {
+          const layout = this.mapZone && this.mapZone.layout;
+          return layout && layout.some((c) => c.type === "slots") ? layout : null;
+        },
+
+        // ป้ายรอบลาน {top, bottom, left, right} เช่น ขวา = อาคารสำนักงาน (ตั้งในผังหน้าบ้าน)
+        get mapSides() {
+          return (this.mapZone && this.mapZone.sides) || {};
+        },
+
+        get mapGridCols() {
+          return (this.mapLayout || []).map((c) => (c.type === "aisle" ? (this.mapDense ? "30px" : "44px") : "minmax(0, 1fr)")).join(" ");
+        },
+
+        get mapDense() {
+          return (this.mapLayout || []).filter((c) => c.type === "slots").length >= 3;
+        },
+
+        slotByCode(code) {
+          return this.mapSlots.find((s) => s.code === code) || null;
+        },
+
+        // คอลัมน์ทางขวาของทางวิ่งแรก = รถหันหัวไปทางซ้าย (กลับด้านรูปรถ)
+        isRightCol(ci) {
+          const aisle = (this.mapLayout || []).findIndex((c) => c.type === "aisle");
+          return aisle >= 0 && ci > aisle;
         },
 
         get selectedSlot() {

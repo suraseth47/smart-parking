@@ -949,3 +949,22 @@ button .btn-icon { margin-right: 0.35rem; vertical-align: -3px; }
 .sc-prev-ring .ring { width: 50px; height: 50px; border-radius: 50%; border: 6px solid #34d399; flex: none; }
 .sc-prev-ring .bars { flex: 1; display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
 .sc-prev-ring .bars i { height: 22px; border-radius: 4px; background: #1f2937; }
+
+/* โซน → ผังหน้าบ้าน: ตัวเขียนผัง + ตัวอย่าง */
+.drawer.drawer-wide { width: min(620px, 100vw); }
+.layout-help { margin: 0; padding-left: 1.1rem; line-height: 1.7; }
+.layout-help code { background: #eef2f7; padding: 0 .3rem; border-radius: 4px; font-size: .85em; }
+.layout-text { width: 100%; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .9rem; line-height: 1.5; }
+.layout-prev { display: grid; gap: 0 4px; background: #0f172a; border-radius: 12px; padding: 8px; }
+.lp-cells { display: flex; flex-direction: column; gap: 4px; }
+.lp-slot, .lp-gap { height: 26px; border-radius: 6px; font-size: .74rem; font-weight: 600; display: flex; align-items: center; justify-content: center; }
+.lp-slot { background: #0e2a22; border: 1.5px solid #34d399; color: #e2e8f0; }
+.lp-slot.lp-extra { opacity: .45; border-style: dashed; }
+.lp-aisle { border-left: 2px dashed #3b4a66; border-right: 2px dashed #3b4a66; color: #7b8aa8; font-size: .66rem; display: flex; align-items: center; justify-content: center; }
+.lp-aisle span { writing-mode: vertical-rl; white-space: nowrap; }
+.lp-frame { display: flex; gap: 4px; align-items: stretch; }
+.lp-frame .layout-prev { flex: 1; min-width: 0; }
+.lp-side { font-size: .75rem; color: var(--color-muted); text-align: center; margin: .25rem 0; }
+.lp-v { margin: 0; flex: 0 0 22px; display: flex; align-items: center; justify-content: center; background: #eef2f7; border-radius: 8px; }
+.lp-v span { writing-mode: vertical-rl; white-space: nowrap; }
+.lp-left span { transform: rotate(180deg); }

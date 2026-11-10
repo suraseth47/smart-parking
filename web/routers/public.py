@@ -14,6 +14,7 @@ from core.app_settings import LOGO_TYPES, cached_display, logo_dir
 from core.config import local_utc_offset_hours
 from core.count_scope import counted_slots
 from core.counting import SlotInfo, ZoneInfo, build_public_summary, build_slot_maps
+from core.map_layout import parse_sides, resolve_layout
 from core.db import get_db
 from core.models import Camera, Site, Slot, SlotState, Zone, ZoneStatHour
 from core.sites import google_maps_directions_url
@@ -56,6 +57,12 @@ class SlotBoxOut(BaseModel):
     type: str = "normal"  # "normal" | "disabled" | "ev" | "reserved"
 
 
+class MapColumnOut(BaseModel):
+    type: str  # slots | aisle
+    cells: list[str | None] | None = None  # รหัสช่องจากบน (ด้านใน) ลงล่าง (ฝั่งทางเข้า) · None = ช่องเว้นว่าง
+    label: str | None = None  # ป้ายทางวิ่ง
+
+
 class ZoneSummaryOut(BaseModel):
     code: str
     name_th: str
@@ -67,6 +74,8 @@ class ZoneSummaryOut(BaseModel):
     free_disabled: int | None = None
     free_ev: int | None = None
     slots: list[SlotBoxOut] | None = None
+    layout: list[MapColumnOut] | None = None  # ผังกำหนดเอง (คอลัมน์ซ้าย→ขวา) ดู core/map_layout.py
+    sides: dict[str, str] | None = None  # ป้ายรอบลาน top/bottom/left/right เช่น ขวา = อาคารสำนักงาน
 
 
 class PublicSummaryOut(BaseModel):
@@ -205,6 +214,7 @@ def build_summary(db: Session, site: Site, site_count: int) -> dict:
     ]
     zone_names = {z.id: (z.name_th, z.name_en) for z in zones}
     zone_notes = {z.code: z.closed_note for z in zones}
+    zone_layouts = {z.code: z.map_layout for z in zones}
 
     rows = db.execute(
         select(Slot.zone_id, Slot.code, Slot.type, Slot.is_active, Slot.layout_status, SlotState.state)
@@ -264,6 +274,9 @@ def build_summary(db: Session, site: Site, site_count: int) -> dict:
                 "free_disabled": z.free_disabled,
                 "free_ev": z.free_ev,
                 "slots": slot_maps.get(z.code),
+                # ผังกำหนดเองให้ตรงกับลานจริง (None = แบ่ง 2 คอลัมน์อัตโนมัติ)
+                "layout": resolve_layout(zone_layouts.get(z.code), [s["code"] for s in slot_maps.get(z.code) or []]),
+                "sides": parse_sides(zone_layouts.get(z.code)) or None,
             }
             for z in zone_summaries
         ],
