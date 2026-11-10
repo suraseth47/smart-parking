@@ -1,6 +1,6 @@
 [project]
 name = "smart-parking"
-version = "1.1.0"
+version = "1.2.0"
 description = "ระบบตรวจนับที่จอดรถว่างด้วยกล้อง IP (Smart Parking)"
 requires-python = ">=3.12"
 dependencies = [
